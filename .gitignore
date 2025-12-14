@@ -1,0 +1,43 @@
+# Misc
+.DS_Store
+.metadata
+logs/
+.history/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Visual Studio Code
+.vscode/
+
+# Tools
+tools/
+.agent/tools/
+
+# Flutter
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Android
+android/.gradle
+android/local.properties
+android/captures/
+android/gradlew
+android/gradlew.bat
+.agent
+
+# Rust
+target/
+**/*.rs.bk
+
+integration_test
+test
+test_driver

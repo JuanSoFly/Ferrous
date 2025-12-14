@@ -1,0 +1,26 @@
+[package]
+name = "rust_lib_reader_app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.11.1"
+anyhow = "1.0.100"
+
+# File scanning
+walkdir = "2.5.0"
+
+# PDF rendering - enabling thread_safe and sync for OnceLock usage
+pdfium-render = { version = "0.8.37", features = ["thread_safe", "sync"] }
+
+# Image processing (for PDF to PNG conversion)
+image = "0.25.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+strip = true

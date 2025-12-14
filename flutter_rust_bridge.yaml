@@ -1,0 +1,7 @@
+# Flutter Rust Bridge Layout
+rust_input: "rust/src/api/**/*.rs"
+dart_output: "lib/src/rust"
+# dart_decl_output removed as it's auto-handled or unified in v2
+rust_output: "rust/src/frb_generated.rs"
+rust_root: "rust"
+llvm_path: ["/usr/lib/llvm-14", "/usr/local/opt/llvm", "/usr/lib/llvm-11"]
