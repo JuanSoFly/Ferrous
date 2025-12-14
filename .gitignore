@@ -41,3 +41,5 @@ target/
 integration_test
 test
 test_driver
+
+AGENTS.md
