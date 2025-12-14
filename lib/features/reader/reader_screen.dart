@@ -1,26 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/src/rust/api/library.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/reader/pdf_reader.dart';
 import 'package:reader_app/features/reader/epub_reader.dart';
 import 'package:reader_app/features/reader/cbz_reader.dart';
+import 'package:reader_app/features/reader/docx_reader.dart';
 
 class ReaderScreen extends StatelessWidget {
-  final BookMetadata book;
+  final Book book;
 
   const ReaderScreen({super.key, required this.book});
 
   @override
   Widget build(BuildContext context) {
+    final bookRepository = context.read<BookRepository>();
     final path = book.path.toLowerCase();
 
     if (path.endsWith('.pdf')) {
-      return PdfReaderScreen(path: book.path, title: book.title);
+      return PdfReaderScreen(book: book, repository: bookRepository);
     } else if (path.endsWith('.epub')) {
-      return EpubReaderScreen(path: book.path, title: book.title);
+      return EpubReaderScreen(book: book, repository: bookRepository);
     } else if (path.endsWith('.cbz') || path.endsWith('.cbr')) {
-      return CbzReaderScreen(path: book.path, title: book.title);
+      return CbzReaderScreen(book: book, repository: bookRepository);
     } else if (path.endsWith('.docx')) {
-      return _buildUnsupportedScreen(context, 'DOCX');
+      return DocxReaderScreen(book: book, repository: bookRepository);
     } else {
       return _buildUnsupportedScreen(context, 'Unknown');
     }

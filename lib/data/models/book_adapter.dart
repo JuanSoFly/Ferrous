@@ -1,10 +1,5 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
-
-part of 'book.dart';
-
-// **************************************************************************
-// TypeAdapterGenerator
-// **************************************************************************
+import 'package:hive/hive.dart';
+import 'package:reader_app/data/models/book.dart';
 
 class BookAdapter extends TypeAdapter<Book> {
   @override
@@ -24,15 +19,18 @@ class BookAdapter extends TypeAdapter<Book> {
       format: fields[4] as String,
       currentPage: fields[5] as int,
       totalPages: fields[6] as int,
-      lastOpened: fields[7] as DateTime,
-      addedAt: fields[8] as DateTime,
+      lastOpened: fields[7] as DateTime?,
+      addedAt: fields[8] as DateTime?,
+      sectionIndex: fields[9] as int? ?? 0,
+      scrollPosition: fields[10] as double? ?? 0.0,
+      coverPath: fields[11] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Book obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +48,13 @@ class BookAdapter extends TypeAdapter<Book> {
       ..writeByte(7)
       ..write(obj.lastOpened)
       ..writeByte(8)
-      ..write(obj.addedAt);
+      ..write(obj.addedAt)
+      ..writeByte(9)
+      ..write(obj.sectionIndex)
+      ..writeByte(10)
+      ..write(obj.scrollPosition)
+      ..writeByte(11)
+      ..write(obj.coverPath);
   }
 
   @override

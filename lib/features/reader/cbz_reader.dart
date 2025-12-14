@@ -2,12 +2,18 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:archive/archive.dart';
+import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/repositories/book_repository.dart';
 
 class CbzReaderScreen extends StatefulWidget {
-  final String path;
-  final String title;
+  final Book book;
+  final BookRepository repository;
 
-  const CbzReaderScreen({super.key, required this.path, required this.title});
+  const CbzReaderScreen({
+    super.key,
+    required this.book,
+    required this.repository,
+  });
 
   @override
   State<CbzReaderScreen> createState() => _CbzReaderScreenState();
@@ -18,11 +24,13 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> {
   int _currentPage = 0;
   bool _isLoading = true;
   String? _error;
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _currentPage = widget.book.currentPage;
+    _pageController = PageController(initialPage: _currentPage);
     _loadCbz();
   }
 
@@ -34,7 +42,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> {
 
   Future<void> _loadCbz() async {
     try {
-      final bytes = await File(widget.path).readAsBytes();
+      final bytes = await File(widget.book.path).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
 
       // Filter and sort image files
@@ -61,6 +69,11 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> {
         _pages = pages;
         _isLoading = false;
       });
+      
+      // Validation of page index
+      if (_currentPage >= pages.length) {
+         _currentPage = 0;
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -79,11 +92,24 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> {
     }
   }
 
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentPage = index;
+    });
+
+    // Save progress
+    widget.repository.updateReadingProgress(
+      widget.book.id,
+      currentPage: index,
+      totalPages: _pages.length,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(widget.book.title),
         actions: [
           if (_pages.isNotEmpty)
             Center(
@@ -127,11 +153,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> {
     return PageView.builder(
       controller: _pageController,
       itemCount: _pages.length,
-      onPageChanged: (index) {
-        setState(() {
-          _currentPage = index;
-        });
-      },
+      onPageChanged: _onPageChanged,
       itemBuilder: (context, index) {
         return InteractiveViewer(
           maxScale: 5.0,

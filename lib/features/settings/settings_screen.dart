@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:reader_app/features/settings/appearance_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -10,11 +11,16 @@ class SettingsScreen extends StatelessWidget {
         title: const Text('Settings'),
       ),
       body: ListView(
-        children: const [
+        children: [
           ListTile(
-            leading: Icon(Icons.palette),
-            title: Text('Appearance'),
-            trailing: Icon(Icons.arrow_forward_ios),
+            leading: const Icon(Icons.palette),
+            title: const Text('Appearance'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AppearanceScreen()),
+              );
+            },
           ),
           ListTile(
             leading: Icon(Icons.folder),

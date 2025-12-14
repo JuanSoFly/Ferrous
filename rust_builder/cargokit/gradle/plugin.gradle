@@ -89,7 +89,7 @@ class CargoKitPlugin implements Plugin<Project> {
    private Plugin _findFlutterPlugin(Map projects) {
         for (project in projects) {
             for (plugin in project.value.getPlugins()) {
-                if (plugin.class.name == "FlutterPlugin") {
+                if (plugin.class.simpleName == "FlutterPlugin") {
                     return plugin;
                 }
             }
@@ -103,18 +103,12 @@ class CargoKitPlugin implements Plugin<Project> {
 
     @Override
     void apply(Project project) {
-        def plugin = findFlutterPlugin(project.rootProject);
-
         project.extensions.create("cargokit", CargoKitExtension)
 
-        if (plugin == null) {
-            print("Flutter plugin not found, CargoKit plugin will not be applied.")
-            return;
-        }
+        def applyWithFlutterPlugin = { Plugin flutterPlugin ->
+            def cargoBuildDir = "${project.buildDir}/build"
 
-        def cargoBuildDir = "${project.buildDir}/build"
-
-        plugin.project.android.applicationVariants.all { variant ->
+            flutterPlugin.project.android.applicationVariants.all { variant ->
 
             final buildType = variant.buildType.name
 
@@ -122,7 +116,11 @@ class CargoKitPlugin implements Plugin<Project> {
             def jniLibs = project.android.sourceSets.maybeCreate(buildType).jniLibs;
             jniLibs.srcDir(new File(cargoOutputDir))
 
-            def platforms = plugin.getTargetPlatforms().collect()
+            // Flutter Gradle plugin no longer exposes `getTargetPlatforms()` as an instance method.
+            // Use the utility method instead (keeps compat across Flutter versions).
+            def platforms = com.flutter.gradle.FlutterPluginUtils
+                .getTargetPlatforms(flutterPlugin.project)
+                .collect()
 
             // Same thing addFlutterDependencies does in flutter.gradle
             if (buildType == "debug") {
@@ -139,7 +137,7 @@ class CargoKitPlugin implements Plugin<Project> {
                     return
                 }
 
-                if (plugin.project.android.ndkVersion == null) {
+                if (flutterPlugin.project.android.ndkVersion == null) {
                     throw new GradleException("Please set 'android.ndkVersion' in 'app/build.gradle'.")
                 }
 
@@ -147,10 +145,15 @@ class CargoKitPlugin implements Plugin<Project> {
                     buildMode = variant.buildType.name
                     buildDir = cargoBuildDir
                     outputDir = cargoOutputDir
-                    ndkVersion = plugin.project.android.ndkVersion
-                    sdkDirectory = plugin.project.android.sdkDirectory
-                    minSdkVersion = plugin.project.android.defaultConfig.minSdkVersion.apiLevel as int
-                    compileSdkVersion = plugin.project.android.compileSdkVersion.substring(8) as int
+                    ndkVersion = flutterPlugin.project.android.ndkVersion
+                    sdkDirectory = flutterPlugin.project.android.sdkDirectory
+                    minSdkVersion = flutterPlugin.project.android.defaultConfig.minSdkVersion.apiLevel as int
+                    def rawCompileSdk = flutterPlugin.project.android.compileSdkVersion
+                    if (rawCompileSdk instanceof String && rawCompileSdk.startsWith("android-")) {
+                        compileSdkVersion = rawCompileSdk.substring("android-".length()) as int
+                    } else {
+                        compileSdkVersion = rawCompileSdk as int
+                    }
                     targetPlatforms = platforms
                     pluginFile = CargoKitPlugin.file
                 }
@@ -164,6 +167,22 @@ class CargoKitPlugin implements Plugin<Project> {
                 project.tasks.each onTask
                 project.tasks.whenTaskAdded onTask
             }
+            }
+        }
+
+        def flutterPlugin = findFlutterPlugin(project.rootProject)
+        if (flutterPlugin != null) {
+            applyWithFlutterPlugin(flutterPlugin)
+            return
+        }
+
+        project.gradle.projectsEvaluated {
+            def flutterPluginLater = findFlutterPlugin(project.rootProject)
+            if (flutterPluginLater == null) {
+                println("Flutter plugin not found, CargoKit plugin will not be applied.")
+                return
+            }
+            applyWithFlutterPlugin(flutterPluginLater)
         }
     }
 }

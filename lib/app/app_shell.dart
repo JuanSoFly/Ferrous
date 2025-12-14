@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:reader_app/features/library/library_screen.dart';
 import 'package:reader_app/features/settings/settings_screen.dart';
+import 'package:reader_app/features/annotations/annotations_hub_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -14,9 +15,7 @@ class _AppShellState extends State<AppShell> {
 
   final List<Widget> _screens = const [
     LibraryScreen(),
-    Center(
-        child: Text(
-            "Reader Placeholder")), // Placeholder for Reader if needed in nav, usually Reader is pushed
+    AnnotationsHubScreen(),
     SettingsScreen(),
   ];
 
@@ -40,8 +39,8 @@ class _AppShellState extends State<AppShell> {
             label: 'Library',
           ),
           NavigationDestination(
-            icon: Icon(Icons.book_online),
-            label: 'Reading',
+            icon: Icon(Icons.comment), // Use appropriate icon for annotations
+            label: 'Annotations',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings),

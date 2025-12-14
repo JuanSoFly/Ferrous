@@ -2,19 +2,24 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:epubx/epubx.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/repositories/book_repository.dart';
 
 class EpubReaderScreen extends StatefulWidget {
-  final String path;
-  final String title;
+  final Book book;
+  final BookRepository repository;
 
-  const EpubReaderScreen({super.key, required this.path, required this.title});
+  const EpubReaderScreen({
+    super.key,
+    required this.book,
+    required this.repository,
+  });
 
   @override
   State<EpubReaderScreen> createState() => _EpubReaderScreenState();
 }
 
 class _EpubReaderScreenState extends State<EpubReaderScreen> {
-  EpubBook? _book;
   List<EpubChapter>? _chapters;
   int _currentChapterIndex = 0;
   String? _currentContent;
@@ -25,6 +30,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _currentChapterIndex = widget.book.sectionIndex;
     _loadEpub();
   }
 
@@ -36,19 +42,22 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
   Future<void> _loadEpub() async {
     try {
-      final bytes = await File(widget.path).readAsBytes();
+      final bytes = await File(widget.book.path).readAsBytes();
       final book = await EpubReader.readBook(bytes);
 
       // Flatten chapters
       final chapters = _flattenChapters(book.Chapters ?? []);
 
       setState(() {
-        _book = book;
         _chapters = chapters;
       });
 
       if (chapters.isNotEmpty) {
-        await _loadChapter(0);
+        // Validation of index
+        if (_currentChapterIndex >= chapters.length) {
+          _currentChapterIndex = 0;
+        }
+        await _loadChapter(_currentChapterIndex);
       } else {
         setState(() {
           _error = "No chapters found in EPUB";
@@ -82,6 +91,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       _currentChapterIndex = index;
     });
 
+    // Save progress
+    widget.repository.updateReadingProgress(
+      widget.book.id,
+      sectionIndex: index,
+      totalPages: _chapters!.length,
+    );
+
     try {
       final chapter = _chapters![index];
       String content = chapter.HtmlContent ?? '';
@@ -91,7 +107,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         _isLoading = false;
       });
 
-      _scrollController.jumpTo(0);
+      // Reset scroll for now (TODO: Restore scroll position)
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
     } catch (e) {
       setState(() {
         _error = "Chapter load error: $e";
@@ -104,7 +123,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(widget.book.title),
         actions: [
           IconButton(
             icon: const Icon(Icons.list),

@@ -37,9 +37,8 @@ android/gradlew.bat
 # Rust
 target/
 **/*.rs.bk
-
+docs
 integration_test
 test
 test_driver
-
 AGENTS.md

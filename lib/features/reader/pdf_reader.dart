@@ -1,12 +1,18 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:reader_app/src/rust/api/pdf.dart';
+import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/repositories/book_repository.dart';
 
 class PdfReaderScreen extends StatefulWidget {
-  final String path;
-  final String title;
+  final Book book;
+  final BookRepository repository;
 
-  const PdfReaderScreen({super.key, required this.path, required this.title});
+  const PdfReaderScreen({
+    super.key,
+    required this.book,
+    required this.repository,
+  });
 
   @override
   State<PdfReaderScreen> createState() => _PdfReaderScreenState();
@@ -22,16 +28,17 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _pageIndex = widget.book.currentPage;
     _loadDocument();
   }
 
   Future<void> _loadDocument() async {
     try {
-      final count = await getPdfPageCount(path: widget.path);
+      final count = await getPdfPageCount(path: widget.book.path);
       setState(() {
         _pageCount = count;
       });
-      await _renderPage(0);
+      await _renderPage(_pageIndex);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -46,6 +53,13 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       _pageIndex = index;
     });
 
+    // Save progress
+    widget.repository.updateReadingProgress(
+      widget.book.id,
+      currentPage: index,
+      totalPages: _pageCount,
+    );
+
     try {
       // Render at 2x screen resolution for sharpness
       final screenWidth = MediaQuery.of(context).size.width;
@@ -54,7 +68,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       final height = (screenHeight * 2).toInt();
 
       final bytes = await renderPdfPage(
-        path: widget.path,
+        path: widget.book.path,
         pageIndex: index,
         width: width,
         height: height,
@@ -76,7 +90,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(widget.book.title),
         actions: [
           if (_pageCount > 0)
             Center(
