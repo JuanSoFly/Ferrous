@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use docx_rs::{read_docx, DocumentChild, ParagraphChild, RunChild};
+use docx_rs::{read_docx, Bold, DocumentChild, Italic, ParagraphChild, RunChild};
 use std::fs::File;
 use std::io::Read;
 
@@ -31,17 +31,26 @@ pub fn read_docx_to_html(path: String) -> Result<String> {
                         let mut open_tags = String::new();
                         let mut close_tags = String::new();
 
-                        if let Some(props) = &run.property {
-                            if props.bold.is_some() {
-                                open_tags.push_str("<b>");
-                                close_tags.insert_str(0, "</b>");
-                            }
-                            if props.italic.is_some() {
-                                open_tags.push_str("<i>");
-                                close_tags.insert_str(0, "</i>");
-                            }
-                            // Add more formatting as needed (underline, color, etc.)
+                        let props = &run.run_property;
+
+                        if props
+                            .bold
+                            .as_ref()
+                            .is_some_and(|bold| bold == &Bold::new())
+                        {
+                            open_tags.push_str("<b>");
+                            close_tags.insert_str(0, "</b>");
                         }
+
+                        if props
+                            .italic
+                            .as_ref()
+                            .is_some_and(|italic| italic == &Italic::new())
+                        {
+                            open_tags.push_str("<i>");
+                            close_tags.insert_str(0, "</i>");
+                        }
+                        // Add more formatting as needed (underline, color, etc.)
 
                         html_output.push_str(&open_tags);
                         html_output.push_str(&text_content);

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use image::{GenericImageView, Pixel};
 use pdfium_render::prelude::*;
 
@@ -46,11 +46,11 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
         let mut left = 0;
         let mut right = w - 1;
         
-        let threshold = 5; // Tolerance for "white" (0-255). 
-        // 255 is white. So > 255 - 5 = 250.
+        let threshold: u8 = 5; // Tolerance for "white" (0-255).
+        let white_cutoff = 255u8.saturating_sub(threshold);
         let is_white = |p: image::Rgba<u8>| {
             let ch = p.channels();
-            ch[0] > 250 && ch[1] > 250 && ch[2] > 250
+            ch[0] > white_cutoff && ch[1] > white_cutoff && ch[2] > white_cutoff
         };
 
         // Find Top
