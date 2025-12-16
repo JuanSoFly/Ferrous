@@ -4,8 +4,10 @@ import 'package:reader_app/src/rust/frb_generated.dart';
 import 'package:reader_app/app/app_shell.dart';
 import 'package:reader_app/data/models/book_adapter.dart';
 import 'package:reader_app/data/models/annotation_adapter.dart';
+import 'package:reader_app/data/models/collection_adapter.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
+import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
@@ -18,6 +20,7 @@ Future<void> main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(BookAdapter());
   Hive.registerAdapter(AnnotationAdapter());
+  Hive.registerAdapter(CollectionAdapter());
 
   // Initialize repositories
   final bookRepository = BookRepository();
@@ -25,6 +28,9 @@ Future<void> main() async {
   
   final annotationRepository = AnnotationRepository();
   await annotationRepository.init();
+
+  final collectionRepository = CollectionRepository();
+  await collectionRepository.init();
 
   // Initialize Rust library
   String? initError;
@@ -38,6 +44,7 @@ Future<void> main() async {
     initError: initError, 
     bookRepository: bookRepository,
     annotationRepository: annotationRepository,
+    collectionRepository: collectionRepository,
   ));
 }
 
@@ -45,12 +52,14 @@ class ReaderApp extends StatelessWidget {
   final String? initError;
   final BookRepository bookRepository;
   final AnnotationRepository annotationRepository;
+  final CollectionRepository collectionRepository;
 
   const ReaderApp({
     super.key, 
     this.initError, 
     required this.bookRepository,
     required this.annotationRepository,
+    required this.collectionRepository,
   });
 
 
@@ -60,6 +69,7 @@ class ReaderApp extends StatelessWidget {
       providers: [
         Provider<BookRepository>.value(value: bookRepository),
         Provider<AnnotationRepository>.value(value: annotationRepository),
+        Provider<CollectionRepository>.value(value: collectionRepository),
         StateNotifierProvider<ThemeController, AppTheme>(
           create: (_) => ThemeController(),
         ),

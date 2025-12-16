@@ -7,6 +7,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `get_pdfium`
+// These functions are ignored because they have generic arguments: `with_pdfium`
 
 /// Get the page count of a PDF file
 Future<int> getPdfPageCount({required String path}) =>

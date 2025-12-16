@@ -1,9 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:epubx/epubx.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/models/annotation.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
+import 'package:reader_app/features/annotations/annotation_dialog.dart';
 
 class EpubReaderScreen extends StatefulWidget {
   final Book book;
@@ -23,6 +29,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   List<EpubChapter>? _chapters;
   int _currentChapterIndex = 0;
   String? _currentContent;
+  SelectedContent? _selectedContent;
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
@@ -158,19 +165,41 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     }
 
     if (_currentContent != null) {
-      return SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16.0),
-        child: Html(
-          data: _currentContent!,
-          style: {
-            "body": Style(
-              fontSize: FontSize(18),
-              lineHeight: const LineHeight(1.8),
-            ),
-            "p": Style(margin: Margins.only(bottom: 16)),
-            "img": Style(width: Width(100, Unit.percent)),
-          },
+      return SelectionArea(
+        onSelectionChanged: (content) {
+          _selectedContent = content;
+        },
+        contextMenuBuilder: (context, selectableRegionState) {
+          return AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: selectableRegionState.contextMenuAnchors,
+            buttonItems: [
+              ...selectableRegionState.contextMenuButtonItems,
+              ContextMenuButtonItem(
+                onPressed: () {
+                  if (_selectedContent != null && _selectedContent!.plainText.isNotEmpty) {
+                    _showAnnotationDialog(_selectedContent!.plainText);
+                    selectableRegionState.hideToolbar();
+                  }
+                },
+                label: 'Highlight',
+              ),
+            ],
+          );
+        },
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16.0),
+          child: Html(
+            data: _currentContent!,
+            style: {
+              "body": Style(
+                fontSize: FontSize(18),
+                lineHeight: const LineHeight(1.8),
+              ),
+              "p": Style(margin: Margins.only(bottom: 16)),
+              "img": Style(width: Width(100, Unit.percent)),
+            },
+          ),
         ),
       );
     }
@@ -204,6 +233,38 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _showAnnotationDialog(String selectedText) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AnnotationDialog(selectedText: selectedText),
+    );
+
+    if (result != null && mounted) {
+      final note = result['note'] as String;
+      final color = result['color'] as int;
+
+      final annotation = Annotation(
+        id: const Uuid().v4(),
+        bookId: widget.book.id,
+        selectedText: selectedText,
+        note: note,
+        chapterIndex: _currentChapterIndex,
+        startOffset: 0, // Not precise yet
+        endOffset: 0, // Not precise yet
+        color: color,
+        createdAt: DateTime.now(),
+      );
+
+      await context.read<AnnotationRepository>().addAnnotation(annotation);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Annotation saved')),
+        );
+      }
+    }
   }
 
   void _showChapterList() {

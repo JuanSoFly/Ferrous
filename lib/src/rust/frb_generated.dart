@@ -5,6 +5,7 @@
 
 import 'api.dart';
 import 'api/covers.dart';
+import 'api/crop.dart';
 import 'api/docx.dart';
 import 'api/library.dart';
 import 'api/pdf.dart';
@@ -72,7 +73,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -2013466216;
+  int get rustContentHash => 1789778270;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -83,6 +84,9 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<CropMargins> crateApiCropDetectPdfWhitespace(
+      {required String path, required int pageIndex});
+
   Future<String> crateApiCoversExtractCover(
       {required String bookPath, required String savePath});
 
@@ -113,6 +117,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<CropMargins> crateApiCropDetectPdfWhitespace(
+      {required String path, required int pageIndex}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        sse_encode_u_32(pageIndex, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 1, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_crop_margins,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiCropDetectPdfWhitespaceConstMeta,
+      argValues: [path, pageIndex],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiCropDetectPdfWhitespaceConstMeta =>
+      const TaskConstMeta(
+        debugName: "detect_pdf_whitespace",
+        argNames: ["path", "pageIndex"],
+      );
+
+  @override
   Future<String> crateApiCoversExtractCover(
       {required String bookPath, required String savePath}) {
     return handler.executeNormal(NormalTask(
@@ -121,7 +152,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(bookPath, serializer);
         sse_encode_String(savePath, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 1, port: port_);
+            funcId: 2, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -145,7 +176,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 2, port: port_);
+            funcId: 3, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_u_32,
@@ -168,7 +199,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 3, port: port_);
+            funcId: 4, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -192,7 +223,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 4, port: port_);
+            funcId: 5, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -223,7 +254,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_32(width, serializer);
         sse_encode_u_32(height, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 5, port: port_);
+            funcId: 6, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -248,7 +279,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(rootPath, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 6, port: port_);
+            funcId: 7, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_book_metadata,
@@ -271,7 +302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 7, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -311,6 +342,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       author: dco_decode_String(arr[1]),
       path: dco_decode_String(arr[2]),
     );
+  }
+
+  @protected
+  CropMargins dco_decode_crop_margins(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return CropMargins(
+      top: dco_decode_f_32(arr[0]),
+      bottom: dco_decode_f_32(arr[1]),
+      left: dco_decode_f_32(arr[2]),
+      right: dco_decode_f_32(arr[3]),
+    );
+  }
+
+  @protected
+  double dco_decode_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
   }
 
   @protected
@@ -364,6 +415,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_author = sse_decode_String(deserializer);
     var var_path = sse_decode_String(deserializer);
     return BookMetadata(title: var_title, author: var_author, path: var_path);
+  }
+
+  @protected
+  CropMargins sse_decode_crop_margins(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_top = sse_decode_f_32(deserializer);
+    var var_bottom = sse_decode_f_32(deserializer);
+    var var_left = sse_decode_f_32(deserializer);
+    var var_right = sse_decode_f_32(deserializer);
+    return CropMargins(
+        top: var_top, bottom: var_bottom, left: var_left, right: var_right);
+  }
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat32();
   }
 
   @protected
@@ -434,6 +502,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.title, serializer);
     sse_encode_String(self.author, serializer);
     sse_encode_String(self.path, serializer);
+  }
+
+  @protected
+  void sse_encode_crop_margins(CropMargins self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_f_32(self.top, serializer);
+    sse_encode_f_32(self.bottom, serializer);
+    sse_encode_f_32(self.left, serializer);
+    sse_encode_f_32(self.right, serializer);
+  }
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat32(self);
   }
 
   @protected

@@ -16,6 +16,15 @@ fn get_pdfium() -> &'static Pdfium {
     })
 }
 
+/// Execute a function with the global Pdfium instance
+pub fn with_pdfium<F, R>(f: F) -> Result<R>
+where
+    F: FnOnce(&Pdfium) -> Result<R>,
+{
+    let pdfium = get_pdfium();
+    f(pdfium)
+}
+
 /// Get the page count of a PDF file
 pub fn get_pdf_page_count(path: String) -> Result<u32> {
     let pdfium = get_pdfium();

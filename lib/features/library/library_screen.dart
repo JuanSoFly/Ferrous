@@ -7,6 +7,8 @@ import 'package:reader_app/features/library/library_state.dart';
 import 'package:reader_app/features/reader/reader_screen.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/features/collections/collections_tab.dart';
+import 'package:reader_app/data/repositories/collection_repository.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -29,101 +31,125 @@ class _LibraryView extends StatelessWidget {
     final state = context.watch<LibraryState>();
     final controller = context.read<LibraryController>();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Library'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: state.isLoading
-                ? null
-                : () => controller.pickAndScanDirectory(),
-            tooltip: "Rescan",
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Library'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: state.isLoading
+                  ? null
+                  : () => controller.pickAndScanDirectory(),
+              tooltip: "Rescan",
+            ),
+            IconButton(
+              icon: const Icon(Icons.folder_open),
+              onPressed: state.isLoading
+                  ? null
+                  : () => controller.pickAndScanDirectory(),
+              tooltip: "Open Folder",
+            ),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: "Books"),
+              Tab(text: "Collections"),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            onPressed: state.isLoading
-                ? null
-                : () => controller.pickAndScanDirectory(),
-            tooltip: "Open Folder",
-          ),
-        ],
+        ),
+        body: TabBarView(
+          children: [
+            _buildBooksTab(context, state, controller),
+            const CollectionsTab(),
+          ],
+        ),
       ),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : state.error != null
-              ? Center(child: Text('Error: ${state.error}'))
-              : state.books.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.library_books,
-                              size: 64, color: Colors.grey),
-                          const SizedBox(height: 16),
-                          const Text('No books found. Pick a folder to scan.'),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.folder_open),
-                            label: const Text("Scan Directory"),
-                            onPressed: () => controller.pickAndScanDirectory(),
-                          )
-                        ],
-                      ),
-                    )
-                  : CustomScrollView(
-                      slivers: [
-                        if (state.books.any((b) => b.progress > 0))
-                          SliverToBoxAdapter(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Text(
-                                    "Continue Reading",
-                                    style:
-                                        Theme.of(context).textTheme.titleLarge,
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: 220,
-                                  child: ListView.builder(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
-                                    itemCount: state.books
-                                        .where((b) => b.progress > 0)
-                                        .length,
-                                    itemBuilder: (context, index) {
-                                      final book = state.books
-                                          .where((b) => b.progress > 0)
-                                          .toList()[index];
-                                      return SizedBox(
-                                        width: 160,
-                                        child: _BookCard(book: book),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const Divider(),
-                              ],
-                            ),
-                          ),
-                        SliverPadding(
-                          padding: const EdgeInsets.all(8),
-                          sliver: SliverMasonryGrid.count(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            childCount: state.books.length,
-                            itemBuilder: (context, index) {
-                              return _BookCard(book: state.books[index]);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+    );
+  }
+
+  Widget _buildBooksTab(BuildContext context, LibraryState state, LibraryController controller) {
+    if (state.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    if (state.error != null) {
+      return Center(child: Text('Error: ${state.error}'));
+    }
+    
+    if (state.books.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.library_books,
+                size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('No books found. Pick a folder to scan.'),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: const Text("Scan Directory"),
+              onPressed: () => controller.pickAndScanDirectory(),
+            )
+          ],
+        ),
+      );
+    }
+    
+    return CustomScrollView(
+      slivers: [
+        if (state.books.any((b) => b.progress > 0))
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    "Continue Reading",
+                    style:
+                        Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                SizedBox(
+                  height: 220,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8),
+                    itemCount: state.books
+                        .where((b) => b.progress > 0)
+                        .length,
+                    itemBuilder: (context, index) {
+                      final book = state.books
+                          .where((b) => b.progress > 0)
+                          .toList()[index];
+                      return SizedBox(
+                        width: 160,
+                        child: _BookCard(book: book),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(),
+              ],
+            ),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.all(8),
+          sliver: SliverMasonryGrid.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childCount: state.books.length,
+            itemBuilder: (context, index) {
+              return _BookCard(book: state.books[index]);
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -144,27 +170,11 @@ class _BookCard extends StatelessWidget {
               builder: (context) => ReaderScreen(book: book),
             ),
           ).then((_) {
-             // Refresh library when returning from reader to update progress UI
-             // This is a bit hacky, but works for now. 
-             // Ideally we'd watch the specific book stream.
-             // But LibraryController reloads on init, so we might need a manual refresh method exposed.
-             // For now, let's assume the user can pull to refresh or just state updates.
-             // Actually, since we are using Hive, we should watch the box.
-             // But for MVP phase 1, let's just trigger a reload if possible.
-             // A better way is to have the controller listen to the repository stream.
-             // For now, let's leave it as is, the progress bar might not update instantly on back without a state refresh.
-             // We can fix this by reloading in the Controller.
-             // Let's modify LibraryController to expose a reload method and call it.
-             // But we don't have access to the controller easily here without context.read.
-             // Let's just push and await.
-             // Actually, the ReaderScreen updates the repository. The LibraryController loads from repository.
-             // We should add a listener to the repository in the controller, but that's advanced.
-             // Let's just simply rely on the fact that next time the library builds it might catch it?
-             // No, StateNotifier holds the list. We need to tell it to reload.
              if (!context.mounted) return;
              context.read<LibraryController>().loadBooks();
           });
         },
+        onLongPress: () => _showAddToCollectionDialog(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -220,6 +230,51 @@ class _BookCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+  
+  Future<void> _showAddToCollectionDialog(BuildContext context) async {
+    final collectionRepo = context.read<CollectionRepository>();
+    final collections = collectionRepo.getAllCollections();
+    
+    if (collections.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No collections created yet')),
+      );
+      return;
+    }
+    
+    await showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Add to Collection'),
+        children: collections.map((collection) {
+          final isInCollection = collection.bookIds.contains(book.id);
+          return SimpleDialogOption(
+            onPressed: () async {
+              if (isInCollection) {
+                // Already added
+                Navigator.pop(context);
+                return;
+              }
+              await collectionRepo.addBookToCollection(collection.id, book.id);
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Added to ${collection.name}')),
+                );
+              }
+            },
+            child: Row(
+              children: [
+                Icon(isInCollection ? Icons.check_box : Icons.check_box_outline_blank),
+                const SizedBox(width: 8),
+                Text(collection.name),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
