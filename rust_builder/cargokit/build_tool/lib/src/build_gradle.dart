@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import 'artifacts_provider.dart';
 import 'builder.dart';
 import 'environment.dart';
+import 'file_copy.dart';
 import 'options.dart';
 import 'target.dart';
 
@@ -41,7 +42,11 @@ class BuildGradle {
 
       for (final lib in libs) {
         if (lib.type == AritifactType.dylib) {
-          File(lib.path).copySync(path.join(outputDir, lib.finalFileName));
+          installFileSync(
+            sourcePath: lib.path,
+            destinationPath: path.join(outputDir, lib.finalFileName),
+            logger: log,
+          );
         }
       }
     }

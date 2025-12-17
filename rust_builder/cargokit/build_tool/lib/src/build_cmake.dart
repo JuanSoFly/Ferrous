@@ -3,13 +3,17 @@
 
 import 'dart:io';
 
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
 
 import 'artifacts_provider.dart';
 import 'builder.dart';
 import 'environment.dart';
+import 'file_copy.dart';
 import 'options.dart';
 import 'target.dart';
+
+final _log = Logger('build_cmake');
 
 class BuildCMake {
   final CargokitUserOptions userOptions;
@@ -32,8 +36,11 @@ class BuildCMake {
 
     for (final lib in libs) {
       if (lib.type == AritifactType.dylib) {
-        File(lib.path)
-            .copySync(path.join(Environment.outputDir, lib.finalFileName));
+        installFileSync(
+          sourcePath: lib.path,
+          destinationPath: path.join(Environment.outputDir, lib.finalFileName),
+          logger: _log,
+        );
       }
     }
   }
