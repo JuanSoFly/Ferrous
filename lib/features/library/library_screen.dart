@@ -41,15 +41,15 @@ class _LibraryView extends StatelessWidget {
               icon: const Icon(Icons.refresh),
               onPressed: state.isLoading
                   ? null
-                  : () => controller.pickAndScanDirectory(),
-              tooltip: "Rescan",
+                  : () => controller.rescanFolders(),
+              tooltip: "Rescan Folders",
             ),
             IconButton(
               icon: const Icon(Icons.folder_open),
               onPressed: state.isLoading
                   ? null
                   : () => controller.pickAndScanDirectory(),
-              tooltip: "Open Folder",
+              tooltip: "Add Folder",
             ),
           ],
           bottom: const TabBar(
@@ -71,7 +71,21 @@ class _LibraryView extends StatelessWidget {
 
   Widget _buildBooksTab(BuildContext context, LibraryState state, LibraryController controller) {
     if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            if (state.statusMessage != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                state.statusMessage!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ],
+        ),
+      );
     }
     
     if (state.error != null) {

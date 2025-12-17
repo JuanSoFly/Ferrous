@@ -43,3 +43,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Required for SAF DocumentFile operations
+    implementation "androidx.documentfile:documentfile:1.0.1"
+    // Required for Kotlin Coroutines in SafHandler
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+}

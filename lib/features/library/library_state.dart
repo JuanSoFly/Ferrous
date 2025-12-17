@@ -1,9 +1,8 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/src/rust/api/library.dart'; // FRB generated
+import 'package:reader_app/data/services/saf_service.dart';
 import 'package:state_notifier/state_notifier.dart';
 import 'package:uuid/uuid.dart';
 
@@ -11,28 +10,33 @@ class LibraryState {
   final bool isLoading;
   final List<Book> books;
   final String? error;
+  final String? statusMessage;
 
   const LibraryState({
     this.isLoading = false,
     this.books = const [],
     this.error,
+    this.statusMessage,
   });
 
   LibraryState copyWith({
     bool? isLoading,
     List<Book>? books,
     String? error,
+    String? statusMessage,
   }) {
     return LibraryState(
       isLoading: isLoading ?? this.isLoading,
       books: books ?? this.books,
       error: error,
+      statusMessage: statusMessage,
     );
   }
 }
 
 class LibraryController extends StateNotifier<LibraryState> {
   final BookRepository _bookRepository;
+  final SafService _safService = SafService();
 
   LibraryController(this._bookRepository) : super(const LibraryState()) {
     loadBooks();
@@ -40,77 +44,181 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   void loadBooks() {
     final books = _bookRepository.getAllBooks();
-    // Sort by recently opened?
+    // Sort by recently opened
     books.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
     state = state.copyWith(books: books);
   }
 
+  /// Opens the folder picker using SAF and imports any ebook files found.
+  /// Files are copied to internal storage where Rust can access them.
   Future<void> pickAndScanDirectory() async {
     try {
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+      state = state.copyWith(
+        isLoading: true,
+        error: null,
+        statusMessage: 'Opening folder picker...',
+      );
 
-      if (selectedDirectory == null) {
-        return; // User canceled
+      // Use SAF to pick folder and copy files to internal storage
+      final copiedPaths = await _safService.pickAndImportFolder();
+
+      if (copiedPaths.isEmpty) {
+        // User canceled or no supported files found
+        state = state.copyWith(isLoading: false, statusMessage: null);
+        return;
       }
 
-      state = state.copyWith(isLoading: true, error: null);
+      state = state.copyWith(
+        statusMessage: 'Importing ${copiedPaths.length} books...',
+      );
 
-      // Call Rust backend
-      // Call Rust backend
-      final scannedMetadata = await scanLibrary(rootPath: selectedDirectory);
+      // Add each copied file to the book repository
+      int addedCount = 0;
+      for (var path in copiedPaths) {
+        if (!_bookRepository.bookExists(path)) {
+          final file = File(path);
+          final fileName = file.uri.pathSegments.last;
+          final title = fileName.contains('.')
+              ? fileName.substring(0, fileName.lastIndexOf('.'))
+              : fileName;
+          final format = path.split('.').last.toLowerCase();
 
-      for (var meta in scannedMetadata) {
-        // Check if we already have this book (by path)
-        if (!_bookRepository.bookExists(meta.path)) {
           final newBook = Book(
             id: const Uuid().v4(),
-            title: meta.title,
-            author: meta.author,
-            path: meta.path,
-            format: meta.path.split('.').last.toLowerCase(),
+            title: title,
+            author: 'Unknown Author',
+            path: path,
+            format: format,
           );
           await _bookRepository.addBook(newBook);
+          addedCount++;
         }
       }
 
       // Refresh list
       loadBooks();
-      state = state.copyWith(isLoading: false);
-      
+      state = state.copyWith(
+        isLoading: false,
+        statusMessage: addedCount > 0 
+            ? 'Added $addedCount new books'
+            : 'No new books found',
+      );
+
       // Generate covers in background
       _generateCoversInBackground();
+      
+      // Clear status message after a delay
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          state = state.copyWith(statusMessage: null);
+        }
+      });
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
+        statusMessage: null,
       );
     }
   }
-  
+
+  /// Rescans all previously granted folders for new books.
+  Future<void> rescanFolders() async {
+    try {
+      state = state.copyWith(
+        isLoading: true,
+        error: null,
+        statusMessage: 'Rescanning folders...',
+      );
+
+      final copiedPaths = await _safService.rescanPersistedFolders();
+
+      if (copiedPaths.isEmpty) {
+        state = state.copyWith(
+          isLoading: false,
+          statusMessage: 'No new books found',
+        );
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            state = state.copyWith(statusMessage: null);
+          }
+        });
+        return;
+      }
+
+      // Add new books
+      int addedCount = 0;
+      for (var path in copiedPaths) {
+        if (!_bookRepository.bookExists(path)) {
+          final file = File(path);
+          final fileName = file.uri.pathSegments.last;
+          final title = fileName.contains('.')
+              ? fileName.substring(0, fileName.lastIndexOf('.'))
+              : fileName;
+          final format = path.split('.').last.toLowerCase();
+
+          final newBook = Book(
+            id: const Uuid().v4(),
+            title: title,
+            author: 'Unknown Author',
+            path: path,
+            format: format,
+          );
+          await _bookRepository.addBook(newBook);
+          addedCount++;
+        }
+      }
+
+      loadBooks();
+      state = state.copyWith(
+        isLoading: false,
+        statusMessage: addedCount > 0
+            ? 'Added $addedCount new books'
+            : 'No new books found',
+      );
+
+      if (addedCount > 0) {
+        _generateCoversInBackground();
+      }
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          state = state.copyWith(statusMessage: null);
+        }
+      });
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        statusMessage: null,
+      );
+    }
+  }
+
   Future<void> _generateCoversInBackground() async {
     try {
       // Get the app's document directory for storing covers
       final appDir = await _getAppDocumentsDirectory();
       final coversDir = '$appDir/covers';
-      
+
       // Create covers directory if it doesn't exist
       await _ensureDirectoryExists(coversDir);
-      
+
       // Generate covers
       await _bookRepository.generateCovers(coversDir);
-      
+
       // Refresh to show new covers
       loadBooks();
     } catch (e) {
       // Silently fail - cover generation is optional
     }
   }
-  
+
   Future<String> _getAppDocumentsDirectory() async {
     final dir = await getApplicationDocumentsDirectory();
     return dir.path;
   }
-  
+
   Future<void> _ensureDirectoryExists(String path) async {
     final dir = Directory(path);
     if (!await dir.exists()) {
