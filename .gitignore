@@ -33,11 +33,11 @@ android/captures/
 android/gradlew
 android/gradlew.bat
 .agent
+android/app/src/main/jniLibs/**/libpdfium.so
 
 # Rust
 target/
 **/*.rs.bk
-docs
 integration_test
 test
 test_driver

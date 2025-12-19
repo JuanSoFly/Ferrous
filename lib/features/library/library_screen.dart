@@ -35,7 +35,14 @@ class _LibraryView extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Library'),
+          title: TextField(
+            decoration: const InputDecoration(
+              hintText: 'Search books...',
+              border: InputBorder.none,
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (value) => controller.setSearchQuery(value),
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -112,9 +119,10 @@ class _LibraryView extends StatelessWidget {
       );
     }
     
+    final displayedBooks = state.filteredBooks;
     return CustomScrollView(
       slivers: [
-        if (state.books.any((b) => b.progress > 0))
+        if (state.searchQuery.isEmpty && displayedBooks.any((b) => b.progress > 0))
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,11 +141,11 @@ class _LibraryView extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8),
-                    itemCount: state.books
+                    itemCount: displayedBooks
                         .where((b) => b.progress > 0)
                         .length,
                     itemBuilder: (context, index) {
-                      final book = state.books
+                      final book = displayedBooks
                           .where((b) => b.progress > 0)
                           .toList()[index];
                       return SizedBox(
@@ -157,9 +165,9 @@ class _LibraryView extends StatelessWidget {
             crossAxisCount: 2,
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
-            childCount: state.books.length,
+            childCount: displayedBooks.length,
             itemBuilder: (context, index) {
-              return _BookCard(book: state.books[index]);
+              return _BookCard(book: displayedBooks[index]);
             },
           ),
         ),

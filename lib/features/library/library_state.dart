@@ -11,12 +11,14 @@ class LibraryState {
   final List<Book> books;
   final String? error;
   final String? statusMessage;
+  final String searchQuery;
 
   const LibraryState({
     this.isLoading = false,
     this.books = const [],
     this.error,
     this.statusMessage,
+    this.searchQuery = '',
   });
 
   LibraryState copyWith({
@@ -24,13 +26,25 @@ class LibraryState {
     List<Book>? books,
     String? error,
     String? statusMessage,
+    String? searchQuery,
   }) {
     return LibraryState(
       isLoading: isLoading ?? this.isLoading,
       books: books ?? this.books,
       error: error,
       statusMessage: statusMessage,
+      searchQuery: searchQuery ?? this.searchQuery,
     );
+  }
+
+  /// Returns books filtered by searchQuery.
+  List<Book> get filteredBooks {
+    if (searchQuery.isEmpty) return books;
+    final query = searchQuery.toLowerCase();
+    return books.where((book) {
+      return book.title.toLowerCase().contains(query) ||
+          book.author.toLowerCase().contains(query);
+    }).toList();
   }
 }
 
@@ -47,6 +61,11 @@ class LibraryController extends StateNotifier<LibraryState> {
     // Sort by recently opened
     books.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
     state = state.copyWith(books: books);
+  }
+
+  /// Updates the search query for filtering books.
+  void setSearchQuery(String query) {
+    state = state.copyWith(searchQuery: query);
   }
 
   /// Opens the folder picker using SAF and imports any ebook files found.

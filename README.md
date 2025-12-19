@@ -65,7 +65,10 @@ Ferrous is built on the **flutter_rust_bridge** (FRB) 2.0 protocol, allowing sea
     ```bash
     flutter_rust_bridge_codegen generate
     ```
-3.  **Run on Android**:
+3.  **Install PDFium (required for PDF support)**:
+    - Run `bash scripts/setup-pdfium-android.sh`, or follow `docs/pdfium-setup.md`.
+    - If you develop on an Android emulator, include `x86_64` when installing PDFium (the script supports this).
+4.  **Run on Android**:
     ```bash
     flutter run
     ```

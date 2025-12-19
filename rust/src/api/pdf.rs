@@ -7,12 +7,10 @@ static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
 
 fn get_pdfium() -> &'static Pdfium {
     PDFIUM.get_or_init(|| {
-        Pdfium::new(
-            // On Android, typical pattern is to bind to bundled library or system library
-            Pdfium::bind_to_library("libpdfium.so")
-                .or_else(|_| Pdfium::bind_to_system_library())
-                .expect("Failed to bind to pdfium library"),
-        )
+        let bindings = Pdfium::bind_to_library("libpdfium.so")
+            .or_else(|_| Pdfium::bind_to_system_library())
+            .expect("Failed to bind to pdfium library. Make sure libpdfium.so is in jniLibs.");
+        Pdfium::new(bindings)
     })
 }
 
@@ -54,6 +52,105 @@ pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -
     )?;
     
     Ok(png_bytes)
+}
+
+/// Extract the text of a specific page of a PDF file.
+///
+/// Notes:
+/// - Many PDFs (especially scanned documents) have no text layer, in which case this returns an
+///   empty string.
+/// - The extracted character order can differ from visual reading order for complex layouts.
+pub fn extract_pdf_page_text(path: String, page_index: u32) -> Result<String> {
+    let pdfium = get_pdfium();
+    let document = pdfium.load_pdf_from_file(&path, None)?;
+    let page = document.pages().get(page_index as u16)?;
+    let text = page.text()?;
+    Ok(text.all())
+}
+
+/// Extract page text starting near a normalized point on the rendered page.
+///
+/// - `x_norm` / `y_norm` are in the range `[0.0, 1.0]` relative to the full page, with origin
+///   at the top-left corner (as in Flutter coordinate space).
+/// - If no text is found near the given point (within a tolerance), this returns an empty string.
+pub fn extract_pdf_page_text_from_point(
+    path: String,
+    page_index: u32,
+    x_norm: f64,
+    y_norm: f64,
+) -> Result<String> {
+    let pdfium = get_pdfium();
+    let document = pdfium.load_pdf_from_file(&path, None)?;
+    let page = document.pages().get(page_index as u16)?;
+
+    let page_rect = page.page_size();
+    let width = page_rect.width().value as f64;
+    let height = page_rect.height().value as f64;
+
+    let x_norm = x_norm.clamp(0.0, 1.0);
+    let y_norm = y_norm.clamp(0.0, 1.0);
+
+    // Convert from top-left normalized coordinates to Pdfium user space coordinates
+    // (origin bottom-left, y increasing up).
+    let x_points = (page_rect.left().value as f64 + (width * x_norm)) as f32;
+    let y_points = (page_rect.top().value as f64 - (height * y_norm)) as f32;
+
+    let text = page.text()?;
+    let chars = text.chars();
+
+    // Try a few tolerance levels; a user tap is rarely exactly on a character glyph.
+    let mut tolerance = PdfPoints::new(6.0);
+    let mut picked = None;
+
+    for _ in 0..4 {
+        picked = chars.get_char_near_point(
+            PdfPoints::new(x_points),
+            tolerance,
+            PdfPoints::new(y_points),
+            tolerance,
+        );
+        if picked.is_some() {
+            break;
+        }
+        tolerance = tolerance * 2.0;
+    }
+
+    let Some(picked_char) = picked else {
+        return Ok(String::new());
+    };
+
+    let total = text.len().max(0) as usize;
+    if total == 0 {
+        return Ok(String::new());
+    }
+
+    // Snap back to a word boundary (within a short window) to avoid starting mid-word.
+    let mut start_index = picked_char.index().min(total.saturating_sub(1));
+    for _ in 0..32 {
+        if start_index == 0 {
+            break;
+        }
+
+        let prev = chars.get(start_index - 1);
+        let Ok(prev_char) = prev else { break };
+
+        let Some(c) = prev_char.unicode_char() else { break };
+        if c.is_whitespace() {
+            break;
+        }
+
+        start_index -= 1;
+    }
+
+    let mut out = String::new();
+    for i in start_index..total {
+        let Ok(ch) = chars.get(i) else { continue };
+        if let Some(c) = ch.unicode_char() {
+            out.push(c);
+        }
+    }
+
+    Ok(out)
 }
 
 /// Test function to verify PDF module is working

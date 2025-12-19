@@ -22,6 +22,30 @@ Future<Uint8List> renderPdfPage(
     RustLib.instance.api.crateApiPdfRenderPdfPage(
         path: path, pageIndex: pageIndex, width: width, height: height);
 
+/// Extract the text of a specific page of a PDF file.
+///
+/// Notes:
+/// - Many PDFs (especially scanned documents) have no text layer, in which case this returns an
+///   empty string.
+/// - The extracted character order can differ from visual reading order for complex layouts.
+Future<String> extractPdfPageText(
+        {required String path, required int pageIndex}) =>
+    RustLib.instance.api
+        .crateApiPdfExtractPdfPageText(path: path, pageIndex: pageIndex);
+
+/// Extract page text starting near a normalized point on the rendered page.
+///
+/// - `x_norm` / `y_norm` are in the range `[0.0, 1.0]` relative to the full page, with origin
+///   at the top-left corner (as in Flutter coordinate space).
+/// - If no text is found near the given point (within a tolerance), this returns an empty string.
+Future<String> extractPdfPageTextFromPoint(
+        {required String path,
+        required int pageIndex,
+        required double xNorm,
+        required double yNorm}) =>
+    RustLib.instance.api.crateApiPdfExtractPdfPageTextFromPoint(
+        path: path, pageIndex: pageIndex, xNorm: xNorm, yNorm: yNorm);
+
 /// Test function to verify PDF module is working
 Future<String> testPdfModule() =>
     RustLib.instance.api.crateApiPdfTestPdfModule();
