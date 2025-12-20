@@ -9,6 +9,8 @@ class TtsControlsSheet extends StatelessWidget {
   final String emptyTextMessage;
   final bool isContinuous;
   final ValueChanged<bool>? onContinuousChanged;
+  final bool isFollowMode;
+  final ValueChanged<bool>? onFollowModeChanged;
   final bool isTapToStart;
   final ValueChanged<bool>? onTapToStartChanged;
   final VoidCallback onClose;
@@ -22,6 +24,8 @@ class TtsControlsSheet extends StatelessWidget {
     this.emptyTextMessage = 'No readable text to speak.',
     this.isContinuous = true,
     this.onContinuousChanged,
+    this.isFollowMode = true,
+    this.onFollowModeChanged,
     this.isTapToStart = true,
     this.onTapToStartChanged,
     required this.onClose,
@@ -33,6 +37,7 @@ class TtsControlsSheet extends StatelessWidget {
       animation: ttsService,
       builder: (context, _) {
         final isPlaying = ttsService.state == TtsState.playing;
+        final isPaused = ttsService.state == TtsState.paused;
 
         return Material(
           elevation: 8,
@@ -49,10 +54,6 @@ class TtsControlsSheet extends StatelessWidget {
                       icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
                       iconSize: 40,
                       onPressed: () async {
-                        final speakText =
-                            (resolveTextToSpeak?.call() ?? textToSpeak).trim();
-                        final canSpeak = speakText.isNotEmpty;
-
                         if (isTextLoading) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -62,6 +63,20 @@ class TtsControlsSheet extends StatelessWidget {
                           return;
                         }
 
+                        if (isPlaying) {
+                          await ttsService.pause();
+                          return;
+                        }
+
+                        if (isPaused && ttsService.canResume) {
+                          await ttsService.resume();
+                          return;
+                        }
+
+                        final speakText =
+                            (resolveTextToSpeak?.call() ?? textToSpeak).trim();
+                        final canSpeak = speakText.isNotEmpty;
+
                         if (!canSpeak) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text(emptyTextMessage)),
@@ -69,11 +84,7 @@ class TtsControlsSheet extends StatelessWidget {
                           return;
                         }
 
-                        if (isPlaying) {
-                          await ttsService.pause();
-                        } else {
-                          await ttsService.speak(speakText);
-                        }
+                        await ttsService.speak(speakText);
                       },
                     ),
                     if (isTextLoading)
@@ -119,7 +130,9 @@ class TtsControlsSheet extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (onContinuousChanged != null || onTapToStartChanged != null)
+                if (onContinuousChanged != null ||
+                    onTapToStartChanged != null ||
+                    onFollowModeChanged != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Wrap(
@@ -134,6 +147,13 @@ class TtsControlsSheet extends StatelessWidget {
                             label: 'Continuous',
                             value: isContinuous,
                             onChanged: onContinuousChanged!,
+                          ),
+                        if (onFollowModeChanged != null)
+                          _buildToggle(
+                            icon: Icons.center_focus_strong,
+                            label: 'Follow',
+                            value: isFollowMode,
+                            onChanged: onFollowModeChanged!,
                           ),
                         if (onTapToStartChanged != null)
                           _buildToggle(

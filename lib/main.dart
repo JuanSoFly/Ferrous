@@ -77,7 +77,7 @@ class ReaderApp extends StatelessWidget {
       child: Builder(builder: (context) {
         final currentTheme = context.watch<AppTheme>();
         return MaterialApp(
-          title: 'Antigravity Reader',
+          title: 'Ferrous',
           theme: AppThemes.themeData[currentTheme] ?? AppThemes.themeData[AppTheme.ferrous],
           home: initError != null
               ? Scaffold(

@@ -15,6 +15,58 @@ import 'package:reader_app/features/dictionary/dictionary_dialog.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:html/dom.dart' as dom;
+
+class _NormalizedTextMap {
+  final String normalized;
+  final List<int> normalizedToRaw;
+
+  const _NormalizedTextMap(this.normalized, this.normalizedToRaw);
+}
+
+_NormalizedTextMap _buildNormalizedTextMap(String raw) {
+  if (raw.trim().isEmpty) {
+    return const _NormalizedTextMap('', []);
+  }
+
+  final buffer = StringBuffer();
+  final map = <int>[];
+  var inWhitespace = false;
+
+  for (var i = 0; i < raw.length; i++) {
+    var ch = raw[i];
+    if (ch == '\u200B') {
+      continue;
+    }
+    if (ch == '\u00A0') {
+      ch = ' ';
+    }
+
+    final isWhitespace = ch.trim().isEmpty;
+    if (isWhitespace) {
+      if (buffer.isEmpty) continue;
+      if (inWhitespace) continue;
+      buffer.write(' ');
+      map.add(i);
+      inWhitespace = true;
+      continue;
+    }
+
+    buffer.write(ch);
+    map.add(i);
+    inWhitespace = false;
+  }
+
+  var normalized = buffer.toString();
+  if (normalized.endsWith(' ')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+    if (map.isNotEmpty) {
+      map.removeLast();
+    }
+  }
+
+  return _NormalizedTextMap(normalized, map);
+}
 
 class EpubReaderScreen extends StatefulWidget {
   final Book book;
@@ -39,13 +91,23 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
-  
+
   // TTS
   final TtsService _ttsService = TtsService();
   bool _showTtsControls = false;
   bool _ttsContinuous = true;
+  bool _ttsFollowMode = true;
   int _ttsAdvanceRequestId = 0;
   int _ttsFromHereRequestId = 0;
+  int _ttsNormalizedBaseOffset = 0;
+  final GlobalKey _ttsHighlightKey = GlobalKey();
+  bool _highlightKeyAssigned = false;
+  int? _lastHighlightStart;
+  int? _lastHighlightEnd;
+  int? _lastHighlightBaseOffset;
+  int? _lastEnsuredStart;
+  int? _lastEnsuredEnd;
+  String? _cachedHighlightedHtml;
 
   @override
   void initState() {
@@ -139,6 +201,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         _currentPlainText = plainText;
         _error = null;
         _isLoading = false;
+        _cachedHighlightedHtml = null;
+        _lastHighlightStart = null;
+        _lastHighlightEnd = null;
+        _lastHighlightBaseOffset = null;
+        _lastEnsuredStart = null;
+        _lastEnsuredEnd = null;
+        _ttsNormalizedBaseOffset = 0;
       });
 
       // Reset scroll for now (TODO: Restore scroll position)
@@ -169,10 +238,186 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         .trim();
   }
 
+  static const String _ttsHighlightTag = 'tts-highlight';
+
+  void _collectTextNodes(dom.Node node, List<dom.Text> out) {
+    if (node is dom.Text) {
+      out.add(node);
+      return;
+    }
+    if (node is dom.Element) {
+      final tag = node.localName?.toLowerCase();
+      if (tag == 'script' || tag == 'style' || tag == 'noscript') {
+        return;
+      }
+    }
+    for (final child in node.nodes) {
+      _collectTextNodes(child, out);
+    }
+  }
+
+  String _buildHighlightedHtml(String html, int start, int end) {
+    if (start < 0 || end <= start) return html;
+
+    final document = html_parser.parse(html);
+    final root = document.body ?? document.documentElement;
+    if (root == null) return html;
+
+    final textNodes = <dom.Text>[];
+    _collectTextNodes(root, textNodes);
+    if (textNodes.isEmpty) return html;
+
+    final rawBuffer = StringBuffer();
+    for (final node in textNodes) {
+      rawBuffer.write(node.data);
+    }
+
+    final rawText = rawBuffer.toString();
+    final map = _buildNormalizedTextMap(rawText);
+    if (map.normalizedToRaw.isEmpty) return html;
+
+    final maxIndex = map.normalizedToRaw.length - 1;
+    if (maxIndex < 0) return html;
+
+    final clampedStart = start.clamp(0, maxIndex) as int;
+    final clampedEnd = end.clamp(0, map.normalizedToRaw.length) as int;
+    if (clampedEnd <= clampedStart) return html;
+
+    final rawStart = map.normalizedToRaw[clampedStart];
+    final rawEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+
+    var offset = 0;
+    for (final node in textNodes) {
+      final nodeText = node.data;
+      final nodeStart = offset;
+      final nodeEnd = offset + nodeText.length;
+      offset = nodeEnd;
+
+      if (rawEnd <= nodeStart || rawStart >= nodeEnd) {
+        continue;
+      }
+
+      final localStart = (rawStart - nodeStart).clamp(0, nodeText.length);
+      final localEnd = (rawEnd - nodeStart).clamp(0, nodeText.length);
+
+      if (localStart >= localEnd) continue;
+
+      final before = nodeText.substring(0, localStart);
+      final mid = nodeText.substring(localStart, localEnd);
+      final after = nodeText.substring(localEnd);
+
+      final parent = node.parent;
+      if (parent == null) continue;
+
+      final index = parent.nodes.indexOf(node);
+      if (index < 0) continue;
+
+      final newNodes = <dom.Node>[];
+      if (before.isNotEmpty) {
+        newNodes.add(dom.Text(before));
+      }
+      if (mid.isNotEmpty) {
+        final mark = dom.Element.tag(_ttsHighlightTag);
+        mark.append(dom.Text(mid));
+        newNodes.add(mark);
+      }
+      if (after.isNotEmpty) {
+        newNodes.add(dom.Text(after));
+      }
+
+      parent.nodes.removeAt(index);
+      parent.nodes.insertAll(index, newNodes);
+    }
+
+    return root.outerHtml;
+  }
+
+  String _buildTtsHighlightedHtml() {
+    final html = _currentContent;
+    if (html == null) return '';
+
+    final start = _ttsService.currentStartOffset;
+    final end = _ttsService.currentEndOffset;
+    if (start == null || end == null) {
+      return html;
+    }
+
+    final baseOffset =
+        _ttsNormalizedBaseOffset.clamp(0, _currentPlainText.length) as int;
+    final adjustedStart = baseOffset + start;
+    final adjustedEnd = baseOffset + end;
+
+    if (_cachedHighlightedHtml != null &&
+        adjustedStart == _lastHighlightStart &&
+        adjustedEnd == _lastHighlightEnd &&
+        baseOffset == _lastHighlightBaseOffset) {
+      return _cachedHighlightedHtml!;
+    }
+
+    final highlighted = _buildHighlightedHtml(html, adjustedStart, adjustedEnd);
+    _cachedHighlightedHtml = highlighted;
+    _lastHighlightStart = adjustedStart;
+    _lastHighlightEnd = adjustedEnd;
+    _lastHighlightBaseOffset = baseOffset;
+    return highlighted;
+  }
+
+  Key? _nextHighlightKey() {
+    if (_highlightKeyAssigned) return null;
+    _highlightKeyAssigned = true;
+    return _ttsHighlightKey;
+  }
+
+  void _maybeEnsureHighlightVisible() {
+    if (!_ttsFollowMode) return;
+    if (_lastHighlightStart == null || _lastHighlightEnd == null) return;
+    if (_lastEnsuredStart == _lastHighlightStart &&
+        _lastEnsuredEnd == _lastHighlightEnd) {
+      return;
+    }
+
+    final context = _ttsHighlightKey.currentContext;
+    if (context == null) {
+      // Retry after a short delay if context is not yet available
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (mounted && _ttsFollowMode) {
+          final retryContext = _ttsHighlightKey.currentContext;
+          if (retryContext != null) {
+            _performEnsureVisible(retryContext);
+          }
+        }
+      });
+      return;
+    }
+
+    _performEnsureVisible(context);
+  }
+
+  void _performEnsureVisible(BuildContext context) {
+    _lastEnsuredStart = _lastHighlightStart;
+    _lastEnsuredEnd = _lastHighlightEnd;
+
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      alignment: 0.3,
+    );
+  }
+
   String _sliceTextFromApproxIndex(String text, int approxIndex) {
-    if (text.isEmpty) return '';
-    if (approxIndex <= 0) return text;
-    if (approxIndex >= text.length) return '';
+    if (text.isEmpty) {
+      _ttsNormalizedBaseOffset = 0;
+      return '';
+    }
+    if (approxIndex <= 0) {
+      _ttsNormalizedBaseOffset = 0;
+      return text;
+    }
+    if (approxIndex >= text.length) {
+      _ttsNormalizedBaseOffset = text.length;
+      return '';
+    }
 
     var start = 0;
 
@@ -199,6 +444,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       start++;
     }
 
+    _ttsNormalizedBaseOffset = start;
     return text.substring(start);
   }
 
@@ -207,6 +453,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     if (text.trim().isEmpty) return '';
 
     if (!_scrollController.hasClients) {
+      _ttsNormalizedBaseOffset = 0;
       return text;
     }
 
@@ -214,15 +461,21 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     final offset = _scrollController.offset.clamp(0.0, maxExtent);
     final fraction = maxExtent <= 0 ? 0.0 : (offset / maxExtent);
     final maxIndex = text.length - 1;
-    final approxIndex = maxIndex <= 0
-        ? 0
-        : (fraction * maxIndex).floor().clamp(0, maxIndex);
+    final approxIndex =
+        maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
     return _sliceTextFromApproxIndex(text, approxIndex);
   }
 
-  Future<void> _speakFromHere(String startText) async {
+  Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
     final normalized = _normalizePlainText(startText);
     if (normalized.isEmpty) return;
+
+    if (baseOffset != null && baseOffset >= 0) {
+      _ttsNormalizedBaseOffset = baseOffset;
+    } else {
+      final index = _currentPlainText.indexOf(normalized);
+      _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
+    }
 
     final requestId = ++_ttsFromHereRequestId;
     _ttsAdvanceRequestId++;
@@ -260,6 +513,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         continue;
       }
 
+      _ttsNormalizedBaseOffset = 0;
       await _ttsService.speak(text);
       return;
     }
@@ -274,6 +528,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   void _closeTtsControls() {
     _ttsAdvanceRequestId++;
     setState(() => _showTtsControls = false);
+    _ttsNormalizedBaseOffset = 0;
+    _cachedHighlightedHtml = null;
+    _lastHighlightStart = null;
+    _lastHighlightEnd = null;
+    _lastHighlightBaseOffset = null;
+    _lastEnsuredStart = null;
+    _lastEnsuredEnd = null;
   }
 
   @override
@@ -312,6 +573,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                 _ttsAdvanceRequestId++;
                 setState(() => _ttsContinuous = value);
               },
+              isFollowMode: _ttsFollowMode,
+              onFollowModeChanged: (value) {
+                setState(() => _ttsFollowMode = value);
+              },
               onClose: _closeTtsControls,
             ),
         ],
@@ -326,6 +591,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       if (!_showTtsControls) {
         _ttsAdvanceRequestId++;
         _ttsService.stop();
+        _ttsNormalizedBaseOffset = 0;
+        _cachedHighlightedHtml = null;
+        _lastHighlightStart = null;
+        _lastHighlightEnd = null;
+        _lastHighlightBaseOffset = null;
+        _lastEnsuredStart = null;
+        _lastEnsuredEnd = null;
       }
     });
   }
@@ -334,7 +606,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     if (html.trim().isEmpty) return '';
 
     final document = html_parser.parse(html);
-    document.querySelectorAll('script,style,noscript').forEach((e) => e.remove());
+    document
+        .querySelectorAll('script,style,noscript')
+        .forEach((e) => e.remove());
 
     final rawText = document.body?.text ??
         document.documentElement?.text ??
@@ -370,6 +644,62 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     }
 
     if (_currentContent != null) {
+      final isTtsActive =
+          _showTtsControls && _ttsService.state == TtsState.playing;
+      final highlightColor = Theme.of(context).colorScheme.primaryContainer;
+      final extensions = [
+        TagExtension(
+          tagsToExtend: {_ttsHighlightTag},
+          builder: (context) {
+            final text = context.node.text ?? '';
+            final style =
+                context.style?.generateTextStyle() ?? const TextStyle();
+            return _TtsHighlightSpan(
+              key: _nextHighlightKey(),
+              text: text,
+              textStyle: style,
+              highlightColor: highlightColor,
+            );
+          },
+        ),
+      ];
+
+      Widget htmlView(String data) {
+        return SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16.0),
+          child: Html(
+            data: data,
+            extensions: extensions,
+            style: {
+              "body": Style(
+                fontSize: FontSize(18),
+                lineHeight: const LineHeight(1.8),
+              ),
+              _ttsHighlightTag: Style(
+                backgroundColor: highlightColor,
+              ),
+              "p": Style(margin: Margins.only(bottom: 16)),
+              "img": Style(width: Width(100, Unit.percent)),
+            },
+          ),
+        );
+      }
+
+      if (isTtsActive) {
+        return AnimatedBuilder(
+          animation: _ttsService,
+          builder: (context, _) {
+            _highlightKeyAssigned = false;
+            final highlightedHtml = _buildTtsHighlightedHtml();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _maybeEnsureHighlightVisible();
+            });
+            return htmlView(highlightedHtml);
+          },
+        );
+      }
+
       return SelectionArea(
         onSelectionChanged: (content) {
           _selectedContent = content;
@@ -401,14 +731,18 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                   final startText =
                       startIndex >= 0 ? full.substring(startIndex) : selected;
 
-                  unawaited(_speakFromHere(startText));
+                  unawaited(_speakFromHere(
+                    startText,
+                    baseOffset: startIndex >= 0 ? startIndex : null,
+                  ));
                   selectableRegionState.hideToolbar();
                 },
                 label: 'Listen from here',
               ),
               ContextMenuButtonItem(
                 onPressed: () {
-                  if (_selectedContent != null && _selectedContent!.plainText.isNotEmpty) {
+                  if (_selectedContent != null &&
+                      _selectedContent!.plainText.isNotEmpty) {
                     _showAnnotationDialog(_selectedContent!.plainText);
                     selectableRegionState.hideToolbar();
                   }
@@ -417,8 +751,11 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
               ),
               ContextMenuButtonItem(
                 onPressed: () {
-                  if (_selectedContent != null && _selectedContent!.plainText.isNotEmpty) {
-                    _showDictionaryDialog(_selectedContent!.plainText.split(' ').first);
+                  if (_selectedContent != null &&
+                      _selectedContent!.plainText.isNotEmpty) {
+                    _showDictionaryDialog(
+                      _selectedContent!.plainText.split(' ').first,
+                    );
                     selectableRegionState.hideToolbar();
                   }
                 },
@@ -427,21 +764,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             ],
           );
         },
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16.0),
-          child: Html(
-            data: _currentContent!,
-            style: {
-              "body": Style(
-                fontSize: FontSize(18),
-                lineHeight: const LineHeight(1.8),
-              ),
-              "p": Style(margin: Margins.only(bottom: 16)),
-              "img": Style(width: Width(100, Unit.percent)),
-            },
-          ),
-        ),
+        child: htmlView(_currentContent!),
       );
     }
 
@@ -458,7 +781,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             onPressed: _currentChapterIndex > 0
-                ? () => _loadChapter(_currentChapterIndex - 1, userInitiated: true)
+                ? () =>
+                    _loadChapter(_currentChapterIndex - 1, userInitiated: true)
                 : null,
           ),
           Text(
@@ -468,7 +792,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: _currentChapterIndex < _chapters!.length - 1
-                ? () => _loadChapter(_currentChapterIndex + 1, userInitiated: true)
+                ? () =>
+                    _loadChapter(_currentChapterIndex + 1, userInitiated: true)
                 : null,
           ),
         ],
@@ -499,7 +824,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       );
 
       await context.read<AnnotationRepository>().addAnnotation(annotation);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Annotation saved')),
@@ -539,18 +864,21 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                   final plainText = _currentPlainText;
                   if (plainText.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('No searchable text in this chapter.')),
+                      const SnackBar(
+                          content: Text('No searchable text in this chapter.')),
                     );
                     return;
                   }
 
                   if (plainText.toLowerCase().contains(query.toLowerCase())) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Found "$query" in this chapter.')),
+                      SnackBar(
+                          content: Text('Found "$query" in this chapter.')),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('"$query" not found in this chapter.')),
+                      SnackBar(
+                          content: Text('"$query" not found in this chapter.')),
                     );
                   }
                 }
@@ -581,6 +909,57 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _TtsHighlightSpan extends StatelessWidget {
+  final String text;
+  final TextStyle textStyle;
+  final Color highlightColor;
+
+  const _TtsHighlightSpan({
+    super.key,
+    required this.text,
+    required this.textStyle,
+    required this.highlightColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Use a more visible highlight with border and shadow for contrast
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor =
+        isDark ? Colors.yellow.shade600 : Colors.orange.shade700;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      decoration: BoxDecoration(
+        color: highlightColor,
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(
+          color: borderColor,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: borderColor.withOpacity(0.4),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: textStyle.copyWith(
+          fontWeight: FontWeight.w700,
+          color: isDark ? Colors.black : null,
+        ),
       ),
     );
   }

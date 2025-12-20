@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:reader_app/src/rust/api/pdf.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
@@ -8,6 +9,65 @@ import 'package:reader_app/src/rust/api/crop.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';
+
+class _NormalizedTextMap {
+  final String normalized;
+  final List<int> normalizedToRaw;
+
+  const _NormalizedTextMap(this.normalized, this.normalizedToRaw);
+}
+
+_NormalizedTextMap _buildNormalizedTextMap(String raw) {
+  if (raw.trim().isEmpty) {
+    return const _NormalizedTextMap('', []);
+  }
+
+  final buffer = StringBuffer();
+  final map = <int>[];
+  var inWhitespace = false;
+
+  for (var i = 0; i < raw.length; i++) {
+    var ch = raw[i];
+    if (ch == '\u200B') {
+      continue;
+    }
+    if (ch == '\u00A0') {
+      ch = ' ';
+    }
+
+    final isWhitespace = ch.trim().isEmpty;
+    if (isWhitespace) {
+      if (buffer.isEmpty) continue;
+      if (inWhitespace) continue;
+      buffer.write(' ');
+      map.add(i);
+      inWhitespace = true;
+      continue;
+    }
+
+    buffer.write(ch);
+    map.add(i);
+    inWhitespace = false;
+  }
+
+  var normalized = buffer.toString();
+  if (normalized.endsWith(' ')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+    if (map.isNotEmpty) {
+      map.removeLast();
+    }
+  }
+
+  return _NormalizedTextMap(normalized, map);
+}
+
+String _normalizePlainText(String text) {
+  return text
+      .replaceAll('\u00A0', ' ')
+      .replaceAll('\u200B', '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
 
 class PdfReaderScreen extends StatefulWidget {
   final Book book;
@@ -25,6 +85,8 @@ class PdfReaderScreen extends StatefulWidget {
 
 class _PdfReaderScreenState extends State<PdfReaderScreen> {
   final GlobalKey _pageImageKey = GlobalKey();
+  final TransformationController _pdfTransformController =
+      TransformationController();
   Uint8List? _currentPageImage;
   bool _isLoading = true;
   String? _error;
@@ -32,17 +94,27 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   int _pageCount = 0;
   bool _autoCrop = false;
   final Map<int, CropMargins> _marginsCache = {};
+  Size _renderedPageSize = Size.zero;
+  Size _viewerSize = Size.zero;
 
   // TTS
   final TtsService _ttsService = TtsService();
   bool _showTtsControls = false;
   bool _ttsContinuous = true;
+  bool _ttsFollowMode = true;
   bool _tapToStartEnabled = true;
   int _ttsAdvanceRequestId = 0;
   String? _ttsStartOverrideText;
   final Map<int, String> _pageTextCache = {};
   final Map<int, Future<String>> _pageTextInFlight = {};
   String _currentPageText = '';
+  _NormalizedTextMap? _pageTextMap;
+  int _ttsNormalizedBaseOffset = 0;
+  List<PdfTextRect> _ttsHighlightRects = const [];
+  int? _lastHighlightStart;
+  int? _lastHighlightEnd;
+  DateTime _lastAutoPanAt = DateTime.fromMillisecondsSinceEpoch(0);
+  int _highlightRequestId = 0;
   bool _isTextLoading = false;
   bool _isTapToStartLoading = false;
   String? _textError;
@@ -53,6 +125,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   void initState() {
     super.initState();
     _ttsService.setOnFinished(_handleTtsFinished);
+    _ttsService.addListener(_handleTtsProgress);
     _pageIndex = widget.book.currentPage;
     _loadDocument();
   }
@@ -91,6 +164,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     if (isPageChanging) {
       _ttsStartOverrideText = null;
+      _ttsHighlightRects = const [];
+      _lastHighlightStart = null;
+      _lastHighlightEnd = null;
     }
 
     if (_showTtsControls && isPageChanging) {
@@ -114,7 +190,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     try {
       // Start margin detection in parallel if auto-crop is on
       if (_autoCrop && !_marginsCache.containsKey(index)) {
-        detectPdfWhitespace(path: widget.book.path, pageIndex: index).then((margins) {
+        detectPdfWhitespace(path: widget.book.path, pageIndex: index)
+            .then((margins) {
           if (mounted) {
             setState(() {
               _marginsCache[index] = margins;
@@ -140,6 +217,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
       setState(() {
         _currentPageImage = bytes;
+        _renderedPageSize = Size(width.toDouble(), height.toDouble());
         _error = null;
         _isLoading = false;
       });
@@ -156,6 +234,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     if (cached != null) {
       setState(() {
         _currentPageText = cached;
+        _pageTextMap = _buildNormalizedTextMap(cached);
         _isTextLoading = false;
         _textError = null;
       });
@@ -182,6 +261,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       setState(() {
         _pageTextCache[index] = text;
         _currentPageText = text;
+        _pageTextMap = _buildNormalizedTextMap(text);
         _isTextLoading = false;
         _textError = null;
       });
@@ -192,6 +272,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         _isTextLoading = false;
         _textError = e.toString();
         _currentPageText = '';
+        _pageTextMap = null;
       });
     }
   }
@@ -212,7 +293,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     final xNormVisible = local.dx / size.width;
     final yNormVisible = local.dy / size.height;
 
-    if (xNormVisible < 0 || xNormVisible > 1 || yNormVisible < 0 || yNormVisible > 1) {
+    if (xNormVisible < 0 ||
+        xNormVisible > 1 ||
+        yNormVisible < 0 ||
+        yNormVisible > 1) {
       return;
     }
 
@@ -240,6 +324,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       _isTapToStartLoading = true;
       _textError = null;
       _ttsStartOverrideText = null;
+      _ttsHighlightRects = const [];
     });
 
     try {
@@ -266,6 +351,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         return;
       }
 
+      _setNormalizedBaseOffset(trimmed);
       unawaited(_ttsService.speak(trimmed));
     } catch (e) {
       if (!mounted || requestId != _tapToStartRequestId) return;
@@ -273,6 +359,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         _isTapToStartLoading = false;
         _textError = e.toString();
         _ttsStartOverrideText = null;
+        _ttsHighlightRects = const [];
       });
     }
   }
@@ -281,6 +368,30 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     if (!mounted) return;
     if (!_showTtsControls || !_ttsContinuous) return;
     unawaited(_advanceToNextReadablePageAndSpeak());
+  }
+
+  void _handleTtsProgress() {
+    if (!mounted) return;
+    if (!_showTtsControls || _ttsService.state != TtsState.playing) {
+      if (_ttsHighlightRects.isNotEmpty) {
+        setState(() => _ttsHighlightRects = const []);
+      }
+      return;
+    }
+
+    if (_pageTextMap == null && !_isTextLoading) {
+      unawaited(_loadPageText(_pageIndex));
+      return;
+    }
+
+    final start = _ttsService.currentStartOffset;
+    final end = _ttsService.currentEndOffset;
+    if (start == null || end == null) return;
+    if (start == _lastHighlightStart && end == _lastHighlightEnd) return;
+
+    _lastHighlightStart = start;
+    _lastHighlightEnd = end;
+    unawaited(_updateHighlightForRange(start, end));
   }
 
   Future<void> _advanceToNextReadablePageAndSpeak() async {
@@ -311,6 +422,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         continue;
       }
 
+      _setNormalizedBaseOffset(text);
       await _ttsService.speak(text);
       return;
     }
@@ -320,6 +432,138 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         const SnackBar(content: Text('No more readable text found.')),
       );
     }
+  }
+
+  Future<void> _updateHighlightForRange(int start, int end) async {
+    final map = _pageTextMap;
+    if (map == null || map.normalizedToRaw.isEmpty) return;
+
+    final normalizedStart = _ttsNormalizedBaseOffset + start;
+    final normalizedEnd = _ttsNormalizedBaseOffset + end;
+    if (normalizedStart < 0 || normalizedEnd <= normalizedStart) return;
+    if (normalizedStart >= map.normalizedToRaw.length) return;
+
+    final clampedEnd =
+        normalizedEnd.clamp(0, map.normalizedToRaw.length) as int;
+    if (clampedEnd <= normalizedStart) return;
+
+    final rawStart = map.normalizedToRaw[normalizedStart];
+    final rawEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+
+    final requestId = ++_highlightRequestId;
+    try {
+      final rects = await extractPdfPageTextBounds(
+        path: widget.book.path,
+        pageIndex: _pageIndex,
+        startIndex: rawStart,
+        endIndex: rawEnd,
+      );
+
+      if (!mounted || requestId != _highlightRequestId) return;
+      setState(() {
+        _ttsHighlightRects = rects;
+      });
+      _maybeAutoPanToHighlight(rects);
+    } catch (_) {
+      if (!mounted || requestId != _highlightRequestId) return;
+      setState(() {
+        _ttsHighlightRects = const [];
+      });
+    }
+  }
+
+  void _setNormalizedBaseOffset(String ttsText) {
+    final map = _pageTextMap;
+    if (map == null || map.normalized.isEmpty) {
+      _ttsNormalizedBaseOffset = 0;
+      return;
+    }
+
+    final normalized = _normalizePlainText(ttsText);
+    if (normalized.isEmpty) {
+      _ttsNormalizedBaseOffset = 0;
+      return;
+    }
+
+    final index = map.normalized.indexOf(normalized);
+    _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
+  }
+
+  void _maybeAutoPanToHighlight(List<PdfTextRect> rects) {
+    if (!_ttsFollowMode) return;
+    if (rects.isEmpty) return;
+    if (_viewerSize.isEmpty || _renderedPageSize.isEmpty) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastAutoPanAt) < const Duration(milliseconds: 80)) {
+      return;
+    }
+
+    final bounds = _unionHighlightRects(rects);
+    final highlightRect = Rect.fromLTRB(
+      bounds.left * _renderedPageSize.width,
+      bounds.top * _renderedPageSize.height,
+      bounds.right * _renderedPageSize.width,
+      bounds.bottom * _renderedPageSize.height,
+    );
+
+    final matrix = _pdfTransformController.value;
+    Matrix4 inverse;
+    try {
+      inverse = Matrix4.inverted(matrix);
+    } catch (_) {
+      return;
+    }
+
+    final visibleTopLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
+    final visibleBottomRight = MatrixUtils.transformPoint(
+      inverse,
+      Offset(_viewerSize.width, _viewerSize.height),
+    );
+    final visibleRect = Rect.fromPoints(visibleTopLeft, visibleBottomRight);
+
+    final scale = matrix.getMaxScaleOnAxis();
+    final padding = 32.0 / scale;
+    final paddedVisible = visibleRect.deflate(padding);
+
+    if (paddedVisible.contains(highlightRect.topLeft) &&
+        paddedVisible.contains(highlightRect.bottomRight)) {
+      return;
+    }
+
+    final center = highlightRect.center;
+    final viewportCenter =
+        Offset(_viewerSize.width / 2, _viewerSize.height / 2);
+    final translation = Offset(
+      viewportCenter.dx - center.dx * scale,
+      viewportCenter.dy - center.dy * scale,
+    );
+
+    _lastAutoPanAt = now;
+    _pdfTransformController.value = Matrix4.identity()
+      ..translate(translation.dx, translation.dy)
+      ..scale(scale);
+  }
+
+  PdfTextRect _unionHighlightRects(List<PdfTextRect> rects) {
+    var left = rects.first.left;
+    var right = rects.first.right;
+    var top = rects.first.top;
+    var bottom = rects.first.bottom;
+
+    for (final rect in rects.skip(1)) {
+      if (rect.left < left) left = rect.left;
+      if (rect.right > right) right = rect.right;
+      if (rect.top < top) top = rect.top;
+      if (rect.bottom > bottom) bottom = rect.bottom;
+    }
+
+    return PdfTextRect(
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+    );
   }
 
   void _toggleTts() {
@@ -332,6 +576,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     } else {
       _ttsAdvanceRequestId++;
       _ttsStartOverrideText = null;
+      _ttsHighlightRects = const [];
       unawaited(_ttsService.stop());
     }
   }
@@ -339,6 +584,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   void _closeTtsControls() {
     _ttsAdvanceRequestId++;
     _ttsStartOverrideText = null;
+    _ttsHighlightRects = const [];
     setState(() => _showTtsControls = false);
   }
 
@@ -364,8 +610,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
             setState(() {
               _showTtsControls = true;
               _ttsStartOverrideText = trimmed;
+              _ttsHighlightRects = const [];
             });
 
+            _setNormalizedBaseOffset(trimmed);
             unawaited(_ttsService.speak(trimmed));
           },
         );
@@ -376,7 +624,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   @override
   void dispose() {
     _ttsService.setOnFinished(null);
+    _ttsService.removeListener(_handleTtsProgress);
     _ttsService.dispose();
+    _pdfTransformController.dispose();
     super.dispose();
   }
 
@@ -419,7 +669,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Text("${_pageIndex + 1} / $_pageCount"),
               ),
-          ),
+            ),
         ],
       ),
       body: Column(
@@ -429,13 +679,21 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
             TtsControlsSheet(
               ttsService: _ttsService,
               textToSpeak: _currentPageText,
-              resolveTextToSpeak: () => _ttsStartOverrideText ?? _currentPageText,
+              resolveTextToSpeak: () {
+                final text = _ttsStartOverrideText ?? _currentPageText;
+                _setNormalizedBaseOffset(text);
+                return text;
+              },
               isTextLoading: _isTextLoading || _isTapToStartLoading,
               emptyTextMessage: ttsEmptyMessage,
               isContinuous: _ttsContinuous,
               onContinuousChanged: (value) {
                 _ttsAdvanceRequestId++;
                 setState(() => _ttsContinuous = value);
+              },
+              isFollowMode: _ttsFollowMode,
+              onFollowModeChanged: (value) {
+                setState(() => _ttsFollowMode = value);
               },
               isTapToStart: _tapToStartEnabled,
               onTapToStartChanged: (value) {
@@ -476,31 +734,74 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         fit: BoxFit.contain,
       );
 
-      if (_autoCrop && _marginsCache.containsKey(_pageIndex)) {
-        final margins = _marginsCache[_pageIndex]!;
-        // Use FittedBox + ClipRect to zoom into the cropped area
-        imageWidget = FittedBox(
-          fit: BoxFit.contain,
-          child: ClipRect(
-            clipper: MarginClipper(margins),
-            child: imageWidget,
+      Widget pageLayer;
+      if (_renderedPageSize.isEmpty) {
+        pageLayer = imageWidget;
+      } else {
+        pageLayer = SizedBox(
+          width: _renderedPageSize.width,
+          height: _renderedPageSize.height,
+          child: Stack(
+            children: [
+              Positioned.fill(child: imageWidget),
+              if (_showTtsControls &&
+                  _ttsService.state == TtsState.playing &&
+                  _ttsHighlightRects.isNotEmpty)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _PdfHighlightPainter(
+                        rects: _ttsHighlightRects,
+                        fillColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withOpacity(0.65),
+                        borderColor: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.9),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       }
 
-      return GestureDetector(
+      if (_autoCrop && _marginsCache.containsKey(_pageIndex)) {
+        final margins = _marginsCache[_pageIndex]!;
+        // Use FittedBox + ClipRect to zoom into the cropped area
+        pageLayer = FittedBox(
+          fit: BoxFit.contain,
+          child: ClipRect(
+            clipper: MarginClipper(margins),
+            child: pageLayer,
+          ),
+        );
+      }
+
+      final pdfViewer = GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: _startTtsFromTap,
-        child: InteractiveViewer(
-          maxScale: 5.0,
-          child: Center(
-            child: RepaintBoundary(
-              key: _pageImageKey,
-              child: imageWidget,
-            ),
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _viewerSize = Size(constraints.maxWidth, constraints.maxHeight);
+            return InteractiveViewer(
+              transformationController: _pdfTransformController,
+              maxScale: 5.0,
+              child: Center(
+                child: RepaintBoundary(
+                  key: _pageImageKey,
+                  child: pageLayer,
+                ),
+              ),
+            );
+          },
         ),
       );
+
+      return pdfViewer;
     }
 
     return const Center(child: Text("Initializing..."));
@@ -515,11 +816,15 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         children: [
           IconButton(
             icon: const Icon(Icons.first_page),
-            onPressed: _pageIndex > 0 ? () => _renderPage(0, userInitiated: true) : null,
+            onPressed: _pageIndex > 0
+                ? () => _renderPage(0, userInitiated: true)
+                : null,
           ),
           IconButton(
             icon: const Icon(Icons.chevron_left),
-            onPressed: _pageIndex > 0 ? () => _renderPage(_pageIndex - 1, userInitiated: true) : null,
+            onPressed: _pageIndex > 0
+                ? () => _renderPage(_pageIndex - 1, userInitiated: true)
+                : null,
           ),
           Text("${_pageIndex + 1} / $_pageCount"),
           IconButton(
@@ -561,5 +866,54 @@ class MarginClipper extends CustomClipper<Rect> {
         margins.bottom != oldClipper.margins.bottom ||
         margins.left != oldClipper.margins.left ||
         margins.right != oldClipper.margins.right;
+  }
+}
+
+class _PdfHighlightPainter extends CustomPainter {
+  final List<PdfTextRect> rects;
+  final Color fillColor;
+  final Color borderColor;
+
+  _PdfHighlightPainter({
+    required this.rects,
+    required this.fillColor,
+    required this.borderColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rects.isEmpty || size.isEmpty) return;
+
+    final fillPaint = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    for (final rect in rects) {
+      final left = (rect.left * size.width).clamp(0.0, size.width);
+      final right = (rect.right * size.width).clamp(0.0, size.width);
+      final top = (rect.top * size.height).clamp(0.0, size.height);
+      final bottom = (rect.bottom * size.height).clamp(0.0, size.height);
+
+      if (right <= left || bottom <= top) continue;
+
+      final highlightRect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(left, top, right, bottom),
+        const Radius.circular(3),
+      );
+      canvas.drawRRect(highlightRect, fillPaint);
+      canvas.drawRRect(highlightRect, borderPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PdfHighlightPainter oldDelegate) {
+    return oldDelegate.rects != rects ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.borderColor != borderColor;
   }
 }

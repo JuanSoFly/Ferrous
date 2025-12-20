@@ -14,6 +14,14 @@ fn get_pdfium() -> &'static Pdfium {
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PdfTextRect {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
 /// Execute a function with the global Pdfium instance
 pub fn with_pdfium<F, R>(f: F) -> Result<R>
 where
@@ -151,6 +159,81 @@ pub fn extract_pdf_page_text_from_point(
     }
 
     Ok(out)
+}
+
+/// Extract normalized character bounding boxes for a text range on the page.
+///
+/// The returned rectangles are normalized to the page (0.0-1.0) and use
+/// a top-left origin, matching Flutter's coordinate space.
+pub fn extract_pdf_page_text_bounds(
+    path: String,
+    page_index: u32,
+    start_index: u32,
+    end_index: u32,
+) -> Result<Vec<PdfTextRect>> {
+    let pdfium = get_pdfium();
+    let document = pdfium.load_pdf_from_file(&path, None)?;
+    let page = document.pages().get(page_index as u16)?;
+    let text = page.text()?;
+    let chars = text.chars();
+
+    let total = text.len().max(0) as usize;
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+
+    let start = start_index as usize;
+    let end = end_index as usize;
+    if start >= end || start >= total {
+        return Ok(Vec::new());
+    }
+
+    let end = end.min(total);
+    let page_rect = page.page_size();
+    let width = page_rect.width().value as f32;
+    let height = page_rect.height().value as f32;
+
+    if width <= 0.0 || height <= 0.0 {
+        return Ok(Vec::new());
+    }
+
+    let mut rects = Vec::new();
+    for i in start..end {
+        let ch = match chars.get(i) {
+            Ok(ch) => ch,
+            Err(_) => continue,
+        };
+
+        if let Some(c) = ch.unicode_char() {
+            if c.is_whitespace() {
+                continue;
+            }
+        }
+
+        let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
+        let Ok(bounds) = bounds else { continue };
+
+        let mut left = bounds.left().value / width;
+        let mut right = bounds.right().value / width;
+        let mut top = 1.0 - (bounds.top().value / height);
+        let mut bottom = 1.0 - (bounds.bottom().value / height);
+
+        if left > right {
+            std::mem::swap(&mut left, &mut right);
+        }
+        if top > bottom {
+            std::mem::swap(&mut top, &mut bottom);
+        }
+
+        rects.push(PdfTextRect {
+            left: left.clamp(0.0, 1.0),
+            top: top.clamp(0.0, 1.0),
+            right: right.clamp(0.0, 1.0),
+            bottom: bottom.clamp(0.0, 1.0),
+        });
+    }
+
+    Ok(rects)
 }
 
 /// Test function to verify PDF module is working

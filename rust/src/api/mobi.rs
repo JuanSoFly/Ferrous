@@ -5,7 +5,8 @@ use mobi::Mobi;
 #[flutter_rust_bridge::frb(sync)]
 pub fn get_mobi_content(path: String) -> Result<String> {
     let mobi = Mobi::from_path(&path)?;
-    Ok(mobi.content_as_string())
+    let content = mobi.content_as_string()?;
+    Ok(content)
 }
 
 /// Returns the title of a MOBI file.
@@ -19,5 +20,8 @@ pub fn get_mobi_title(path: String) -> Result<String> {
 #[flutter_rust_bridge::frb(sync)]
 pub fn get_mobi_author(path: String) -> Result<String> {
     let mobi = Mobi::from_path(&path)?;
-    Ok(mobi.author().unwrap_or("Unknown Author").to_string())
+    let author = mobi
+        .author()
+        .unwrap_or_else(|| "Unknown Author".to_string());
+    Ok(author)
 }

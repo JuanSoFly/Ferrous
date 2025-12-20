@@ -48,7 +48,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BookMetadata> dco_decode_list_book_metadata(dynamic raw);
 
   @protected
+  List<PdfTextRect> dco_decode_list_pdf_text_rect(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  PdfTextRect dco_decode_pdf_text_rect(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -82,7 +88,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       SseDeserializer deserializer);
 
   @protected
+  List<PdfTextRect> sse_decode_list_pdf_text_rect(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  PdfTextRect sse_decode_pdf_text_rect(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -123,8 +135,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       List<BookMetadata> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_pdf_text_rect(
+      List<PdfTextRect> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
       Uint8List self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pdf_text_rect(PdfTextRect self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

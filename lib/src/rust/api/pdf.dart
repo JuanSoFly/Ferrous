@@ -8,6 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `get_pdfium`
 // These functions are ignored because they have generic arguments: `with_pdfium`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
 /// Get the page count of a PDF file
 Future<int> getPdfPageCount({required String path}) =>
@@ -46,6 +47,49 @@ Future<String> extractPdfPageTextFromPoint(
     RustLib.instance.api.crateApiPdfExtractPdfPageTextFromPoint(
         path: path, pageIndex: pageIndex, xNorm: xNorm, yNorm: yNorm);
 
+/// Extract normalized character bounding boxes for a text range on the page.
+///
+/// The returned rectangles are normalized to the page (0.0-1.0) and use
+/// a top-left origin, matching Flutter's coordinate space.
+Future<List<PdfTextRect>> extractPdfPageTextBounds(
+        {required String path,
+        required int pageIndex,
+        required int startIndex,
+        required int endIndex}) =>
+    RustLib.instance.api.crateApiPdfExtractPdfPageTextBounds(
+        path: path,
+        pageIndex: pageIndex,
+        startIndex: startIndex,
+        endIndex: endIndex);
+
 /// Test function to verify PDF module is working
 Future<String> testPdfModule() =>
     RustLib.instance.api.crateApiPdfTestPdfModule();
+
+class PdfTextRect {
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  const PdfTextRect({
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+  });
+
+  @override
+  int get hashCode =>
+      left.hashCode ^ top.hashCode ^ right.hashCode ^ bottom.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfTextRect &&
+          runtimeType == other.runtimeType &&
+          left == other.left &&
+          top == other.top &&
+          right == other.right &&
+          bottom == other.bottom;
+}

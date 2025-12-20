@@ -30,7 +30,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.info),
             title: Text('About'),
-            subtitle: Text('Antigravity Reader v0.1'),
+            subtitle: Text('Ferrous v0.1'),
           ),
         ],
       ),
