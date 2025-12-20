@@ -6,6 +6,7 @@ import 'package:reader_app/features/reader/pdf_reader.dart';
 import 'package:reader_app/features/reader/epub_reader.dart';
 import 'package:reader_app/features/reader/cbz_reader.dart';
 import 'package:reader_app/features/reader/docx_reader.dart';
+import 'package:reader_app/features/reader/mobi_reader.dart';
 
 class ReaderScreen extends StatelessWidget {
   final Book book;
@@ -25,6 +26,8 @@ class ReaderScreen extends StatelessWidget {
       return CbzReaderScreen(book: book, repository: bookRepository);
     } else if (path.endsWith('.docx')) {
       return DocxReaderScreen(book: book, repository: bookRepository);
+    } else if (path.endsWith('.mobi') || path.endsWith('.azw3') || path.endsWith('.azw')) {
+      return MobiReaderScreen(book: book, repository: bookRepository);
     } else {
       return _buildUnsupportedScreen(context, 'Unknown');
     }

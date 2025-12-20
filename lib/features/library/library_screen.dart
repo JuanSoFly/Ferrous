@@ -9,6 +9,7 @@ import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/features/reader/split_reader_screen.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -183,20 +184,39 @@ class _BookCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<LibraryState>();
+    final controller = context.read<LibraryController>();
+    final hasPendingSplit = state.splitPendingBook != null;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ReaderScreen(book: book),
-            ),
-          ).then((_) {
-             if (!context.mounted) return;
-             context.read<LibraryController>().loadBooks();
-          });
+          if (hasPendingSplit && state.splitPendingBook!.id != book.id) {
+            // Open split view with pending book and this book
+            final leftBook = state.splitPendingBook!;
+            controller.clearSplitPending();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => SplitReaderScreen(
+                  leftBook: leftBook,
+                  rightBook: book,
+                ),
+              ),
+            );
+          } else {
+            // Normal navigation
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => ReaderScreen(book: book),
+              ),
+            ).then((_) {
+               if (!context.mounted) return;
+               context.read<LibraryController>().loadBooks();
+            });
+          }
         },
-        onLongPress: () => _showAddToCollectionDialog(context),
+        onLongPress: () => _showBookOptionsMenu(context, controller),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -252,6 +272,37 @@ class _BookCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showBookOptionsMenu(BuildContext context, LibraryController controller) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.vertical_split),
+            title: const Text('Open in Split View'),
+            subtitle: const Text('Select another book to open both'),
+            onTap: () {
+              Navigator.pop(ctx);
+              controller.setSplitPendingBook(book);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Tap another book to open in split view')),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.collections_bookmark),
+            title: const Text('Add to Collection'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _showAddToCollectionDialog(context);
+            },
+          ),
+        ],
       ),
     );
   }

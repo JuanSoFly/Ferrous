@@ -12,6 +12,7 @@ class LibraryState {
   final String? error;
   final String? statusMessage;
   final String searchQuery;
+  final Book? splitPendingBook; // For split-screen: first book selected
 
   const LibraryState({
     this.isLoading = false,
@@ -19,6 +20,7 @@ class LibraryState {
     this.error,
     this.statusMessage,
     this.searchQuery = '',
+    this.splitPendingBook,
   });
 
   LibraryState copyWith({
@@ -27,6 +29,8 @@ class LibraryState {
     String? error,
     String? statusMessage,
     String? searchQuery,
+    Book? splitPendingBook,
+    bool clearSplitPending = false,
   }) {
     return LibraryState(
       isLoading: isLoading ?? this.isLoading,
@@ -34,6 +38,7 @@ class LibraryState {
       error: error,
       statusMessage: statusMessage,
       searchQuery: searchQuery ?? this.searchQuery,
+      splitPendingBook: clearSplitPending ? null : (splitPendingBook ?? this.splitPendingBook),
     );
   }
 
@@ -66,6 +71,16 @@ class LibraryController extends StateNotifier<LibraryState> {
   /// Updates the search query for filtering books.
   void setSearchQuery(String query) {
     state = state.copyWith(searchQuery: query);
+  }
+
+  /// Sets a book as pending for split-screen view.
+  void setSplitPendingBook(Book book) {
+    state = state.copyWith(splitPendingBook: book);
+  }
+
+  /// Clears the split-pending book.
+  void clearSplitPending() {
+    state = state.copyWith(clearSplitPending: true);
   }
 
   /// Opens the folder picker using SAF and imports any ebook files found.

@@ -11,6 +11,7 @@ import 'api/covers.dart';
 import 'api/crop.dart';
 import 'api/docx.dart';
 import 'api/library.dart';
+import 'api/mobi.dart';
 import 'api/pdf.dart';
 import 'dart:async';
 import 'dart:convert';
