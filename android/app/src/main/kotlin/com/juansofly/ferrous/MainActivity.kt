@@ -1,4 +1,4 @@
-package com.antigravity.reader.reader_app
+package com.juansofly.ferrous
 
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity

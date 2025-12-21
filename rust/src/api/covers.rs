@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use image::ImageFormat;
+use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::Path;
@@ -86,7 +86,9 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
         if let Ok(mut entry) = archive.by_name(cover_path) {
             let mut buffer = Vec::new();
             entry.read_to_end(&mut buffer)?;
-
+            if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
+                return Ok(saved);
+            }
             let mut out_file = File::create(save_path).context("Failed to create cover file")?;
             out_file.write_all(&buffer)?;
             return Ok(save_path.to_string());
@@ -103,7 +105,9 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
         {
             let mut buffer = Vec::new();
             entry.read_to_end(&mut buffer)?;
-
+            if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
+                return Ok(saved);
+            }
             let mut out_file = File::create(save_path).context("Failed to create cover file")?;
             out_file.write_all(&buffer)?;
             return Ok(save_path.to_string());
@@ -134,11 +138,37 @@ fn extract_cbz_cover(book_path: &str, save_path: &str) -> Result<String> {
         let mut entry = archive.by_name(first_image)?;
         let mut buffer = Vec::new();
         entry.read_to_end(&mut buffer)?;
-
+        if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
+            return Ok(saved);
+        }
         let mut out_file = File::create(save_path).context("Failed to create cover file")?;
         out_file.write_all(&buffer)?;
         return Ok(save_path.to_string());
     }
 
     Err(anyhow::anyhow!("No image found in CBZ"))
+}
+
+fn save_cover_thumbnail(bytes: &[u8], save_path: &str) -> Result<String> {
+    let image = image::load_from_memory(bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to decode cover image: {:?}", e))?;
+    let (width, height) = image.dimensions();
+    let max_dim = 360u32;
+    let resized = if width > max_dim || height > max_dim {
+        let scale = if width >= height {
+            max_dim as f32 / width as f32
+        } else {
+            max_dim as f32 / height as f32
+        };
+        let new_width = (width as f32 * scale).round().max(1.0) as u32;
+        let new_height = (height as f32 * scale).round().max(1.0) as u32;
+        image.resize(new_width, new_height, FilterType::Triangle)
+    } else {
+        image
+    };
+
+    resized
+        .save_with_format(save_path, ImageFormat::Png)
+        .context("Failed to save cover thumbnail")?;
+    Ok(save_path.to_string())
 }

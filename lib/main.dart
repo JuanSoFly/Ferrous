@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:reader_app/src/rust/frb_generated.dart';
@@ -12,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
 import 'package:reader_app/utils/app_themes.dart';
+import 'package:path_provider/path_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +23,8 @@ Future<void> main() async {
   Hive.registerAdapter(BookAdapter());
   Hive.registerAdapter(AnnotationAdapter());
   Hive.registerAdapter(CollectionAdapter());
+
+  await _cleanupLinkedCacheFiles();
 
   // Initialize repositories
   final bookRepository = BookRepository();
@@ -46,6 +50,27 @@ Future<void> main() async {
     annotationRepository: annotationRepository,
     collectionRepository: collectionRepository,
   ));
+}
+
+Future<void> _cleanupLinkedCacheFiles() async {
+  try {
+    final dir = await getTemporaryDirectory();
+    if (!await dir.exists()) return;
+    final entries = dir.listSync();
+    for (final entry in entries) {
+      if (entry is! File) continue;
+      final name = entry.path.split(Platform.pathSeparator).last;
+      if (name.startsWith('linked_')) {
+        try {
+          await entry.delete();
+        } catch (_) {
+          // Ignore cleanup failures
+        }
+      }
+    }
+  } catch (_) {
+    // Ignore cleanup failures
+  }
 }
 
 class ReaderApp extends StatelessWidget {

@@ -1,14 +1,17 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:reader_app/src/rust/api/pdf.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/crop.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';
+import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+import 'package:reader_app/utils/sentence_utils.dart';
 
 class _NormalizedTextMap {
   final String normalized;
@@ -83,7 +86,8 @@ class PdfReaderScreen extends StatefulWidget {
   State<PdfReaderScreen> createState() => _PdfReaderScreenState();
 }
 
-class _PdfReaderScreenState extends State<PdfReaderScreen> {
+class _PdfReaderScreenState extends State<PdfReaderScreen>
+    with WidgetsBindingObserver {
   final GlobalKey _pageImageKey = GlobalKey();
   final TransformationController _pdfTransformController =
       TransformationController();
@@ -96,6 +100,11 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   final Map<int, CropMargins> _marginsCache = {};
   Size _renderedPageSize = Size.zero;
   Size _viewerSize = Size.zero;
+  bool _showChrome = false;
+  bool _lockMode = false;
+  Offset? _lastDoubleTapDown;
+  int _pageTransitionDirection = 0;
+  late ReadingMode _readingMode;
 
   // TTS
   final TtsService _ttsService = TtsService();
@@ -109,6 +118,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   final Map<int, Future<String>> _pageTextInFlight = {};
   String _currentPageText = '';
   _NormalizedTextMap? _pageTextMap;
+  List<SentenceSpan> _pageSentenceSpans = const [];
   int _ttsNormalizedBaseOffset = 0;
   List<PdfTextRect> _ttsHighlightRects = const [];
   int? _lastHighlightStart;
@@ -120,19 +130,34 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
   String? _textError;
   int _textRequestId = 0;
   int _tapToStartRequestId = 0;
+  ResolvedBookFile? _resolvedFile;
+  late int _lastTtsSentenceStart;
+  late int _lastTtsSentenceEnd;
+  late int _lastTtsPage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ttsService.setOnFinished(_handleTtsFinished);
     _ttsService.addListener(_handleTtsProgress);
     _pageIndex = widget.book.currentPage;
+    _lastTtsSentenceStart = widget.book.lastTtsSentenceStart;
+    _lastTtsSentenceEnd = widget.book.lastTtsSentenceEnd;
+    _lastTtsPage = widget.book.lastTtsPage;
+    _readingMode = widget.book.readingMode;
     _loadDocument();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateSystemUiMode();
+    });
   }
 
   Future<void> _loadDocument() async {
     try {
-      final count = await getPdfPageCount(path: widget.book.path);
+      final resolver = BookFileResolver();
+      final resolved = await resolver.resolve(widget.book);
+      _resolvedFile = resolved;
+      final count = await getPdfPageCount(path: resolved.path);
       final safeIndex =
           count <= 0 ? 0 : widget.book.currentPage.clamp(0, count - 1);
       setState(() {
@@ -155,6 +180,17 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     final previousIndex = _pageIndex;
     final isPageChanging = index != previousIndex;
+    if (userInitiated) {
+      if (index > previousIndex) {
+        _pageTransitionDirection = 1;
+      } else if (index < previousIndex) {
+        _pageTransitionDirection = -1;
+      } else {
+        _pageTransitionDirection = 0;
+      }
+    } else {
+      _pageTransitionDirection = 0;
+    }
 
     setState(() {
       _isLoading = true;
@@ -190,7 +226,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     try {
       // Start margin detection in parallel if auto-crop is on
       if (_autoCrop && !_marginsCache.containsKey(index)) {
-        detectPdfWhitespace(path: widget.book.path, pageIndex: index)
+        final path = _resolvedFile?.path;
+        if (path != null) {
+          detectPdfWhitespace(path: path, pageIndex: index)
             .then((margins) {
           if (mounted) {
             setState(() {
@@ -200,6 +238,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         }).catchError((e) {
           debugPrint("Crop error: $e");
         });
+        }
       }
 
       // Render at 2x screen resolution for sharpness
@@ -209,7 +248,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       final height = (screenHeight * 2).toInt();
 
       final bytes = await renderPdfPage(
-        path: widget.book.path,
+        path: _resolvedFile!.path,
         pageIndex: index,
         width: width,
         height: height,
@@ -235,6 +274,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       setState(() {
         _currentPageText = cached;
         _pageTextMap = _buildNormalizedTextMap(cached);
+        _pageSentenceSpans =
+            _pageTextMap == null ? const [] : splitIntoSentences(_pageTextMap!.normalized);
         _isTextLoading = false;
         _textError = null;
       });
@@ -250,7 +291,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     try {
       final future = _pageTextInFlight[index] ??= extractPdfPageText(
-        path: widget.book.path,
+        path: _resolvedFile!.path,
         pageIndex: index,
       );
       final text = await future;
@@ -262,6 +303,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         _pageTextCache[index] = text;
         _currentPageText = text;
         _pageTextMap = _buildNormalizedTextMap(text);
+        _pageSentenceSpans =
+            _pageTextMap == null ? const [] : splitIntoSentences(_pageTextMap!.normalized);
         _isTextLoading = false;
         _textError = null;
       });
@@ -273,6 +316,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         _textError = e.toString();
         _currentPageText = '';
         _pageTextMap = null;
+        _pageSentenceSpans = const [];
       });
     }
   }
@@ -329,7 +373,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     try {
       final text = await extractPdfPageTextFromPoint(
-        path: widget.book.path,
+        path: _resolvedFile!.path,
         pageIndex: _pageIndex,
         xNorm: xNorm,
         yNorm: yNorm,
@@ -385,13 +429,20 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     }
 
     final start = _ttsService.currentStartOffset;
-    final end = _ttsService.currentEndOffset;
-    if (start == null || end == null) return;
-    if (start == _lastHighlightStart && end == _lastHighlightEnd) return;
+    if (start == null) return;
 
-    _lastHighlightStart = start;
-    _lastHighlightEnd = end;
-    unawaited(_updateHighlightForRange(start, end));
+    final absoluteOffset = _ttsNormalizedBaseOffset + start;
+    final span = sentenceForOffset(_pageSentenceSpans, absoluteOffset);
+    if (span == null) return;
+
+    if (span.start == _lastHighlightStart && span.end == _lastHighlightEnd) {
+      return;
+    }
+
+    _lastHighlightStart = span.start;
+    _lastHighlightEnd = span.end;
+    unawaited(_updateHighlightForNormalizedRange(span.start, span.end));
+    _saveTtsSentenceSpan(span);
   }
 
   Future<void> _advanceToNextReadablePageAndSpeak() async {
@@ -434,17 +485,17 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     }
   }
 
-  Future<void> _updateHighlightForRange(int start, int end) async {
+  Future<void> _updateHighlightForNormalizedRange(
+    int normalizedStart,
+    int normalizedEnd,
+  ) async {
     final map = _pageTextMap;
     if (map == null || map.normalizedToRaw.isEmpty) return;
-
-    final normalizedStart = _ttsNormalizedBaseOffset + start;
-    final normalizedEnd = _ttsNormalizedBaseOffset + end;
     if (normalizedStart < 0 || normalizedEnd <= normalizedStart) return;
     if (normalizedStart >= map.normalizedToRaw.length) return;
 
     final clampedEnd =
-        normalizedEnd.clamp(0, map.normalizedToRaw.length) as int;
+        normalizedEnd.clamp(0, map.normalizedToRaw.length);
     if (clampedEnd <= normalizedStart) return;
 
     final rawStart = map.normalizedToRaw[normalizedStart];
@@ -453,7 +504,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     final requestId = ++_highlightRequestId;
     try {
       final rects = await extractPdfPageTextBounds(
-        path: widget.book.path,
+        path: _resolvedFile!.path,
         pageIndex: _pageIndex,
         startIndex: rawStart,
         endIndex: rawEnd,
@@ -487,6 +538,60 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     final index = map.normalized.indexOf(normalized);
     _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
+  }
+
+  void _saveTtsSentenceSpan(SentenceSpan span) {
+    _lastTtsSentenceStart = span.start;
+    _lastTtsSentenceEnd = span.end;
+    _lastTtsPage = _pageIndex;
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        currentPage: _pageIndex,
+        totalPages: _pageCount,
+        lastTtsSentenceStart: span.start,
+        lastTtsSentenceEnd: span.end,
+        lastTtsPage: _pageIndex,
+      ),
+    );
+  }
+
+  void _saveCurrentTtsSentence() {
+    final start = _ttsService.currentStartOffset;
+    if (start == null) return;
+    if (_pageTextMap == null) return;
+
+    final absoluteOffset = _ttsNormalizedBaseOffset + start;
+    final span = sentenceForOffset(_pageSentenceSpans, absoluteOffset);
+    if (span == null) return;
+    _saveTtsSentenceSpan(span);
+  }
+
+  String _resolveTtsText() {
+    final map = _pageTextMap;
+    final text = _currentPageText;
+    if (text.trim().isEmpty) return '';
+
+    if (map != null &&
+        _lastTtsSentenceStart >= 0 &&
+        _lastTtsSentenceEnd > _lastTtsSentenceStart &&
+        _lastTtsPage == _pageIndex) {
+      final normalized = map.normalized;
+      if (normalized.isNotEmpty) {
+        final start = _lastTtsSentenceStart.clamp(0, normalized.length);
+        _ttsNormalizedBaseOffset = start;
+        return normalized.substring(start);
+      }
+    }
+
+    final override = _ttsStartOverrideText;
+    if (override != null && override.trim().isNotEmpty) {
+      _setNormalizedBaseOffset(override);
+      return override;
+    }
+
+    _setNormalizedBaseOffset(text);
+    return text;
   }
 
   void _maybeAutoPanToHighlight(List<PdfTextRect> rects) {
@@ -541,8 +646,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
     _lastAutoPanAt = now;
     _pdfTransformController.value = Matrix4.identity()
-      ..translate(translation.dx, translation.dy)
-      ..scale(scale);
+      ..translateByDouble(translation.dx, translation.dy, 0.0, 1.0)
+      ..scaleByDouble(scale, scale, 1.0, 1.0);
   }
 
   PdfTextRect _unionHighlightRects(List<PdfTextRect> rects) {
@@ -566,18 +671,99 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     );
   }
 
-  void _toggleTts() {
+  Future<void> _toggleTts() async {
+    final next = !_showTtsControls;
     setState(() {
-      _showTtsControls = !_showTtsControls;
+      _showTtsControls = next;
+      if (next) {
+        _showChrome = true;
+      }
     });
+    _updateSystemUiMode();
 
-    if (_showTtsControls) {
-      unawaited(_loadPageText(_pageIndex));
-    } else {
+    if (!next) {
+      _saveCurrentTtsSentence();
       _ttsAdvanceRequestId++;
       _ttsStartOverrideText = null;
       _ttsHighlightRects = const [];
       unawaited(_ttsService.stop());
+      return;
+    }
+
+    if (_lastTtsSentenceStart >= 0 &&
+        _pageCount > 0 &&
+        _lastTtsPage >= 0 &&
+        _lastTtsPage < _pageCount &&
+        _lastTtsPage != _pageIndex) {
+      await _renderPage(_lastTtsPage, userInitiated: false);
+    }
+
+    await _loadPageText(_pageIndex);
+    if (_lastTtsSentenceStart < 0 && _ttsStartOverrideText == null) {
+      unawaited(_primeTtsFromViewport());
+    }
+  }
+
+  Future<void> _primeTtsFromViewport() async {
+    if (_viewerSize.isEmpty || _renderedPageSize.isEmpty) return;
+    if (_resolvedFile == null) return;
+
+    final matrix = _pdfTransformController.value;
+    Matrix4 inverse;
+    try {
+      inverse = Matrix4.inverted(matrix);
+    } catch (_) {
+      return;
+    }
+
+    final viewportCenter = Offset(
+      _viewerSize.width / 2,
+      _viewerSize.height / 2,
+    );
+    final scenePoint = MatrixUtils.transformPoint(inverse, viewportCenter);
+
+    var xNormVisible = scenePoint.dx / _renderedPageSize.width;
+    var yNormVisible = scenePoint.dy / _renderedPageSize.height;
+    if (xNormVisible < 0 ||
+        xNormVisible > 1 ||
+        yNormVisible < 0 ||
+        yNormVisible > 1) {
+      return;
+    }
+
+    var xNorm = xNormVisible;
+    var yNorm = yNormVisible;
+
+    if (_autoCrop && _marginsCache.containsKey(_pageIndex)) {
+      final margins = _marginsCache[_pageIndex]!;
+      final visibleWidth = 1.0 - margins.left - margins.right;
+      final visibleHeight = 1.0 - margins.top - margins.bottom;
+
+      if (visibleWidth > 0) {
+        xNorm = margins.left + xNormVisible * visibleWidth;
+      }
+      if (visibleHeight > 0) {
+        yNorm = margins.top + yNormVisible * visibleHeight;
+      }
+    }
+
+    try {
+      final text = await extractPdfPageTextFromPoint(
+        path: _resolvedFile!.path,
+        pageIndex: _pageIndex,
+        xNorm: xNorm,
+        yNorm: yNorm,
+      );
+
+      if (!mounted) return;
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return;
+      setState(() {
+        _ttsStartOverrideText = trimmed;
+      });
+      _setNormalizedBaseOffset(trimmed);
+    } catch (_) {
+      // Ignore probe failures
     }
   }
 
@@ -586,6 +772,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     _ttsStartOverrideText = null;
     _ttsHighlightRects = const [];
     setState(() => _showTtsControls = false);
+    _updateSystemUiMode();
   }
 
   void _openTextPicker() {
@@ -623,11 +810,173 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
 
   @override
   void dispose() {
+    _cleanupTempFile();
     _ttsService.setOnFinished(null);
     _ttsService.removeListener(_handleTtsProgress);
     _ttsService.dispose();
     _pdfTransformController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      unawaited(
+        widget.repository.updateReadingProgress(
+          widget.book.id,
+          currentPage: _pageIndex,
+          totalPages: _pageCount,
+        ),
+      );
+      _saveCurrentTtsSentence();
+    }
+  }
+
+  void _cleanupTempFile() {
+    final resolved = _resolvedFile;
+    if (resolved == null || !resolved.isTemp) return;
+    try {
+      File(resolved.path).deleteSync();
+    } catch (_) {
+      // Ignore cleanup failures
+    }
+  }
+
+  void _updateSystemUiMode() {
+    if (_showChrome && !_lockMode) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
+
+  void _toggleChrome() {
+    if (_lockMode) return;
+    setState(() => _showChrome = !_showChrome);
+    _updateSystemUiMode();
+  }
+
+  void _toggleLockMode() {
+    setState(() {
+      _lockMode = !_lockMode;
+      if (_lockMode) {
+        _showChrome = false;
+      } else {
+        _showChrome = true;
+      }
+    });
+    _updateSystemUiMode();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _lockMode
+                ? 'Lock mode on. Double-tap center to unlock.'
+                : 'Lock mode off.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  bool _isCenterTap(Offset globalPosition) {
+    final size = MediaQuery.of(context).size;
+    if (size.isEmpty) return false;
+    final centerWidth = size.width * 0.45;
+    final centerHeight = size.height * 0.35;
+    final left = (size.width - centerWidth) / 2;
+    final top = (size.height - centerHeight) / 2;
+    final rect = Rect.fromLTWH(left, top, centerWidth, centerHeight);
+    return rect.contains(globalPosition);
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    if (_isCenterTap(details.globalPosition)) {
+      _toggleChrome();
+      return;
+    }
+    if (_lockMode) return;
+    _startTtsFromTap(details);
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _lastDoubleTapDown = details.globalPosition;
+  }
+
+  void _handleDoubleTap() {
+    if (!_lockMode) return;
+    final position = _lastDoubleTapDown;
+    if (position == null) return;
+    if (_isCenterTap(position)) {
+      _toggleLockMode();
+    }
+  }
+
+  bool get _useHorizontalSwipe =>
+      _readingMode == ReadingMode.leftToRight ||
+      _readingMode == ReadingMode.horizontalContinuous;
+
+  bool get _useVerticalSwipe =>
+      _readingMode == ReadingMode.vertical ||
+      _readingMode == ReadingMode.verticalContinuous ||
+      _readingMode == ReadingMode.webtoon;
+
+  bool _canSwipePages() {
+    final scale = _pdfTransformController.value.getMaxScaleOnAxis();
+    return (scale - 1.0).abs() < 0.01;
+  }
+
+  void _swipeToPage(int delta) {
+    final next = _pageIndex + delta;
+    if (next < 0 || next >= _pageCount) return;
+    unawaited(_renderPage(next, userInitiated: true));
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    if (!_useHorizontalSwipe || !_canSwipePages()) return;
+    final velocity = details.primaryVelocity ?? 0.0;
+    if (velocity.abs() < 220) return;
+    // Positive velocity = swipe right = go to previous page
+    // Negative velocity = swipe left = go to next page
+    if (velocity > 0) {
+      _swipeToPage(-1);
+    } else {
+      _swipeToPage(1);
+    }
+  }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    if (!_useVerticalSwipe || !_canSwipePages()) return;
+    final velocity = details.primaryVelocity ?? 0.0;
+    if (velocity.abs() < 220) return;
+    // Positive velocity = swipe down = go to previous page
+    // Negative velocity = swipe up = go to next page
+    if (velocity > 0) {
+      _swipeToPage(-1);
+    } else {
+      _swipeToPage(1);
+    }
+  }
+
+  Future<void> _showReadingModePicker() async {
+    final selected = await showReadingModeSheet(
+      context,
+      current: _readingMode,
+      formatType: ReaderFormatType.pdf,
+    );
+    if (selected == null || selected == _readingMode) return;
+    setState(() => _readingMode = selected);
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        readingMode: selected,
+      ),
+    );
   }
 
   @override
@@ -636,74 +985,54 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         ? 'Unable to extract readable text for this page.'
         : 'No readable text on this page.';
 
+    final showChrome = _showChrome && !_lockMode;
+    final showTtsControls = showChrome && _showTtsControls;
+    final showBottomControls = showChrome && !_showTtsControls;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.book.title),
-        actions: [
-          IconButton(
-            icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
-            onPressed: _toggleTts,
-            tooltip: 'Listen',
-          ),
-          IconButton(
-            icon: const Icon(Icons.text_snippet),
-            onPressed: _openTextPicker,
-            tooltip: 'Text view',
-          ),
-          IconButton(
-            icon: Icon(_autoCrop ? Icons.crop : Icons.crop_free),
-            tooltip: _autoCrop ? "Disable Auto-Crop" : "Enable Auto-Crop",
-            onPressed: () {
-              setState(() {
-                _autoCrop = !_autoCrop;
-                if (_autoCrop && !_marginsCache.containsKey(_pageIndex)) {
-                  // Trigger reload to fetch margins
-                  _renderPage(_pageIndex);
-                }
-              });
-            },
-          ),
-          if (_pageCount > 0)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text("${_pageIndex + 1} / $_pageCount"),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _buildBody()),
+          if (showChrome) _buildTopBar(),
+          if (showBottomControls && _buildControls() != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildControls()!,
+            ),
+          if (showTtsControls)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                top: false,
+                child: TtsControlsSheet(
+                  ttsService: _ttsService,
+                  textToSpeak: _currentPageText,
+                  resolveTextToSpeak: _resolveTtsText,
+                  isTextLoading: _isTextLoading || _isTapToStartLoading,
+                  emptyTextMessage: ttsEmptyMessage,
+                  isContinuous: _ttsContinuous,
+                  onContinuousChanged: (value) {
+                    _ttsAdvanceRequestId++;
+                    setState(() => _ttsContinuous = value);
+                  },
+                  isFollowMode: _ttsFollowMode,
+                  onFollowModeChanged: (value) {
+                    setState(() => _ttsFollowMode = value);
+                  },
+                  isTapToStart: _tapToStartEnabled,
+                  onTapToStartChanged: (value) {
+                    setState(() => _tapToStartEnabled = value);
+                  },
+                  onStop: _saveCurrentTtsSentence,
+                  onPause: _saveCurrentTtsSentence,
+                  onClose: _closeTtsControls,
+                ),
               ),
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildBody()),
-          if (_showTtsControls)
-            TtsControlsSheet(
-              ttsService: _ttsService,
-              textToSpeak: _currentPageText,
-              resolveTextToSpeak: () {
-                final text = _ttsStartOverrideText ?? _currentPageText;
-                _setNormalizedBaseOffset(text);
-                return text;
-              },
-              isTextLoading: _isTextLoading || _isTapToStartLoading,
-              emptyTextMessage: ttsEmptyMessage,
-              isContinuous: _ttsContinuous,
-              onContinuousChanged: (value) {
-                _ttsAdvanceRequestId++;
-                setState(() => _ttsContinuous = value);
-              },
-              isFollowMode: _ttsFollowMode,
-              onFollowModeChanged: (value) {
-                setState(() => _ttsFollowMode = value);
-              },
-              isTapToStart: _tapToStartEnabled,
-              onTapToStartChanged: (value) {
-                setState(() => _tapToStartEnabled = value);
-              },
-              onClose: _closeTtsControls,
-            ),
-        ],
-      ),
-      bottomNavigationBar: _buildControls(),
     );
   }
 
@@ -755,11 +1084,11 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
                         fillColor: Theme.of(context)
                             .colorScheme
                             .primaryContainer
-                            .withOpacity(0.65),
+                            .withValues(alpha: 0.65),
                         borderColor: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.9),
+                            .withValues(alpha: 0.9),
                       ),
                     ),
                   ),
@@ -781,9 +1110,22 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         );
       }
 
+      // No animation - instant page switch to avoid flashing
+      final animatedPage = KeyedSubtree(
+        key: ValueKey(_pageIndex),
+        child: RepaintBoundary(
+          key: _pageImageKey,
+          child: pageLayer,
+        ),
+      );
+
       final pdfViewer = GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTapUp: _startTtsFromTap,
+        onTapUp: _handleTapUp,
+        onDoubleTapDown: _handleDoubleTapDown,
+        onDoubleTap: _handleDoubleTap,
+        onHorizontalDragEnd: _handleHorizontalDragEnd,
+        onVerticalDragEnd: _handleVerticalDragEnd,
         child: LayoutBuilder(
           builder: (context, constraints) {
             _viewerSize = Size(constraints.maxWidth, constraints.maxHeight);
@@ -791,10 +1133,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
               transformationController: _pdfTransformController,
               maxScale: 5.0,
               child: Center(
-                child: RepaintBoundary(
-                  key: _pageImageKey,
-                  child: pageLayer,
-                ),
+                child: animatedPage,
               ),
             );
           },
@@ -807,39 +1146,112 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     return const Center(child: Text("Initializing..."));
   }
 
+  Widget _buildTopBar() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.book.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(_lockMode ? Icons.lock : Icons.lock_open),
+                  tooltip: _lockMode ? 'Unlock' : 'Lock',
+                  onPressed: _toggleLockMode,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.view_carousel),
+                  tooltip: 'Reading mode',
+                  onPressed: _showReadingModePicker,
+                ),
+                IconButton(
+                  icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
+                  tooltip: 'Listen',
+                  onPressed: () => _toggleTts(),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.text_snippet),
+                  tooltip: 'Text view',
+                  onPressed: _openTextPicker,
+                ),
+                IconButton(
+                  icon: Icon(_autoCrop ? Icons.crop : Icons.crop_free),
+                  tooltip: _autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
+                  onPressed: () {
+                    setState(() {
+                      _autoCrop = !_autoCrop;
+                      if (_autoCrop && !_marginsCache.containsKey(_pageIndex)) {
+                        _renderPage(_pageIndex);
+                      }
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget? _buildControls() {
     if (_pageCount <= 1) return null;
 
-    return BottomAppBar(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.first_page),
-            onPressed: _pageIndex > 0
-                ? () => _renderPage(0, userInitiated: true)
-                : null,
+    return SafeArea(
+      top: false,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.first_page),
+                onPressed: _pageIndex > 0
+                    ? () => _renderPage(0, userInitiated: true)
+                    : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: _pageIndex > 0
+                    ? () => _renderPage(_pageIndex - 1, userInitiated: true)
+                    : null,
+              ),
+              Text("${_pageIndex + 1} / $_pageCount"),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: _pageIndex < _pageCount - 1
+                    ? () => _renderPage(_pageIndex + 1, userInitiated: true)
+                    : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.last_page),
+                onPressed: _pageIndex < _pageCount - 1
+                    ? () => _renderPage(_pageCount - 1, userInitiated: true)
+                    : null,
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _pageIndex > 0
-                ? () => _renderPage(_pageIndex - 1, userInitiated: true)
-                : null,
-          ),
-          Text("${_pageIndex + 1} / $_pageCount"),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: _pageIndex < _pageCount - 1
-                ? () => _renderPage(_pageIndex + 1, userInitiated: true)
-                : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.last_page),
-            onPressed: _pageIndex < _pageCount - 1
-                ? () => _renderPage(_pageCount - 1, userInitiated: true)
-                : null,
-          ),
-        ],
+        ),
       ),
     );
   }

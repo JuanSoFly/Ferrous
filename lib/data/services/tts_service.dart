@@ -21,6 +21,7 @@ class WordPosition {
 class TtsService extends ChangeNotifier {
   final FlutterTts _flutterTts = FlutterTts();
   late final Future<void> _ready;
+  bool _isReady = false;
   VoidCallback? _onFinished;
 
   TtsState _state = TtsState.stopped;
@@ -39,8 +40,7 @@ class TtsService extends ChangeNotifier {
   String? get currentWord => _currentWord;
   String get currentFullText => _currentFullText;
 
-  // UI-friendly playback rate (shown as "1.0x" etc). This is *not* the same as the
-  // platform TTS engine's speech-rate scale.
+  // UI-friendly playback rate (shown as "1.0x" etc).
   double _rate = 1.0;
   double get rate => _rate;
 
@@ -55,9 +55,8 @@ class TtsService extends ChangeNotifier {
   List<WordPosition> _wordPositions = const [];
   int _currentWordIndex = 0;
 
-  // Estimated words per minute for fallback calculation
-  // This should be tuned based on TTS engine speed
-  static const double _baseWordsPerMinute = 150.0;
+  // Estimated words per minute for fallback calculation (conservative for Android TTS)
+  static const double _baseWordsPerMinute = 120.0;
 
   TtsService() {
     _ready = _init();
@@ -68,6 +67,11 @@ class TtsService extends ChangeNotifier {
     _onFinished = callback;
   }
 
+  Future<void> _ensureReady() async {
+    if (_isReady) return;
+    await _ready;
+  }
+
   Future<void> _init() async {
     await _flutterTts.setLanguage('en-US');
     await _flutterTts.setSpeechRate(_engineRateFromUiRate(_rate));
@@ -76,7 +80,6 @@ class TtsService extends ChangeNotifier {
 
     _flutterTts.setStartHandler(() {
       _setState(TtsState.playing);
-      // Start fallback timer if native progress hasn't been received
       _startFallbackTimerIfNeeded();
     });
 
@@ -91,7 +94,7 @@ class TtsService extends ChangeNotifier {
     });
 
     _flutterTts.setPauseHandler(() {
-      _pauseFallbackTimer();
+      _stopFallbackTimer();
       _setState(TtsState.paused);
     });
 
@@ -123,6 +126,8 @@ class TtsService extends ChangeNotifier {
       _currentWord = word;
       notifyListeners();
     });
+
+    _isReady = true;
   }
 
   void _setState(TtsState next) {
@@ -238,10 +243,6 @@ class TtsService extends ChangeNotifier {
     _fallbackTimer = null;
   }
 
-  void _pauseFallbackTimer() {
-    _stopFallbackTimer();
-  }
-
   void _resumeFallbackTimer() {
     if (!_nativeProgressReceived && _wordPositions.isNotEmpty) {
       _startFallbackTimerIfNeeded();
@@ -307,7 +308,7 @@ class TtsService extends ChangeNotifier {
     try {
       result = await _flutterTts
           .speak(chunk)
-          .timeout(const Duration(seconds: 5), onTimeout: () => 0);
+          .timeout(const Duration(seconds: 2), onTimeout: () => 0);
     } catch (_) {
       result = 0;
     }
@@ -316,11 +317,22 @@ class TtsService extends ChangeNotifier {
   }
 
   Future<void> speak(String text) async {
-    await _ready;
+    await _ensureReady();
     final normalized = _normalizeText(text);
     if (normalized.isEmpty) return;
 
-    await stop();
+    // Stop any existing speech without blocking
+    _stopFallbackTimer();
+    if (_state != TtsState.stopped) {
+      _stopRequested = true;
+      // Fire and forget - don't await
+      unawaited(_flutterTts.stop());
+      // Small delay to let stop complete
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    _clearQueue();
+    _clearProgress();
     _stopRequested = false;
 
     // Reset native progress flag for each new speech
@@ -350,27 +362,31 @@ class TtsService extends ChangeNotifier {
     _setState(TtsState.playing);
   }
 
+  /// Stops TTS playback. This method is instant for UI purposes.
   Future<void> stop() async {
-    await _ready;
+    await _ensureReady();
     _stopRequested = true;
     _stopFallbackTimer();
     _clearQueue();
     _clearProgress();
     _setState(TtsState.stopped);
-    await _flutterTts.stop();
+    // Fire and forget - don't block UI
+    unawaited(_flutterTts.stop());
   }
 
+  /// Pauses TTS playback. This method is instant for UI purposes.
   Future<void> pause() async {
-    await _ready;
+    await _ensureReady();
     if (_state != TtsState.playing) return;
     _chunkResumeOffset = _currentChunkOffsetForResume();
-    _pauseFallbackTimer();
+    _stopFallbackTimer();
     _setState(TtsState.paused);
-    await _flutterTts.pause();
+    // Fire and forget - don't block UI
+    unawaited(_flutterTts.pause());
   }
 
   Future<void> resume() async {
-    await _ready;
+    await _ensureReady();
     if (_state != TtsState.paused) return;
     if (_chunks.isEmpty || _chunkIndex >= _chunks.length) return;
     _stopRequested = false;
@@ -388,11 +404,20 @@ class TtsService extends ChangeNotifier {
 
   bool get canResume => _state == TtsState.paused && _chunks.isNotEmpty;
 
+  /// Sets the speech rate. If currently playing, this will take effect on next word.
   Future<void> setRate(double newRate) async {
-    await _ready;
+    await _ensureReady();
     _rate = newRate;
     notifyListeners();
-    await _flutterTts.setSpeechRate(_engineRateFromUiRate(_rate));
+
+    // Update the engine rate immediately
+    unawaited(_flutterTts.setSpeechRate(_engineRateFromUiRate(_rate)));
+
+    // If using fallback timer, restart with new timing
+    if (!_nativeProgressReceived && _state == TtsState.playing) {
+      _stopFallbackTimer();
+      _startFallbackTimerIfNeeded();
+    }
   }
 
   double _engineRateFromUiRate(double uiRate) {

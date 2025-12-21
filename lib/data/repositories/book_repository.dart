@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:hive/hive.dart';
 import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
 class BookRepository {
@@ -49,6 +51,13 @@ class BookRepository {
     int? totalPages,
     int? sectionIndex,
     double? scrollPosition,
+    ReadingMode? readingMode,
+    int? lastReadingSentenceStart,
+    int? lastReadingSentenceEnd,
+    int? lastTtsSentenceStart,
+    int? lastTtsSentenceEnd,
+    int? lastTtsPage,
+    int? lastTtsSection,
   }) async {
     final book = getBook(id);
     if (book != null) {
@@ -57,6 +66,13 @@ class BookRepository {
         totalPages: totalPages,
         sectionIndex: sectionIndex,
         scrollPosition: scrollPosition,
+        readingMode: readingMode,
+        lastReadingSentenceStart: lastReadingSentenceStart,
+        lastReadingSentenceEnd: lastReadingSentenceEnd,
+        lastTtsSentenceStart: lastTtsSentenceStart,
+        lastTtsSentenceEnd: lastTtsSentenceEnd,
+        lastTtsPage: lastTtsPage,
+        lastTtsSection: lastTtsSection,
         lastOpened: DateTime.now(),
       );
       await updateBook(updated);
@@ -69,8 +85,16 @@ class BookRepository {
     return books.take(limit).toList();
   }
 
-  bool bookExists(String path) {
-    return box.values.any((book) => book.path == path);
+  bool bookExists({String? filePath, String? sourceUri}) {
+    return box.values.any((book) {
+      if (sourceUri != null && sourceUri.isNotEmpty) {
+        if (book.sourceUri == sourceUri) return true;
+      }
+      if (filePath != null && filePath.isNotEmpty) {
+        if (book.filePath == filePath) return true;
+      }
+      return false;
+    });
   }
 
   /// Generate covers for all books that don't have one.
@@ -81,6 +105,7 @@ class BookRepository {
     final books = getAllBooks();
     int generated = 0;
 
+    final resolver = BookFileResolver();
     for (final book in books) {
       if (book.coverPath != null && book.coverPath!.isNotEmpty) {
         continue; // Already has a cover
@@ -88,8 +113,19 @@ class BookRepository {
 
       try {
         final savePath = '$coversDir/${book.id}.png';
-        // Call Rust API - this will be imported from the generated bindings
-        await _extractCover(book.path, savePath);
+        final resolved = await resolver.resolve(book);
+        try {
+          // Call Rust API - this will be imported from the generated bindings
+          await _extractCover(resolved.path, savePath);
+        } finally {
+          if (resolved.isTemp) {
+            try {
+              await File(resolved.path).delete();
+            } catch (_) {
+              // Ignore cleanup failures for temp files
+            }
+          }
+        }
 
         // Update book with cover path
         final updated = book.copyWith(coverPath: savePath);

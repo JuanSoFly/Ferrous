@@ -10,6 +10,7 @@ import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/features/reader/split_reader_screen.dart';
+import 'package:reader_app/data/services/saf_service.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -56,7 +57,12 @@ class _LibraryView extends StatelessWidget {
               icon: const Icon(Icons.folder_open),
               onPressed: state.isLoading
                   ? null
-                  : () => controller.pickAndScanDirectory(),
+                  : () async {
+                      final mode = await _promptStorageMode(context);
+                      if (mode != null && context.mounted) {
+                        controller.pickAndScanDirectory(mode);
+                      }
+                    },
               tooltip: "Add Folder",
             ),
           ],
@@ -113,7 +119,12 @@ class _LibraryView extends StatelessWidget {
             ElevatedButton.icon(
               icon: const Icon(Icons.folder_open),
               label: const Text("Scan Directory"),
-              onPressed: () => controller.pickAndScanDirectory(),
+              onPressed: () async {
+                final mode = await _promptStorageMode(context);
+                if (mode != null && context.mounted) {
+                  controller.pickAndScanDirectory(mode);
+                }
+              },
             )
           ],
         ),
@@ -173,6 +184,35 @@ class _LibraryView extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Future<SafStorageMode?> _promptStorageMode(BuildContext context) {
+    return showDialog<SafStorageMode>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Add Folder'),
+          content: const Text(
+            'Choose how to add books from this folder. '
+            'Link keeps files in place and saves storage.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(SafStorageMode.imported),
+              child: const Text('Import (copy)'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(SafStorageMode.linked),
+              child: const Text('Link (recommended)'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

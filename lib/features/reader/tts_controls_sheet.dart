@@ -13,6 +13,8 @@ class TtsControlsSheet extends StatelessWidget {
   final ValueChanged<bool>? onFollowModeChanged;
   final bool isTapToStart;
   final ValueChanged<bool>? onTapToStartChanged;
+  final VoidCallback? onStop;
+  final VoidCallback? onPause;
   final VoidCallback onClose;
 
   const TtsControlsSheet({
@@ -28,6 +30,8 @@ class TtsControlsSheet extends StatelessWidget {
     this.onFollowModeChanged,
     this.isTapToStart = true,
     this.onTapToStartChanged,
+    this.onStop,
+    this.onPause,
     required this.onClose,
   });
 
@@ -42,17 +46,15 @@ class TtsControlsSheet extends StatelessWidget {
         return Material(
           elevation: 8,
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // Play/Pause Button
                     IconButton(
                       icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                      iconSize: 40,
+                      tooltip: isPlaying ? 'Pause' : 'Play',
                       onPressed: () async {
                         if (isTextLoading) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -64,6 +66,7 @@ class TtsControlsSheet extends StatelessWidget {
                         }
 
                         if (isPlaying) {
+                          onPause?.call();
                           await ttsService.pause();
                           return;
                         }
@@ -75,9 +78,7 @@ class TtsControlsSheet extends StatelessWidget {
 
                         final speakText =
                             (resolveTextToSpeak?.call() ?? textToSpeak).trim();
-                        final canSpeak = speakText.isNotEmpty;
-
-                        if (!canSpeak) {
+                        if (speakText.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text(emptyTextMessage)),
                           );
@@ -87,43 +88,43 @@ class TtsControlsSheet extends StatelessWidget {
                         await ttsService.speak(speakText);
                       },
                     ),
-                    if (isTextLoading)
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    // Stop Button
                     IconButton(
                       icon: const Icon(Icons.stop),
-                      iconSize: 40,
+                      tooltip: 'Stop',
                       onPressed: () async {
+                        onStop?.call();
                         await ttsService.stop();
                       },
                     ),
-                    // Speed Control
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${ttsService.rate.toStringAsFixed(1)}x'),
-                        SizedBox(
-                          width: 120,
-                          child: Slider(
-                            value: ttsService.rate,
-                            min: 0.5,
-                            max: 2.0,
-                            divisions: 6,
-                            onChanged: (value) async {
-                              await ttsService.setRate(value);
-                            },
-                          ),
+                    if (isTextLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 4.0),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      ],
+                      ),
+                    const Spacer(),
+                    Text('${ttsService.rate.toStringAsFixed(1)}x'),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 120,
+                      child: Slider(
+                        value: ttsService.rate,
+                        min: 0.5,
+                        max: 2.0,
+                        divisions: 6,
+                        onChanged: (value) async {
+                          await ttsService.setRate(value);
+                        },
+                      ),
                     ),
-                    // Close Button
                     IconButton(
                       icon: const Icon(Icons.close),
+                      tooltip: 'Close',
                       onPressed: () async {
+                        onStop?.call();
                         await ttsService.stop();
                         onClose();
                       },
@@ -137,26 +138,25 @@ class TtsControlsSheet extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Wrap(
                       alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 24,
+                      spacing: 8,
                       runSpacing: 8,
                       children: [
                         if (onContinuousChanged != null)
-                          _buildToggle(
+                          _buildToggleChip(
                             icon: Icons.repeat,
                             label: 'Continuous',
                             value: isContinuous,
                             onChanged: onContinuousChanged!,
                           ),
                         if (onFollowModeChanged != null)
-                          _buildToggle(
+                          _buildToggleChip(
                             icon: Icons.center_focus_strong,
                             label: 'Follow',
                             value: isFollowMode,
                             onChanged: onFollowModeChanged!,
                           ),
                         if (onTapToStartChanged != null)
-                          _buildToggle(
+                          _buildToggleChip(
                             icon: Icons.touch_app,
                             label: 'Tap to start',
                             value: isTapToStart,
@@ -173,24 +173,17 @@ class TtsControlsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildToggle({
+  Widget _buildToggleChip({
     required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 8),
-        Text(label),
-        const SizedBox(width: 8),
-        Switch.adaptive(
-          value: value,
-          onChanged: onChanged,
-        ),
-      ],
+    return FilterChip(
+      avatar: Icon(icon, size: 16),
+      label: Text(label),
+      selected: value,
+      onSelected: onChanged,
     );
   }
 }

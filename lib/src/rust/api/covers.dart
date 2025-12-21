@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `extract_cbz_cover`, `extract_epub_cover`, `extract_pdf_cover`
+// These functions are ignored because they are not marked as `pub`: `extract_cbz_cover`, `extract_epub_cover`, `extract_pdf_cover`, `save_cover_thumbnail`
 
 /// Extract cover from a book file and save it to the specified path.
 /// Returns the saved path on success.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:epubx/epubx.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
@@ -10,12 +11,16 @@ import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/models/annotation.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
+import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/features/annotations/annotation_dialog.dart';
 import 'package:reader_app/features/dictionary/dictionary_dialog.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
+import 'package:reader_app/features/reader/epub_fallback_parser.dart';
+import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+import 'package:reader_app/utils/sentence_utils.dart';
 
 class _NormalizedTextMap {
   final String normalized;
@@ -82,15 +87,24 @@ class EpubReaderScreen extends StatefulWidget {
   State<EpubReaderScreen> createState() => _EpubReaderScreenState();
 }
 
-class _EpubReaderScreenState extends State<EpubReaderScreen> {
+class _EpubReaderScreenState extends State<EpubReaderScreen>
+    with WidgetsBindingObserver {
   List<EpubChapter>? _chapters;
+  List<String> _allChapterContents = const []; // All chapter HTML for continuous scroll
+  List<String> _allChapterPlainTexts = const []; // Plain text for each chapter
+  List<GlobalKey> _chapterKeys = const []; // Keys to track chapter positions
   int _currentChapterIndex = 0;
   String? _currentContent;
   String _currentPlainText = '';
+  List<SentenceSpan> _sentenceSpans = const [];
   SelectedContent? _selectedContent;
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
+  bool _showChrome = false;
+  bool _lockMode = false;
+  Offset? _lastDoubleTapDown;
+  late ReadingMode _readingMode;
 
   // TTS
   final TtsService _ttsService = TtsService();
@@ -104,57 +118,242 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   bool _highlightKeyAssigned = false;
   int? _lastHighlightStart;
   int? _lastHighlightEnd;
-  int? _lastHighlightBaseOffset;
   int? _lastEnsuredStart;
   int? _lastEnsuredEnd;
   String? _cachedHighlightedHtml;
+  ResolvedBookFile? _resolvedFile;
+  late int _lastTtsSentenceStart;
+  late int _lastTtsSentenceEnd;
+  late int _lastTtsSection;
+  late double _lastScrollPosition;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ttsService.setOnFinished(_handleTtsFinished);
     _currentChapterIndex = widget.book.sectionIndex;
+    _lastTtsSentenceStart = widget.book.lastTtsSentenceStart;
+    _lastTtsSentenceEnd = widget.book.lastTtsSentenceEnd;
+    _lastTtsSection = widget.book.lastTtsSection;
+    _lastScrollPosition = widget.book.scrollPosition;
+    _readingMode = widget.book.readingMode;
     _loadEpub();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateSystemUiMode();
+    });
   }
 
   @override
   void dispose() {
+    _cleanupTempFile();
     _scrollController.dispose();
     _ttsService.setOnFinished(null);
     _ttsService.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _saveReadingPositionFromScroll();
+      _saveCurrentTtsSentence();
+    }
   }
 
   Future<void> _loadEpub() async {
     try {
-      final bytes = await File(widget.book.path).readAsBytes();
-      final book = await EpubReader.readBook(bytes);
+      final resolver = BookFileResolver();
+      final resolved = await resolver.resolve(widget.book);
+      _resolvedFile = resolved;
+      final bytes = await File(resolved.path).readAsBytes();
+      final chapters = await _readChaptersWithFallback(bytes);
 
-      // Flatten chapters
-      final chapters = _flattenChapters(book.Chapters ?? []);
-
-      setState(() {
-        _chapters = chapters;
-      });
-
-      if (chapters.isNotEmpty) {
-        // Validation of index
-        if (_currentChapterIndex >= chapters.length) {
-          _currentChapterIndex = 0;
-        }
-        await _loadChapter(_currentChapterIndex);
-      } else {
+      if (chapters.isEmpty) {
         setState(() {
           _error = "No chapters found in EPUB";
           _isLoading = false;
         });
+        return;
       }
+
+      // Preload ALL chapter contents for continuous scrolling
+      final allContents = <String>[];
+      final allPlainTexts = <String>[];
+      final allKeys = <GlobalKey>[];
+      
+      for (final chapter in chapters) {
+        final content = chapter.HtmlContent ?? '';
+        allContents.add(content);
+        allPlainTexts.add(_htmlToPlainText(content));
+        allKeys.add(GlobalKey());
+      }
+
+      // Validation of index
+      if (_currentChapterIndex >= chapters.length) {
+        _currentChapterIndex = 0;
+      }
+
+      // Set current chapter data for TTS compatibility
+      final currentContent = allContents[_currentChapterIndex];
+      final currentPlainText = allPlainTexts[_currentChapterIndex];
+
+      setState(() {
+        _chapters = chapters;
+        _allChapterContents = allContents;
+        _allChapterPlainTexts = allPlainTexts;
+        _chapterKeys = allKeys;
+        _currentContent = currentContent;
+        _currentPlainText = currentPlainText;
+        _sentenceSpans = splitIntoSentences(currentPlainText);
+        _isLoading = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _restoreScrollPosition();
+      });
     } catch (e) {
       setState(() {
         _error = e.toString();
         _isLoading = false;
       });
     }
+  }
+
+  void _cleanupTempFile() {
+    final resolved = _resolvedFile;
+    if (resolved == null || !resolved.isTemp) return;
+    try {
+      File(resolved.path).deleteSync();
+    } catch (_) {
+      // Ignore cleanup failures
+    }
+  }
+
+  void _updateSystemUiMode() {
+    if (_showChrome && !_lockMode) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
+
+  void _toggleChrome() {
+    if (_lockMode) return;
+    setState(() => _showChrome = !_showChrome);
+    _updateSystemUiMode();
+  }
+
+  void _toggleLockMode() {
+    setState(() {
+      _lockMode = !_lockMode;
+      if (_lockMode) {
+        _showChrome = false;
+      } else {
+        _showChrome = true;
+      }
+    });
+    _updateSystemUiMode();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _lockMode
+                ? 'Lock mode on. Double-tap center to unlock.'
+                : 'Lock mode off.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  bool _isCenterTap(Offset globalPosition) {
+    final size = MediaQuery.of(context).size;
+    if (size.isEmpty) return false;
+    final centerWidth = size.width * 0.45;
+    final centerHeight = size.height * 0.35;
+    final left = (size.width - centerWidth) / 2;
+    final top = (size.height - centerHeight) / 2;
+    final rect = Rect.fromLTWH(left, top, centerWidth, centerHeight);
+    return rect.contains(globalPosition);
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    if (_isCenterTap(details.globalPosition)) {
+      _toggleChrome();
+    }
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _lastDoubleTapDown = details.globalPosition;
+  }
+
+  void _handleDoubleTap() {
+    if (!_lockMode) return;
+    final position = _lastDoubleTapDown;
+    if (position == null) return;
+    if (_isCenterTap(position)) {
+      _toggleLockMode();
+    }
+  }
+
+  ReadingMode get _effectiveReadingMode {
+    if (_readingMode == ReadingMode.webtoon) return ReadingMode.webtoon;
+    if (_readingMode == ReadingMode.verticalContinuous) {
+      return ReadingMode.verticalContinuous;
+    }
+    return ReadingMode.verticalContinuous;
+  }
+
+  Future<void> _showReadingModePicker() async {
+    final selected = await showReadingModeSheet(
+      context,
+      current: _readingMode,
+      formatType: ReaderFormatType.text,
+    );
+    if (selected == null || selected == _readingMode) return;
+    setState(() => _readingMode = selected);
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        readingMode: selected,
+      ),
+    );
+  }
+
+  Future<List<EpubChapter>> _readChaptersWithFallback(List<int> bytes) async {
+    try {
+      final book = await EpubReader.readBook(bytes);
+      return _flattenChapters(book.Chapters ?? []);
+    } catch (e) {
+      final message = e.toString().toLowerCase();
+      if (_shouldFallbackToSpine(message)) {
+        try {
+          final chapters = EpubFallbackParser.parseChapters(bytes);
+          if (chapters.isNotEmpty) {
+            return chapters;
+          }
+        } catch (_) {
+          // Fall through to rethrow the original navigation error.
+        }
+      }
+      rethrow;
+    }
+  }
+
+  bool _shouldFallbackToSpine(String message) {
+    if (!message.contains('epub parsing error') &&
+        !message.contains('incorrect epub manifest')) {
+      return false;
+    }
+    return message.contains('toc') ||
+        message.contains('nav') ||
+        message.contains('manifest');
   }
 
   List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
@@ -170,6 +369,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
   Future<void> _loadChapter(int index, {bool userInitiated = false}) async {
     if (_chapters == null || index < 0 || index >= _chapters!.length) return;
+    if (_allChapterContents.isEmpty) return;
 
     if (userInitiated) {
       _ttsAdvanceRequestId++;
@@ -178,48 +378,48 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       }
     }
 
+    // Update current chapter data from preloaded content
     setState(() {
-      _isLoading = true;
-      _error = null;
       _currentChapterIndex = index;
+      _currentContent = _allChapterContents[index];
+      _currentPlainText = _allChapterPlainTexts[index];
+      _sentenceSpans = splitIntoSentences(_currentPlainText);
+      _cachedHighlightedHtml = null;
+      _lastHighlightStart = null;
+      _lastHighlightEnd = null;
+      _lastEnsuredStart = null;
+      _lastEnsuredEnd = null;
+      _ttsNormalizedBaseOffset = 0;
     });
 
     // Save progress
-    widget.repository.updateReadingProgress(
+    unawaited(widget.repository.updateReadingProgress(
       widget.book.id,
       sectionIndex: index,
       totalPages: _chapters!.length,
-    );
+      scrollPosition: userInitiated ? 0.0 : null,
+      lastReadingSentenceStart: userInitiated ? -1 : null,
+      lastReadingSentenceEnd: userInitiated ? -1 : null,
+    ));
 
-    try {
-      final chapter = _chapters![index];
-      final content = chapter.HtmlContent ?? '';
-      final plainText = _htmlToPlainText(content);
-
-      setState(() {
-        _currentContent = content;
-        _currentPlainText = plainText;
-        _error = null;
-        _isLoading = false;
-        _cachedHighlightedHtml = null;
-        _lastHighlightStart = null;
-        _lastHighlightEnd = null;
-        _lastHighlightBaseOffset = null;
-        _lastEnsuredStart = null;
-        _lastEnsuredEnd = null;
-        _ttsNormalizedBaseOffset = 0;
-      });
-
-      // Reset scroll for now (TODO: Restore scroll position)
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(0);
-      }
-    } catch (e) {
-      setState(() {
-        _error = "Chapter load error: $e";
-        _currentContent = null;
-        _currentPlainText = '';
-        _isLoading = false;
+    // Scroll to the chapter position
+    if (userInitiated && _scrollController.hasClients && _chapterKeys.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        
+        final key = _chapterKeys[index];
+        final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+        if (renderBox != null) {
+          final position = renderBox.localToGlobal(Offset.zero);
+          final scrollOffset = _scrollController.offset + position.dy;
+          final maxExtent = _scrollController.position.maxScrollExtent;
+          final clamped = scrollOffset.clamp(0.0, maxExtent);
+          _scrollController.animateTo(
+            clamped,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       });
     }
   }
@@ -279,8 +479,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     final maxIndex = map.normalizedToRaw.length - 1;
     if (maxIndex < 0) return html;
 
-    final clampedStart = start.clamp(0, maxIndex) as int;
-    final clampedEnd = end.clamp(0, map.normalizedToRaw.length) as int;
+    final clampedStart = start.clamp(0, maxIndex);
+    final clampedEnd = end.clamp(0, map.normalizedToRaw.length);
     if (clampedEnd <= clampedStart) return html;
 
     final rawStart = map.normalizedToRaw[clampedStart];
@@ -337,28 +537,43 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     if (html == null) return '';
 
     final start = _ttsService.currentStartOffset;
-    final end = _ttsService.currentEndOffset;
-    if (start == null || end == null) {
+    if (start == null) {
       return html;
     }
 
     final baseOffset =
-        _ttsNormalizedBaseOffset.clamp(0, _currentPlainText.length) as int;
-    final adjustedStart = baseOffset + start;
-    final adjustedEnd = baseOffset + end;
+        _ttsNormalizedBaseOffset.clamp(0, _currentPlainText.length);
+    final absoluteOffset = baseOffset + start;
+    final span = sentenceForOffset(_sentenceSpans, absoluteOffset);
+    if (span == null) {
+      return html;
+    }
 
     if (_cachedHighlightedHtml != null &&
-        adjustedStart == _lastHighlightStart &&
-        adjustedEnd == _lastHighlightEnd &&
-        baseOffset == _lastHighlightBaseOffset) {
+        span.start == _lastHighlightStart &&
+        span.end == _lastHighlightEnd) {
       return _cachedHighlightedHtml!;
     }
 
-    final highlighted = _buildHighlightedHtml(html, adjustedStart, adjustedEnd);
+    final highlighted = _buildHighlightedHtml(html, span.start, span.end);
     _cachedHighlightedHtml = highlighted;
-    _lastHighlightStart = adjustedStart;
-    _lastHighlightEnd = adjustedEnd;
-    _lastHighlightBaseOffset = baseOffset;
+    _lastHighlightStart = span.start;
+    _lastHighlightEnd = span.end;
+
+    _lastTtsSentenceStart = span.start;
+    _lastTtsSentenceEnd = span.end;
+    _lastTtsSection = _currentChapterIndex;
+
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        sectionIndex: _currentChapterIndex,
+        totalPages: _chapters?.length ?? 0,
+        lastTtsSentenceStart: span.start,
+        lastTtsSentenceEnd: span.end,
+        lastTtsSection: _currentChapterIndex,
+      ),
+    );
     return highlighted;
   }
 
@@ -378,19 +593,19 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
     final context = _ttsHighlightKey.currentContext;
     if (context == null) {
-      // Retry after a short delay if context is not yet available
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (mounted && _ttsFollowMode) {
-          final retryContext = _ttsHighlightKey.currentContext;
-          if (retryContext != null) {
-            _performEnsureVisible(retryContext);
-          }
-        }
-      });
+      // Retry after a short delay if context is not yet available.
+      Future.delayed(const Duration(milliseconds: 50), _retryEnsureVisible);
       return;
     }
 
     _performEnsureVisible(context);
+  }
+
+  void _retryEnsureVisible() {
+    if (!mounted || !_ttsFollowMode) return;
+    final retryContext = _ttsHighlightKey.currentContext;
+    if (retryContext == null) return;
+    _performEnsureVisible(retryContext);
   }
 
   void _performEnsureVisible(BuildContext context) {
@@ -402,6 +617,90 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
       alignment: 0.3,
+    );
+  }
+
+  void _restoreScrollPosition() {
+    if (!_scrollController.hasClients) return;
+    if (_chapterKeys.isEmpty) return;
+    
+    // Wait for the ListView to be laid out before scrolling
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      
+      final chapterIndex = _currentChapterIndex.clamp(0, _chapterKeys.length - 1);
+      final key = _chapterKeys[chapterIndex];
+      final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+      
+      if (renderBox != null) {
+        // Scroll to the chapter position
+        final position = renderBox.localToGlobal(Offset.zero);
+        final scrollOffset = _scrollController.offset + position.dy;
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final clamped = scrollOffset.clamp(0.0, maxExtent);
+        _scrollController.jumpTo(clamped);
+      } else if (_lastScrollPosition > 0) {
+        // Fallback: use saved scroll position
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final clamped = _lastScrollPosition.clamp(0.0, maxExtent);
+        _scrollController.jumpTo(clamped);
+      }
+    });
+  }
+
+  void _saveReadingPositionFromScroll() {
+    if (!_scrollController.hasClients) return;
+    final text = _currentPlainText;
+    if (text.trim().isEmpty) return;
+
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final offset = _scrollController.offset.clamp(0.0, maxExtent);
+    final fraction = maxExtent <= 0 ? 0.0 : (offset / maxExtent);
+    final maxIndex = text.length - 1;
+    final approxIndex =
+        maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+
+    final span =
+        sentenceForOffset(_sentenceSpans, approxIndex) ?? SentenceSpan(0, text.length);
+
+    _lastScrollPosition = offset;
+
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        sectionIndex: _currentChapterIndex,
+        totalPages: _chapters?.length ?? 0,
+        scrollPosition: offset,
+        lastReadingSentenceStart: span.start,
+        lastReadingSentenceEnd: span.end,
+      ),
+    );
+  }
+
+  void _saveCurrentTtsSentence() {
+    final start = _ttsService.currentStartOffset;
+    if (start == null) return;
+    if (_currentPlainText.trim().isEmpty) return;
+
+    final baseOffset =
+        _ttsNormalizedBaseOffset.clamp(0, _currentPlainText.length);
+    final absoluteOffset = baseOffset + start;
+    final span = sentenceForOffset(_sentenceSpans, absoluteOffset);
+    if (span == null) return;
+
+    _lastTtsSentenceStart = span.start;
+    _lastTtsSentenceEnd = span.end;
+    _lastTtsSection = _currentChapterIndex;
+
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        sectionIndex: _currentChapterIndex,
+        totalPages: _chapters?.length ?? 0,
+        lastTtsSentenceStart: span.start,
+        lastTtsSentenceEnd: span.end,
+        lastTtsSection: _currentChapterIndex,
+      ),
     );
   }
 
@@ -419,31 +718,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       return '';
     }
 
-    var start = 0;
-
-    // Prefer starting at the beginning of a sentence near the scroll position.
-    final boundaries = <String>['. ', '! ', '? '];
-    for (final boundary in boundaries) {
-      final i = text.lastIndexOf(boundary, approxIndex);
-      if (i != -1) {
-        final candidate = i + boundary.length;
-        if (candidate > start) start = candidate;
-      }
-    }
-
-    // If we couldn't find a sentence boundary, at least avoid restarting from the
-    // very beginning by snapping to the previous whitespace.
-    if (start == 0) {
-      final ws = text.lastIndexOf(' ', approxIndex);
-      if (ws != -1 && ws + 1 < text.length) {
-        start = ws + 1;
-      }
-    }
-
-    while (start < text.length && text[start] == ' ') {
-      start++;
-    }
-
+    final start = findSentenceStart(text, approxIndex);
     _ttsNormalizedBaseOffset = start;
     return text.substring(start);
   }
@@ -464,6 +739,21 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     final approxIndex =
         maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
     return _sliceTextFromApproxIndex(text, approxIndex);
+  }
+
+  String _resolveTtsText() {
+    final text = _currentPlainText;
+    if (text.trim().isEmpty) return '';
+
+    if (_lastTtsSentenceStart >= 0 &&
+        _lastTtsSentenceEnd > _lastTtsSentenceStart &&
+        _lastTtsSection == _currentChapterIndex) {
+      final start = _lastTtsSentenceStart.clamp(0, text.length);
+      _ttsNormalizedBaseOffset = start;
+      return text.substring(start);
+    }
+
+    return _ttsTextFromScrollPosition();
   }
 
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
@@ -532,74 +822,99 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     _cachedHighlightedHtml = null;
     _lastHighlightStart = null;
     _lastHighlightEnd = null;
-    _lastHighlightBaseOffset = null;
     _lastEnsuredStart = null;
     _lastEnsuredEnd = null;
+    _updateSystemUiMode();
   }
 
   @override
   Widget build(BuildContext context) {
+    final showChrome = _showChrome && !_lockMode;
+    final showTtsControls = showChrome && _showTtsControls;
+    final showBottomControls = showChrome && !_showTtsControls;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.book.title),
-        actions: [
-          IconButton(
-            icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
-            onPressed: _toggleTts,
-            tooltip: 'Listen',
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _showSearchDialog,
-            tooltip: 'Find in chapter',
-          ),
-          IconButton(
-            icon: const Icon(Icons.list),
-            onPressed: _showChapterList,
-          ),
-        ],
-      ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(child: _buildBody()),
-          if (_showTtsControls)
-            TtsControlsSheet(
-              ttsService: _ttsService,
-              textToSpeak: _currentPlainText,
-              resolveTextToSpeak: _ttsTextFromScrollPosition,
-              emptyTextMessage: 'No readable text in this chapter.',
-              isContinuous: _ttsContinuous,
-              onContinuousChanged: (value) {
-                _ttsAdvanceRequestId++;
-                setState(() => _ttsContinuous = value);
-              },
-              isFollowMode: _ttsFollowMode,
-              onFollowModeChanged: (value) {
-                setState(() => _ttsFollowMode = value);
-              },
-              onClose: _closeTtsControls,
+          // Content layer
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onDoubleTapDown: _handleDoubleTapDown,
+              onDoubleTap: _handleDoubleTap,
+              child: _buildBody(),
+            ),
+          ),
+          // Removed center overlay - tap detection handled via the content layer
+          if (showChrome) _buildTopBar(),
+          if (showBottomControls && _buildControls() != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildControls()!,
+            ),
+          if (showTtsControls)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                top: false,
+                child: TtsControlsSheet(
+                  ttsService: _ttsService,
+                  textToSpeak: _currentPlainText,
+                  resolveTextToSpeak: _resolveTtsText,
+                  emptyTextMessage: 'No readable text in this chapter.',
+                  isContinuous: _ttsContinuous,
+                  onContinuousChanged: (value) {
+                    _ttsAdvanceRequestId++;
+                    setState(() => _ttsContinuous = value);
+                  },
+                  isFollowMode: _ttsFollowMode,
+                  onFollowModeChanged: (value) {
+                    setState(() => _ttsFollowMode = value);
+                  },
+                  onStop: _saveCurrentTtsSentence,
+                  onPause: _saveCurrentTtsSentence,
+                  onClose: _closeTtsControls,
+                ),
+              ),
             ),
         ],
       ),
-      bottomNavigationBar: _buildControls(),
     );
   }
 
-  void _toggleTts() {
+  Future<void> _toggleTts() async {
+    final next = !_showTtsControls;
     setState(() {
-      _showTtsControls = !_showTtsControls;
-      if (!_showTtsControls) {
-        _ttsAdvanceRequestId++;
-        _ttsService.stop();
-        _ttsNormalizedBaseOffset = 0;
-        _cachedHighlightedHtml = null;
-        _lastHighlightStart = null;
-        _lastHighlightEnd = null;
-        _lastHighlightBaseOffset = null;
-        _lastEnsuredStart = null;
-        _lastEnsuredEnd = null;
+      _showTtsControls = next;
+      if (next) {
+        _showChrome = true;
       }
     });
+    _updateSystemUiMode();
+
+    if (!next) {
+      _saveCurrentTtsSentence();
+      _ttsAdvanceRequestId++;
+      _ttsService.stop();
+      _ttsNormalizedBaseOffset = 0;
+      _cachedHighlightedHtml = null;
+      _lastHighlightStart = null;
+      _lastHighlightEnd = null;
+      _lastEnsuredStart = null;
+      _lastEnsuredEnd = null;
+      return;
+    }
+
+    final chapters = _chapters;
+    if (_lastTtsSentenceStart >= 0 &&
+        chapters != null &&
+        _lastTtsSection >= 0 &&
+        _lastTtsSection < chapters.length &&
+        _lastTtsSection != _currentChapterIndex) {
+      await _loadChapter(_lastTtsSection, userInitiated: false);
+    }
   }
 
   String _htmlToPlainText(String html) {
@@ -643,64 +958,125 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_currentContent != null) {
-      final isTtsActive =
-          _showTtsControls && _ttsService.state == TtsState.playing;
-      final highlightColor = Theme.of(context).colorScheme.primaryContainer;
-      final extensions = [
-        TagExtension(
-          tagsToExtend: {_ttsHighlightTag},
-          builder: (context) {
-            final text = context.node.text ?? '';
-            final style =
-                context.style?.generateTextStyle() ?? const TextStyle();
-            return _TtsHighlightSpan(
-              key: _nextHighlightKey(),
-              text: text,
-              textStyle: style,
-              highlightColor: highlightColor,
-            );
-          },
-        ),
-      ];
+    if (_allChapterContents.isEmpty) {
+      return const Center(child: Text("No content available."));
+    }
 
-      Widget htmlView(String data) {
-        return SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16.0),
-          child: Html(
-            data: data,
-            extensions: extensions,
-            style: {
-              "body": Style(
-                fontSize: FontSize(18),
-                lineHeight: const LineHeight(1.8),
-              ),
-              _ttsHighlightTag: Style(
-                backgroundColor: highlightColor,
-              ),
-              "p": Style(margin: Margins.only(bottom: 16)),
-              "img": Style(width: Width(100, Unit.percent)),
-            },
+    final isTtsActive =
+        _showTtsControls && _ttsService.state == TtsState.playing;
+    final highlightColor = Theme.of(context).colorScheme.primaryContainer;
+    final isWebtoon = _effectiveReadingMode == ReadingMode.webtoon;
+    final paragraphSpacing = isWebtoon ? 28.0 : 16.0;
+    final imageSpacing = isWebtoon ? 24.0 : 12.0;
+    final chapterSpacing = isWebtoon ? 80.0 : 48.0;
+    
+    final extensions = [
+      TagExtension(
+        tagsToExtend: {_ttsHighlightTag},
+        builder: (context) {
+          final text = context.node.text ?? '';
+          final style =
+              context.style?.generateTextStyle() ?? const TextStyle();
+          return _TtsHighlightSpan(
+            key: _nextHighlightKey(),
+            text: text,
+            textStyle: style,
+            highlightColor: highlightColor,
+          );
+        },
+      ),
+    ];
+
+    Widget buildChapterHtml(int index, String data) {
+      return Html(
+        data: data,
+        extensions: extensions,
+        style: {
+          "body": Style(
+            fontSize: FontSize(18),
+            lineHeight: const LineHeight(1.8),
           ),
-        );
-      }
+          _ttsHighlightTag: Style(
+            backgroundColor: highlightColor,
+          ),
+          "p": Style(margin: Margins.only(bottom: paragraphSpacing)),
+          "img": Style(
+            width: Width(100, Unit.percent),
+            margin: Margins.only(bottom: imageSpacing),
+          ),
+        },
+      );
+    }
 
-      if (isTtsActive) {
-        return AnimatedBuilder(
-          animation: _ttsService,
-          builder: (context, _) {
-            _highlightKeyAssigned = false;
-            final highlightedHtml = _buildTtsHighlightedHtml();
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _maybeEnsureHighlightVisible();
-            });
-            return htmlView(highlightedHtml);
-          },
-        );
-      }
+    Widget buildChapterItem(int index) {
+      final content = _allChapterContents[index];
+      final chapter = _chapters![index];
+      final isFirst = index == 0;
+      final isLast = index == _allChapterContents.length - 1;
+      
+      return Container(
+        key: _chapterKeys[index],
+        padding: EdgeInsets.only(
+          left: 16.0,
+          right: 16.0,
+          top: isFirst ? 16.0 : chapterSpacing / 2,
+          bottom: isLast ? 16.0 : chapterSpacing / 2,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Chapter title divider (except for first chapter)
+            if (!isFirst) ...[
+              Center(
+                child: Container(
+                  width: 60,
+                  height: 2,
+                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (chapter.Title != null && chapter.Title!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    chapter.Title!,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+            // Chapter content
+            if (isTtsActive && index == _currentChapterIndex)
+              AnimatedBuilder(
+                animation: _ttsService,
+                builder: (context, _) {
+                  _highlightKeyAssigned = false;
+                  final highlightedHtml = _buildTtsHighlightedHtml();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _maybeEnsureHighlightVisible();
+                  });
+                  return buildChapterHtml(index, highlightedHtml);
+                },
+              )
+            else
+              buildChapterHtml(index, content),
+          ],
+        ),
+      );
+    }
 
-      return SelectionArea(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification ||
+            (notification is UserScrollNotification &&
+                notification.direction == ScrollDirection.idle)) {
+          _saveReadingPositionFromScroll();
+          _updateCurrentChapterFromScroll();
+        }
+        return false;
+      },
+      child: SelectionArea(
         onSelectionChanged: (content) {
           _selectedContent = content;
         },
@@ -764,39 +1140,164 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             ],
           );
         },
-        child: htmlView(_currentContent!),
-      );
-    }
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapUp: (details) {
+            if (_isCenterTap(details.globalPosition)) {
+              _toggleChrome();
+            }
+          },
+          child: ListView.builder(
+            controller: _scrollController,
+            itemCount: _allChapterContents.length,
+            itemBuilder: (context, index) => buildChapterItem(index),
+          ),
+        ),
+      ),
+    );
+  }
 
-    return const Center(child: Text("Loading..."));
+  /// Updates _currentChapterIndex based on scroll position
+  void _updateCurrentChapterFromScroll() {
+    if (_chapterKeys.isEmpty || !_scrollController.hasClients) return;
+    
+    final viewportTop = _scrollController.offset;
+    final viewportMiddle = viewportTop + MediaQuery.of(context).size.height / 2;
+    
+    int visibleChapter = 0;
+    for (int i = 0; i < _chapterKeys.length; i++) {
+      final key = _chapterKeys[i];
+      final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null) continue;
+      
+      final position = renderBox.localToGlobal(Offset.zero);
+      final chapterTop = position.dy + viewportTop;
+      final chapterBottom = chapterTop + renderBox.size.height;
+      
+      if (viewportMiddle >= chapterTop && viewportMiddle < chapterBottom) {
+        visibleChapter = i;
+        break;
+      }
+      if (chapterTop > viewportMiddle) {
+        visibleChapter = (i > 0) ? i - 1 : 0;
+        break;
+      }
+      visibleChapter = i;
+    }
+    
+    if (visibleChapter != _currentChapterIndex) {
+      setState(() {
+        _currentChapterIndex = visibleChapter;
+        _currentContent = _allChapterContents[visibleChapter];
+        _currentPlainText = _allChapterPlainTexts[visibleChapter];
+        _sentenceSpans = splitIntoSentences(_currentPlainText);
+      });
+      
+      // Save progress
+      unawaited(widget.repository.updateReadingProgress(
+        widget.book.id,
+        sectionIndex: visibleChapter,
+        totalPages: _chapters?.length ?? 0,
+      ));
+    }
+  }
+
+  Widget _buildTopBar() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.book.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(_lockMode ? Icons.lock : Icons.lock_open),
+                  tooltip: _lockMode ? 'Unlock' : 'Lock',
+                  onPressed: _toggleLockMode,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.view_carousel),
+                  tooltip: 'Reading mode',
+                  onPressed: _showReadingModePicker,
+                ),
+                IconButton(
+                  icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
+                  tooltip: 'Listen',
+                  onPressed: () => _toggleTts(),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Find in chapter',
+                  onPressed: _showSearchDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.list),
+                  tooltip: 'Chapters',
+                  onPressed: _showChapterList,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget? _buildControls() {
     if (_chapters == null || _chapters!.length <= 1) return null;
 
-    return BottomAppBar(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _currentChapterIndex > 0
-                ? () =>
-                    _loadChapter(_currentChapterIndex - 1, userInitiated: true)
-                : null,
+    return SafeArea(
+      top: false,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: _currentChapterIndex > 0
+                    ? () => _loadChapter(
+                        _currentChapterIndex - 1,
+                        userInitiated: true,
+                      )
+                    : null,
+              ),
+              Text(
+                "Chapter ${_currentChapterIndex + 1} / ${_chapters!.length}",
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: _currentChapterIndex < _chapters!.length - 1
+                    ? () => _loadChapter(
+                        _currentChapterIndex + 1,
+                        userInitiated: true,
+                      )
+                    : null,
+              ),
+            ],
           ),
-          Text(
-            "Chapter ${_currentChapterIndex + 1} / ${_chapters!.length}",
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: _currentChapterIndex < _chapters!.length - 1
-                ? () =>
-                    _loadChapter(_currentChapterIndex + 1, userInitiated: true)
-                : null,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -807,30 +1308,30 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       builder: (context) => AnnotationDialog(selectedText: selectedText),
     );
 
-    if (result != null && mounted) {
-      final note = result['note'] as String;
-      final color = result['color'] as int;
+    if (!mounted || result == null) return;
 
-      final annotation = Annotation(
-        id: const Uuid().v4(),
-        bookId: widget.book.id,
-        selectedText: selectedText,
-        note: note,
-        chapterIndex: _currentChapterIndex,
-        startOffset: 0, // Not precise yet
-        endOffset: 0, // Not precise yet
-        color: color,
-        createdAt: DateTime.now(),
-      );
+    final note = result['note'] as String;
+    final color = result['color'] as int;
+    final annotationRepo = context.read<AnnotationRepository>();
 
-      await context.read<AnnotationRepository>().addAnnotation(annotation);
+    final annotation = Annotation(
+      id: const Uuid().v4(),
+      bookId: widget.book.id,
+      selectedText: selectedText,
+      note: note,
+      chapterIndex: _currentChapterIndex,
+      startOffset: 0, // Not precise yet
+      endOffset: 0, // Not precise yet
+      color: color,
+      createdAt: DateTime.now(),
+    );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Annotation saved')),
-        );
-      }
-    }
+    await annotationRepo.addAnnotation(annotation);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Annotation saved')),
+    );
   }
 
   void _showDictionaryDialog(String word) {
@@ -948,7 +1449,7 @@ class _TtsHighlightSpan extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: borderColor.withOpacity(0.4),
+            color: borderColor.withValues(alpha: 0.4),
             blurRadius: 4,
             spreadRadius: 1,
           ),

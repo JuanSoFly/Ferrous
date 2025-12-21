@@ -83,9 +83,8 @@ class LibraryController extends StateNotifier<LibraryState> {
     state = state.copyWith(clearSplitPending: true);
   }
 
-  /// Opens the folder picker using SAF and imports any ebook files found.
-  /// Files are copied to internal storage where Rust can access them.
-  Future<void> pickAndScanDirectory() async {
+  /// Opens the folder picker using SAF and links or imports any ebook files found.
+  Future<void> pickAndScanDirectory(SafStorageMode mode) async {
     try {
       state = state.copyWith(
         isLoading: true,
@@ -93,41 +92,21 @@ class LibraryController extends StateNotifier<LibraryState> {
         statusMessage: 'Opening folder picker...',
       );
 
-      // Use SAF to pick folder and copy files to internal storage
-      final copiedPaths = await _safService.pickAndImportFolder();
+      final refs = await _safService.pickFolder(mode: mode);
 
-      if (copiedPaths.isEmpty) {
+      if (refs.isEmpty) {
         // User canceled or no supported files found
         state = state.copyWith(isLoading: false, statusMessage: null);
         return;
       }
 
       state = state.copyWith(
-        statusMessage: 'Importing ${copiedPaths.length} books...',
+        statusMessage: mode == SafStorageMode.linked
+            ? 'Linking ${refs.length} books...'
+            : 'Importing ${refs.length} books...',
       );
 
-      // Add each copied file to the book repository
-      int addedCount = 0;
-      for (var path in copiedPaths) {
-        if (!_bookRepository.bookExists(path)) {
-          final file = File(path);
-          final fileName = file.uri.pathSegments.last;
-          final title = fileName.contains('.')
-              ? fileName.substring(0, fileName.lastIndexOf('.'))
-              : fileName;
-          final format = path.split('.').last.toLowerCase();
-
-          final newBook = Book(
-            id: const Uuid().v4(),
-            title: title,
-            author: 'Unknown Author',
-            path: path,
-            format: format,
-          );
-          await _bookRepository.addBook(newBook);
-          addedCount++;
-        }
-      }
+      final addedCount = await _addBooksFromRefs(refs);
 
       // Refresh list
       loadBooks();
@@ -165,9 +144,9 @@ class LibraryController extends StateNotifier<LibraryState> {
         statusMessage: 'Rescanning folders...',
       );
 
-      final copiedPaths = await _safService.rescanPersistedFolders();
+      final refs = await _safService.rescanPersistedFolders();
 
-      if (copiedPaths.isEmpty) {
+      if (refs.isEmpty) {
         state = state.copyWith(
           isLoading: false,
           statusMessage: 'No new books found',
@@ -180,28 +159,7 @@ class LibraryController extends StateNotifier<LibraryState> {
         return;
       }
 
-      // Add new books
-      int addedCount = 0;
-      for (var path in copiedPaths) {
-        if (!_bookRepository.bookExists(path)) {
-          final file = File(path);
-          final fileName = file.uri.pathSegments.last;
-          final title = fileName.contains('.')
-              ? fileName.substring(0, fileName.lastIndexOf('.'))
-              : fileName;
-          final format = path.split('.').last.toLowerCase();
-
-          final newBook = Book(
-            id: const Uuid().v4(),
-            title: title,
-            author: 'Unknown Author',
-            path: path,
-            format: format,
-          );
-          await _bookRepository.addBook(newBook);
-          addedCount++;
-        }
-      }
+      final addedCount = await _addBooksFromRefs(refs);
 
       loadBooks();
       state = state.copyWith(
@@ -227,6 +185,46 @@ class LibraryController extends StateNotifier<LibraryState> {
         statusMessage: null,
       );
     }
+  }
+
+  Future<int> _addBooksFromRefs(List<SafBookRef> refs) async {
+    int addedCount = 0;
+    for (final ref in refs) {
+      if (_bookRepository.bookExists(
+        filePath: ref.filePath,
+        sourceUri: ref.sourceUri,
+      )) {
+        continue;
+      }
+
+      final title = _titleFromDisplayName(ref.displayName);
+      final format = ref.format.isNotEmpty ? ref.format : _formatFromName(ref.displayName);
+      final newBook = Book(
+        id: const Uuid().v4(),
+        title: title,
+        author: 'Unknown Author',
+        filePath: ref.filePath ?? '',
+        format: format.toLowerCase(),
+        sourceType: ref.sourceType,
+        sourceUri: ref.sourceUri,
+      );
+      await _bookRepository.addBook(newBook);
+      addedCount++;
+    }
+    return addedCount;
+  }
+
+  String _titleFromDisplayName(String name) {
+    if (name.isEmpty) return 'Unknown Title';
+    final dot = name.lastIndexOf('.');
+    if (dot > 0) return name.substring(0, dot);
+    return name;
+  }
+
+  String _formatFromName(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot <= 0 || dot == name.length - 1) return '';
+    return name.substring(dot + 1).toLowerCase();
   }
 
   Future<void> _generateCoversInBackground() async {

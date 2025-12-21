@@ -16,17 +16,17 @@ class ReaderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bookRepository = context.read<BookRepository>();
-    final path = book.path.toLowerCase();
+    final format = book.format.toLowerCase();
 
-    if (path.endsWith('.pdf')) {
+    if (format == 'pdf') {
       return PdfReaderScreen(book: book, repository: bookRepository);
-    } else if (path.endsWith('.epub')) {
+    } else if (format == 'epub') {
       return EpubReaderScreen(book: book, repository: bookRepository);
-    } else if (path.endsWith('.cbz') || path.endsWith('.cbr')) {
+    } else if (format == 'cbz' || format == 'cbr') {
       return CbzReaderScreen(book: book, repository: bookRepository);
-    } else if (path.endsWith('.docx')) {
+    } else if (format == 'docx') {
       return DocxReaderScreen(book: book, repository: bookRepository);
-    } else if (path.endsWith('.mobi') || path.endsWith('.azw3') || path.endsWith('.azw')) {
+    } else if (format == 'mobi' || format == 'azw3' || format == 'azw') {
       return MobiReaderScreen(book: book, repository: bookRepository);
     } else {
       return _buildUnsupportedScreen(context, 'Unknown');
@@ -51,7 +51,7 @@ class ReaderScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'File: ${book.path}',
+                'Location: ${book.sourceType == BookSourceType.imported ? book.filePath : (book.sourceUri ?? 'Unknown')}',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
