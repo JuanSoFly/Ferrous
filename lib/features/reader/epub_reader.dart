@@ -21,57 +21,11 @@ import 'package:html/dom.dart' as dom;
 import 'package:reader_app/features/reader/epub_fallback_parser.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/utils/sentence_utils.dart';
+import 'package:reader_app/src/rust/api/tts_text.dart' as rust_tts;
+import 'package:reader_app/utils/normalized_text_map.dart';
+import 'package:reader_app/utils/text_normalization.dart';
 
-class _NormalizedTextMap {
-  final String normalized;
-  final List<int> normalizedToRaw;
-
-  const _NormalizedTextMap(this.normalized, this.normalizedToRaw);
-}
-
-_NormalizedTextMap _buildNormalizedTextMap(String raw) {
-  if (raw.trim().isEmpty) {
-    return const _NormalizedTextMap('', []);
-  }
-
-  final buffer = StringBuffer();
-  final map = <int>[];
-  var inWhitespace = false;
-
-  for (var i = 0; i < raw.length; i++) {
-    var ch = raw[i];
-    if (ch == '\u200B') {
-      continue;
-    }
-    if (ch == '\u00A0') {
-      ch = ' ';
-    }
-
-    final isWhitespace = ch.trim().isEmpty;
-    if (isWhitespace) {
-      if (buffer.isEmpty) continue;
-      if (inWhitespace) continue;
-      buffer.write(' ');
-      map.add(i);
-      inWhitespace = true;
-      continue;
-    }
-
-    buffer.write(ch);
-    map.add(i);
-    inWhitespace = false;
-  }
-
-  var normalized = buffer.toString();
-  if (normalized.endsWith(' ')) {
-    normalized = normalized.substring(0, normalized.length - 1);
-    if (map.isNotEmpty) {
-      map.removeLast();
-    }
-  }
-
-  return _NormalizedTextMap(normalized, map);
-}
+// Text normalization utilities imported from shared lib/utils/
 
 class EpubReaderScreen extends StatefulWidget {
   final Book book;
@@ -90,7 +44,8 @@ class EpubReaderScreen extends StatefulWidget {
 class _EpubReaderScreenState extends State<EpubReaderScreen>
     with WidgetsBindingObserver {
   List<EpubChapter>? _chapters;
-  List<String> _allChapterContents = const []; // All chapter HTML for continuous scroll
+  List<String> _allChapterContents =
+      const []; // All chapter HTML for continuous scroll
   List<String> _allChapterPlainTexts = const []; // Plain text for each chapter
   List<GlobalKey> _chapterKeys = const []; // Keys to track chapter positions
   int _currentChapterIndex = 0;
@@ -126,6 +81,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   late int _lastTtsSentenceEnd;
   late int _lastTtsSection;
   late double _lastScrollPosition;
+
+  // Rust pre-computed TTS data for faster sentence lookups
+  List<rust_tts.SentenceSpan> _rustSentenceSpans = const [];
+  bool _isRustDataComputed = false;
 
   @override
   void initState() {
@@ -185,7 +144,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       final allContents = <String>[];
       final allPlainTexts = <String>[];
       final allKeys = <GlobalKey>[];
-      
+
       for (final chapter in chapters) {
         final content = chapter.HtmlContent ?? '';
         allContents.add(content);
@@ -403,10 +362,12 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     ));
 
     // Scroll to the chapter position
-    if (userInitiated && _scrollController.hasClients && _chapterKeys.isNotEmpty) {
+    if (userInitiated &&
+        _scrollController.hasClients &&
+        _chapterKeys.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
-        
+
         final key = _chapterKeys[index];
         final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox != null) {
@@ -430,13 +391,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     unawaited(_advanceToNextReadableChapterAndSpeak());
   }
 
-  String _normalizePlainText(String text) {
-    return text
-        .replaceAll('\u00A0', ' ')
-        .replaceAll('\u200B', '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
+  // _normalizePlainText removed - using shared normalizePlainText from lib/utils/text_normalization.dart
 
   static const String _ttsHighlightTag = 'tts-highlight';
 
@@ -473,7 +428,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     }
 
     final rawText = rawBuffer.toString();
-    final map = _buildNormalizedTextMap(rawText);
+    final map = buildNormalizedTextMap(rawText);
     if (map.normalizedToRaw.isEmpty) return html;
 
     final maxIndex = map.normalizedToRaw.length - 1;
@@ -536,32 +491,35 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     final html = _currentContent;
     if (html == null) return '';
 
-    final start = _ttsService.currentStartOffset;
-    if (start == null) {
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart == null || wordEnd == null) {
       return html;
     }
 
+    // Calculate absolute position in chapter text
     final baseOffset =
         _ttsNormalizedBaseOffset.clamp(0, _currentPlainText.length);
-    final absoluteOffset = baseOffset + start;
-    final span = sentenceForOffset(_sentenceSpans, absoluteOffset);
-    if (span == null) {
-      return html;
-    }
+    final highlightStart = baseOffset + wordStart;
+    final highlightEnd = baseOffset + wordEnd;
 
+    // Cache check - same highlight range?
     if (_cachedHighlightedHtml != null &&
-        span.start == _lastHighlightStart &&
-        span.end == _lastHighlightEnd) {
+        highlightStart == _lastHighlightStart &&
+        highlightEnd == _lastHighlightEnd) {
       return _cachedHighlightedHtml!;
     }
 
-    final highlighted = _buildHighlightedHtml(html, span.start, span.end);
+    // Build highlighted HTML for word range
+    final highlighted =
+        _buildHighlightedHtml(html, highlightStart, highlightEnd);
     _cachedHighlightedHtml = highlighted;
-    _lastHighlightStart = span.start;
-    _lastHighlightEnd = span.end;
+    _lastHighlightStart = highlightStart;
+    _lastHighlightEnd = highlightEnd;
 
-    _lastTtsSentenceStart = span.start;
-    _lastTtsSentenceEnd = span.end;
+    // Save reading progress (debounced via repository)
+    _lastTtsSentenceStart = highlightStart;
+    _lastTtsSentenceEnd = highlightEnd;
     _lastTtsSection = _currentChapterIndex;
 
     unawaited(
@@ -569,12 +527,51 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
         widget.book.id,
         sectionIndex: _currentChapterIndex,
         totalPages: _chapters?.length ?? 0,
-        lastTtsSentenceStart: span.start,
-        lastTtsSentenceEnd: span.end,
+        lastTtsSentenceStart: highlightStart,
+        lastTtsSentenceEnd: highlightEnd,
         lastTtsSection: _currentChapterIndex,
       ),
     );
     return highlighted;
+  }
+
+  /// Pre-compute TTS text data using Rust for faster sentence lookups
+  Future<void> _precomputeRustTtsData(String text) async {
+    if (text.isEmpty) {
+      _rustSentenceSpans = const [];
+      _isRustDataComputed = false;
+      return;
+    }
+
+    try {
+      final data = await rust_tts.precomputeTextHighlights(text: text);
+      _rustSentenceSpans = data.sentences;
+      _isRustDataComputed = true;
+    } catch (e) {
+      // Fall back to Dart sentence parsing if Rust fails
+      debugPrint('TTS: Rust precompute failed, using Dart fallback: $e');
+      _isRustDataComputed = false;
+    }
+  }
+
+  /// Find sentence containing offset using Rust-precomputed spans (fast O(n) lookup)
+  SentenceSpan? _findRustSentence(int offset) {
+    if (!_isRustDataComputed || _rustSentenceSpans.isEmpty) {
+      // Fall back to Dart
+      return sentenceForOffset(_sentenceSpans, offset);
+    }
+
+    for (final rustSpan in _rustSentenceSpans) {
+      if (offset >= rustSpan.start && offset < rustSpan.end) {
+        return SentenceSpan(rustSpan.start, rustSpan.end);
+      }
+    }
+    // If past all sentences, return last one
+    if (_rustSentenceSpans.isNotEmpty) {
+      final last = _rustSentenceSpans.last;
+      return SentenceSpan(last.start, last.end);
+    }
+    return null;
   }
 
   Key? _nextHighlightKey() {
@@ -623,15 +620,16 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   void _restoreScrollPosition() {
     if (!_scrollController.hasClients) return;
     if (_chapterKeys.isEmpty) return;
-    
+
     // Wait for the ListView to be laid out before scrolling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      
-      final chapterIndex = _currentChapterIndex.clamp(0, _chapterKeys.length - 1);
+
+      final chapterIndex =
+          _currentChapterIndex.clamp(0, _chapterKeys.length - 1);
       final key = _chapterKeys[chapterIndex];
       final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
-      
+
       if (renderBox != null) {
         // Scroll to the chapter position
         final position = renderBox.localToGlobal(Offset.zero);
@@ -660,8 +658,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     final approxIndex =
         maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
 
-    final span =
-        sentenceForOffset(_sentenceSpans, approxIndex) ?? SentenceSpan(0, text.length);
+    final span = sentenceForOffset(_sentenceSpans, approxIndex) ??
+        SentenceSpan(0, text.length);
 
     _lastScrollPosition = offset;
 
@@ -678,7 +676,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   }
 
   void _saveCurrentTtsSentence() {
-    final start = _ttsService.currentStartOffset;
+    final start = _ttsService.currentWordStart;
     if (start == null) return;
     if (_currentPlainText.trim().isEmpty) return;
 
@@ -757,7 +755,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   }
 
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
-    final normalized = _normalizePlainText(startText);
+    final normalized = normalizePlainText(startText);
     if (normalized.isEmpty) return;
 
     if (baseOffset != null && baseOffset >= 0) {
@@ -773,6 +771,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     setState(() {
       _showTtsControls = true;
     });
+
+    // Pre-compute Rust TTS data for faster highlighting
+    unawaited(_precomputeRustTtsData(normalized));
 
     await _ttsService.speak(normalized);
     if (!mounted || requestId != _ttsFromHereRequestId) return;
@@ -804,6 +805,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       }
 
       _ttsNormalizedBaseOffset = 0;
+      // Pre-compute Rust TTS data for faster highlighting
+      unawaited(_precomputeRustTtsData(text));
       await _ttsService.speak(text);
       return;
     }
@@ -969,14 +972,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     final paragraphSpacing = isWebtoon ? 28.0 : 16.0;
     final imageSpacing = isWebtoon ? 24.0 : 12.0;
     final chapterSpacing = isWebtoon ? 80.0 : 48.0;
-    
+
     final extensions = [
       TagExtension(
         tagsToExtend: {_ttsHighlightTag},
         builder: (context) {
           final text = context.node.text ?? '';
-          final style =
-              context.style?.generateTextStyle() ?? const TextStyle();
+          final style = context.style?.generateTextStyle() ?? const TextStyle();
           return _TtsHighlightSpan(
             key: _nextHighlightKey(),
             text: text,
@@ -1013,7 +1015,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       final chapter = _chapters![index];
       final isFirst = index == 0;
       final isLast = index == _allChapterContents.length - 1;
-      
+
       return Container(
         key: _chapterKeys[index],
         padding: EdgeInsets.only(
@@ -1031,7 +1033,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                 child: Container(
                   width: 60,
                   height: 2,
-                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1041,8 +1046,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                   child: Text(
                     chapter.Title!,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                 ),
             ],
@@ -1087,7 +1092,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
               ...selectableRegionState.contextMenuButtonItems,
               ContextMenuButtonItem(
                 onPressed: () {
-                  final selected = _normalizePlainText(
+                  final selected = normalizePlainText(
                     _selectedContent?.plainText ?? '',
                   );
                   if (selected.isEmpty || _currentPlainText.isEmpty) {
@@ -1140,18 +1145,124 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
             ],
           );
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapUp: (details) {
-            if (_isCenterTap(details.globalPosition)) {
-              _toggleChrome();
-            }
+        child: ListenableBuilder(
+          listenable: _ttsService,
+          builder: (context, _) {
+            // Recompute isTtsActive on every TTS state change
+            final isTtsActive =
+                _showTtsControls && _ttsService.state == TtsState.playing;
+
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapUp: (details) {
+                if (_isCenterTap(details.globalPosition)) {
+                  _toggleChrome();
+                }
+              },
+              child: ListView.builder(
+                controller: _scrollController,
+                itemCount: _allChapterContents.length,
+                itemBuilder: (context, index) {
+                  final content = _allChapterContents[index];
+                  final chapter = _chapters![index];
+                  final isFirst = index == 0;
+                  final isLast = index == _allChapterContents.length - 1;
+                  final isWebtoon =
+                      _effectiveReadingMode == ReadingMode.webtoon;
+                  final paragraphSpacing = isWebtoon ? 28.0 : 16.0;
+                  final imageSpacing = isWebtoon ? 24.0 : 12.0;
+                  final chapterSpacing = isWebtoon ? 80.0 : 48.0;
+                  final highlightColor =
+                      Theme.of(context).colorScheme.primaryContainer;
+
+                  final extensions = [
+                    TagExtension(
+                      tagsToExtend: {_ttsHighlightTag},
+                      builder: (context) {
+                        final text = context.node.text ?? '';
+                        final style = context.style?.generateTextStyle() ??
+                            const TextStyle();
+                        return _TtsHighlightSpan(
+                          key: _nextHighlightKey(),
+                          text: text,
+                          textStyle: style,
+                          highlightColor: highlightColor,
+                        );
+                      },
+                    ),
+                  ];
+
+                  Widget buildHtml(String htmlContent) {
+                    return Html(
+                      data: htmlContent,
+                      extensions: extensions,
+                      style: {
+                        "body": Style(
+                          fontSize: FontSize(18),
+                          lineHeight: const LineHeight(1.8),
+                          padding: HtmlPaddings.zero,
+                          margin: Margins.zero,
+                        ),
+                        _ttsHighlightTag: Style(
+                          backgroundColor: highlightColor,
+                        ),
+                        "p": Style(
+                            margin: Margins.only(bottom: paragraphSpacing)),
+                        "img": Style(
+                          width: Width(100, Unit.percent),
+                          margin: Margins.only(bottom: imageSpacing),
+                        ),
+                      },
+                    );
+                  }
+
+                  return Container(
+                    key: _chapterKeys[index],
+                    padding: EdgeInsets.only(
+                      left: 16.0,
+                      right: 16.0,
+                      top: isFirst ? 16.0 : chapterSpacing,
+                      bottom: isLast ? 100.0 : 0.0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (chapter.Title != null && chapter.Title!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              chapter.Title!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ),
+                        // Chapter content - use highlighted version if TTS is active
+                        if (isTtsActive && index == _currentChapterIndex)
+                          AnimatedBuilder(
+                            animation: _ttsService,
+                            builder: (context, _) {
+                              _highlightKeyAssigned = false;
+                              final highlightedHtml =
+                                  _buildTtsHighlightedHtml();
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _maybeEnsureHighlightVisible();
+                              });
+                              return buildHtml(highlightedHtml);
+                            },
+                          )
+                        else
+                          buildHtml(content),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            );
           },
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: _allChapterContents.length,
-            itemBuilder: (context, index) => buildChapterItem(index),
-          ),
         ),
       ),
     );
@@ -1160,20 +1271,20 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   /// Updates _currentChapterIndex based on scroll position
   void _updateCurrentChapterFromScroll() {
     if (_chapterKeys.isEmpty || !_scrollController.hasClients) return;
-    
+
     final viewportTop = _scrollController.offset;
     final viewportMiddle = viewportTop + MediaQuery.of(context).size.height / 2;
-    
+
     int visibleChapter = 0;
     for (int i = 0; i < _chapterKeys.length; i++) {
       final key = _chapterKeys[i];
       final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox == null) continue;
-      
+
       final position = renderBox.localToGlobal(Offset.zero);
       final chapterTop = position.dy + viewportTop;
       final chapterBottom = chapterTop + renderBox.size.height;
-      
+
       if (viewportMiddle >= chapterTop && viewportMiddle < chapterBottom) {
         visibleChapter = i;
         break;
@@ -1184,7 +1295,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       }
       visibleChapter = i;
     }
-    
+
     if (visibleChapter != _currentChapterIndex) {
       setState(() {
         _currentChapterIndex = visibleChapter;
@@ -1192,7 +1303,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
         _currentPlainText = _allChapterPlainTexts[visibleChapter];
         _sentenceSpans = splitIntoSentences(_currentPlainText);
       });
-      
+
       // Save progress
       unawaited(widget.repository.updateReadingProgress(
         widget.book.id,
@@ -1239,7 +1350,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                   onPressed: _showReadingModePicker,
                 ),
                 IconButton(
-                  icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
+                  icon: Icon(
+                      _showTtsControls ? Icons.volume_off : Icons.volume_up),
                   tooltip: 'Listen',
                   onPressed: () => _toggleTts(),
                 ),
@@ -1277,9 +1389,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                 icon: const Icon(Icons.chevron_left),
                 onPressed: _currentChapterIndex > 0
                     ? () => _loadChapter(
-                        _currentChapterIndex - 1,
-                        userInitiated: true,
-                      )
+                          _currentChapterIndex - 1,
+                          userInitiated: true,
+                        )
                     : null,
               ),
               Text(
@@ -1290,9 +1402,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                 icon: const Icon(Icons.chevron_right),
                 onPressed: _currentChapterIndex < _chapters!.length - 1
                     ? () => _loadChapter(
-                        _currentChapterIndex + 1,
-                        userInitiated: true,
-                      )
+                          _currentChapterIndex + 1,
+                          userInitiated: true,
+                        )
                     : null,
               ),
             ],

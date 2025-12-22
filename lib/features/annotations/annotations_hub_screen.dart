@@ -4,6 +4,7 @@ import 'package:reader_app/data/models/annotation.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/reader_screen.dart';
 
 class AnnotationsHubScreen extends StatefulWidget {
@@ -60,9 +61,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ListTile(
-                leading: book.coverPath != null 
-                    ? Image.asset(book.coverPath!, width: 40, height: 60, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.book))
-                    : const Icon(Icons.book),
+                leading: BookCoverSmall(book: book),
                 title: Text(book.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(book.author),
               ),

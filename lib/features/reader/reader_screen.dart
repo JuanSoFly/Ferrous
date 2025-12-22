@@ -1,12 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/data/models/book_format.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/reader/pdf_reader.dart';
 import 'package:reader_app/features/reader/epub_reader.dart';
 import 'package:reader_app/features/reader/cbz_reader.dart';
 import 'package:reader_app/features/reader/docx_reader.dart';
 import 'package:reader_app/features/reader/mobi_reader.dart';
+
+/// Reader builder function type.
+typedef ReaderBuilder = Widget Function(Book book, BookRepository repository);
+
+/// Registry of reader widgets by format.
+/// 
+/// This replaces the previous if/else ladder with a type-safe map lookup.
+/// Adding a new format only requires adding an entry here.
+final Map<BookFormat, ReaderBuilder> _readerBuilders = {
+  BookFormat.pdf: (book, repo) => PdfReaderScreen(book: book, repository: repo),
+  BookFormat.epub: (book, repo) => EpubReaderScreen(book: book, repository: repo),
+  BookFormat.cbz: (book, repo) => CbzReaderScreen(book: book, repository: repo),
+  BookFormat.cbr: (book, repo) => CbzReaderScreen(book: book, repository: repo),
+  BookFormat.docx: (book, repo) => DocxReaderScreen(book: book, repository: repo),
+  BookFormat.mobi: (book, repo) => MobiReaderScreen(book: book, repository: repo),
+  BookFormat.azw: (book, repo) => MobiReaderScreen(book: book, repository: repo),
+  BookFormat.azw3: (book, repo) => MobiReaderScreen(book: book, repository: repo),
+};
 
 class ReaderScreen extends StatelessWidget {
   final Book book;
@@ -16,21 +35,14 @@ class ReaderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bookRepository = context.read<BookRepository>();
-    final format = book.format.toLowerCase();
+    final format = BookFormat.fromString(book.format);
 
-    if (format == 'pdf') {
-      return PdfReaderScreen(book: book, repository: bookRepository);
-    } else if (format == 'epub') {
-      return EpubReaderScreen(book: book, repository: bookRepository);
-    } else if (format == 'cbz' || format == 'cbr') {
-      return CbzReaderScreen(book: book, repository: bookRepository);
-    } else if (format == 'docx') {
-      return DocxReaderScreen(book: book, repository: bookRepository);
-    } else if (format == 'mobi' || format == 'azw3' || format == 'azw') {
-      return MobiReaderScreen(book: book, repository: bookRepository);
-    } else {
-      return _buildUnsupportedScreen(context, 'Unknown');
+    final builder = _readerBuilders[format];
+    if (builder != null) {
+      return builder(book, bookRepository);
     }
+
+    return _buildUnsupportedScreen(context, book.format);
   }
 
   Widget _buildUnsupportedScreen(BuildContext context, String format) {

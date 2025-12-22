@@ -28,6 +28,11 @@ zip = "2.2"
 # MOBI/AZW3 parsing
 mobi = "0.8"
 
+# TTS text highlighting
+scraper = "0.22"
+unicode-segmentation = "1.12"
+regex = "1.11"
+
 [profile.release]
 lto = true
 codegen-units = 1

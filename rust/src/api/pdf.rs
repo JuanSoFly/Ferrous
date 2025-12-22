@@ -236,6 +236,96 @@ pub fn extract_pdf_page_text_bounds(
     Ok(rects)
 }
 
+/// Pre-compute ALL character bounds for a page.
+/// Call this once when loading a page, then use the cached data for TTS highlighting.
+/// This eliminates per-word FFI calls during TTS playback.
+pub fn extract_all_page_character_bounds(
+    path: String,
+    page_index: u32,
+) -> Result<Vec<PdfTextRect>> {
+    let pdfium = get_pdfium();
+    let document = pdfium.load_pdf_from_file(&path, None)?;
+    let page = document.pages().get(page_index as u16)?;
+    let text = page.text()?;
+    let chars = text.chars();
+
+    let total = text.len().max(0) as usize;
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+
+    let page_rect = page.page_size();
+    let width = page_rect.width().value as f32;
+    let height = page_rect.height().value as f32;
+
+    if width <= 0.0 || height <= 0.0 {
+        return Ok(Vec::new());
+    }
+
+    let mut rects = Vec::with_capacity(total);
+    
+    for i in 0..total {
+        let ch = match chars.get(i) {
+            Ok(ch) => ch,
+            Err(_) => {
+                // Push empty rect as placeholder to maintain index alignment
+                rects.push(PdfTextRect {
+                    left: 0.0,
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                });
+                continue;
+            }
+        };
+
+        // Skip whitespace but still push placeholder for index alignment
+        if let Some(c) = ch.unicode_char() {
+            if c.is_whitespace() {
+                rects.push(PdfTextRect {
+                    left: 0.0,
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                });
+                continue;
+            }
+        }
+
+        let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
+        let Ok(bounds) = bounds else {
+            rects.push(PdfTextRect {
+                left: 0.0,
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+            });
+            continue;
+        };
+
+        let mut left = bounds.left().value / width;
+        let mut right = bounds.right().value / width;
+        let mut top = 1.0 - (bounds.top().value / height);
+        let mut bottom = 1.0 - (bounds.bottom().value / height);
+
+        if left > right {
+            std::mem::swap(&mut left, &mut right);
+        }
+        if top > bottom {
+            std::mem::swap(&mut top, &mut bottom);
+        }
+
+        rects.push(PdfTextRect {
+            left: left.clamp(0.0, 1.0),
+            top: top.clamp(0.0, 1.0),
+            right: right.clamp(0.0, 1.0),
+            bottom: bottom.clamp(0.0, 1.0),
+        });
+    }
+
+    Ok(rects)
+}
+
 /// Test function to verify PDF module is working
 pub fn test_pdf_module() -> String {
     "PDF module loaded successfully".to_string()

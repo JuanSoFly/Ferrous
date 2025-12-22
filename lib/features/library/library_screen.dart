@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +8,7 @@ import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/split_reader_screen.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 
@@ -261,7 +261,7 @@ class _BookCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Cover image or placeholder
-            _buildCover(context),
+            BookCoverCard(book: book),
             if (book.progress > 0)
               LinearProgressIndicator(
                 value: book.progress,
@@ -390,53 +390,6 @@ class _BookCard extends StatelessWidget {
         }).toList(),
       ),
     );
-  }
-  
-  Widget _buildCover(BuildContext context) {
-    if (book.coverPath != null && book.coverPath!.isNotEmpty) {
-      final file = File(book.coverPath!);
-      if (file.existsSync()) {
-        return SizedBox(
-          height: 200,
-          width: double.infinity,
-          child: Image.file(
-            file,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-          ),
-        );
-      }
-    }
-    return _buildPlaceholder();
-  }
-  
-  Widget _buildPlaceholder() {
-    return Container(
-      height: 200,
-      color: Colors.grey.shade800,
-      child: Center(
-        child: Icon(
-          _getFormatIcon(book.format),
-          size: 48, 
-          color: Colors.white54,
-        ),
-      ),
-    );
-  }
-  
-  IconData _getFormatIcon(String format) {
-    switch (format.toLowerCase()) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'epub':
-        return Icons.auto_stories;
-      case 'cbz':
-      case 'cbr':
-        return Icons.collections_bookmark;
-      case 'docx':
-        return Icons.description;
-      default:
-        return Icons.book;
-    }
+
   }
 }

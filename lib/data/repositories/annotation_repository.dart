@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:reader_app/data/models/annotation.dart';
 
-class AnnotationRepository {
+/// Repository for managing annotations with reactive notifications.
+class AnnotationRepository extends ChangeNotifier {
   static const String _boxName = 'annotations';
 
   Box<Annotation>? _box;
@@ -27,13 +29,16 @@ class AnnotationRepository {
 
   Future<void> addAnnotation(Annotation annotation) async {
     await box.put(annotation.id, annotation);
+    notifyListeners();
   }
 
   Future<void> updateAnnotation(Annotation annotation) async {
     await box.put(annotation.id, annotation);
+    notifyListeners();
   }
 
   Future<void> deleteAnnotation(String id) async {
     await box.delete(id);
+    notifyListeners();
   }
 }

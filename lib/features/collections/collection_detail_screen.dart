@@ -4,8 +4,7 @@ import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/models/collection.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
-import 'dart:io';
-
+import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/reader_screen.dart';
 
 class CollectionDetailScreen extends StatefulWidget {
@@ -40,7 +39,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
               itemBuilder: (context, index) {
                 final book = books[index];
                 return ListTile(
-                  leading: _buildCover(book),
+                  leading: BookCoverSmall(book: book),
                   title: Text(book.title),
                   subtitle: Text(book.author),
                   trailing: IconButton(
@@ -62,18 +61,5 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
               },
             ),
     );
-  }
-
-  Widget _buildCover(Book book) {
-    if (book.coverPath != null) {
-      return Image.file(
-        File(book.coverPath!),
-        width: 40,
-        height: 60,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.book),
-      );
-    }
-    return const Icon(Icons.book);
   }
 }

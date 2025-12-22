@@ -62,6 +62,14 @@ Future<List<PdfTextRect>> extractPdfPageTextBounds(
         startIndex: startIndex,
         endIndex: endIndex);
 
+/// Pre-compute ALL character bounds for a page.
+/// Call this once when loading a page, then use the cached data for TTS highlighting.
+/// This eliminates per-word FFI calls during TTS playback.
+Future<List<PdfTextRect>> extractAllPageCharacterBounds(
+        {required String path, required int pageIndex}) =>
+    RustLib.instance.api.crateApiPdfExtractAllPageCharacterBounds(
+        path: path, pageIndex: pageIndex);
+
 /// Test function to verify PDF module is working
 Future<String> testPdfModule() =>
     RustLib.instance.api.crateApiPdfTestPdfModule();

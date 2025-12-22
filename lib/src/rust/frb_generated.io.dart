@@ -11,6 +11,7 @@ import 'api/docx.dart';
 import 'api/library.dart';
 import 'api/mobi.dart';
 import 'api/pdf.dart';
+import 'api/tts_text.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
@@ -36,6 +37,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_box_autoadd_i_32(dynamic raw);
+
+  @protected
+  SentenceSpan dco_decode_box_autoadd_sentence_span(dynamic raw);
 
   @protected
   CbzPageData dco_decode_cbz_page_data(dynamic raw);
@@ -65,10 +69,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<SentenceSpan> dco_decode_list_sentence_span(dynamic raw);
+
+  @protected
+  List<WordSpan> dco_decode_list_word_span(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_i_32(dynamic raw);
 
   @protected
+  SentenceSpan? dco_decode_opt_box_autoadd_sentence_span(dynamic raw);
+
+  @protected
   PdfTextRect dco_decode_pdf_text_rect(dynamic raw);
+
+  @protected
+  SentenceSpan dco_decode_sentence_span(dynamic raw);
+
+  @protected
+  TextHighlightData dco_decode_text_highlight_data(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -78,6 +97,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void dco_decode_unit(dynamic raw);
+
+  @protected
+  WordSpan dco_decode_word_span(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -90,6 +112,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_i_32(SseDeserializer deserializer);
+
+  @protected
+  SentenceSpan sse_decode_box_autoadd_sentence_span(
+      SseDeserializer deserializer);
 
   @protected
   CbzPageData sse_decode_cbz_page_data(SseDeserializer deserializer);
@@ -120,10 +146,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<SentenceSpan> sse_decode_list_sentence_span(
+      SseDeserializer deserializer);
+
+  @protected
+  List<WordSpan> sse_decode_list_word_span(SseDeserializer deserializer);
+
+  @protected
   int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer);
 
   @protected
+  SentenceSpan? sse_decode_opt_box_autoadd_sentence_span(
+      SseDeserializer deserializer);
+
+  @protected
   PdfTextRect sse_decode_pdf_text_rect(SseDeserializer deserializer);
+
+  @protected
+  SentenceSpan sse_decode_sentence_span(SseDeserializer deserializer);
+
+  @protected
+  TextHighlightData sse_decode_text_highlight_data(
+      SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -133,6 +177,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
+
+  @protected
+  WordSpan sse_decode_word_span(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -149,6 +196,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_sentence_span(
+      SentenceSpan self, SseSerializer serializer);
 
   @protected
   void sse_encode_cbz_page_data(CbzPageData self, SseSerializer serializer);
@@ -181,10 +232,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       Uint8List self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_sentence_span(
+      List<SentenceSpan> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_word_span(List<WordSpan> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_sentence_span(
+      SentenceSpan? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_pdf_text_rect(PdfTextRect self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sentence_span(SentenceSpan self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_highlight_data(
+      TextHighlightData self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
@@ -194,6 +263,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_word_span(WordSpan self, SseSerializer serializer);
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);

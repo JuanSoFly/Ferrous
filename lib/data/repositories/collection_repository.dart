@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:reader_app/data/models/collection.dart';
 
-class CollectionRepository {
+/// Repository for managing book collections with reactive notifications.
+class CollectionRepository extends ChangeNotifier {
   static const String _boxName = 'collections';
 
   Box<Collection>? _box;
@@ -30,10 +32,12 @@ class CollectionRepository {
       createdAt: DateTime.now(),
     );
     await box.put(collection.id, collection);
+    notifyListeners();
   }
 
   Future<void> deleteCollection(String id) async {
     await box.delete(id);
+    notifyListeners();
   }
 
   Future<void> addBookToCollection(String collectionId, String bookId) async {
@@ -41,6 +45,7 @@ class CollectionRepository {
     if (collection != null && !collection.bookIds.contains(bookId)) {
       collection.bookIds.add(bookId);
       await collection.save();
+      notifyListeners();
     }
   }
 
@@ -49,6 +54,7 @@ class CollectionRepository {
     if (collection != null) {
       collection.bookIds.remove(bookId);
       await collection.save();
+      notifyListeners();
     }
   }
   

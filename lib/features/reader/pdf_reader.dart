@@ -12,65 +12,10 @@ import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/utils/sentence_utils.dart';
+import 'package:reader_app/utils/normalized_text_map.dart';
+import 'package:reader_app/utils/text_normalization.dart';
 
-class _NormalizedTextMap {
-  final String normalized;
-  final List<int> normalizedToRaw;
-
-  const _NormalizedTextMap(this.normalized, this.normalizedToRaw);
-}
-
-_NormalizedTextMap _buildNormalizedTextMap(String raw) {
-  if (raw.trim().isEmpty) {
-    return const _NormalizedTextMap('', []);
-  }
-
-  final buffer = StringBuffer();
-  final map = <int>[];
-  var inWhitespace = false;
-
-  for (var i = 0; i < raw.length; i++) {
-    var ch = raw[i];
-    if (ch == '\u200B') {
-      continue;
-    }
-    if (ch == '\u00A0') {
-      ch = ' ';
-    }
-
-    final isWhitespace = ch.trim().isEmpty;
-    if (isWhitespace) {
-      if (buffer.isEmpty) continue;
-      if (inWhitespace) continue;
-      buffer.write(' ');
-      map.add(i);
-      inWhitespace = true;
-      continue;
-    }
-
-    buffer.write(ch);
-    map.add(i);
-    inWhitespace = false;
-  }
-
-  var normalized = buffer.toString();
-  if (normalized.endsWith(' ')) {
-    normalized = normalized.substring(0, normalized.length - 1);
-    if (map.isNotEmpty) {
-      map.removeLast();
-    }
-  }
-
-  return _NormalizedTextMap(normalized, map);
-}
-
-String _normalizePlainText(String text) {
-  return text
-      .replaceAll('\u00A0', ' ')
-      .replaceAll('\u200B', '')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-}
+// Text normalization utilities imported from shared lib/utils/
 
 class PdfReaderScreen extends StatefulWidget {
   final Book book;
@@ -116,8 +61,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   String? _ttsStartOverrideText;
   final Map<int, String> _pageTextCache = {};
   final Map<int, Future<String>> _pageTextInFlight = {};
+  // Pre-computed character bounds for TTS highlighting (eliminates per-word FFI)
+  final Map<int, List<PdfTextRect>> _pageCharBoundsCache = {};
   String _currentPageText = '';
-  _NormalizedTextMap? _pageTextMap;
+  NormalizedTextMap? _pageTextMap;
   List<SentenceSpan> _pageSentenceSpans = const [];
   int _ttsNormalizedBaseOffset = 0;
   List<PdfTextRect> _ttsHighlightRects = const [];
@@ -228,16 +175,15 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       if (_autoCrop && !_marginsCache.containsKey(index)) {
         final path = _resolvedFile?.path;
         if (path != null) {
-          detectPdfWhitespace(path: path, pageIndex: index)
-            .then((margins) {
-          if (mounted) {
-            setState(() {
-              _marginsCache[index] = margins;
-            });
-          }
-        }).catchError((e) {
-          debugPrint("Crop error: $e");
-        });
+          detectPdfWhitespace(path: path, pageIndex: index).then((margins) {
+            if (mounted) {
+              setState(() {
+                _marginsCache[index] = margins;
+              });
+            }
+          }).catchError((e) {
+            debugPrint("Crop error: $e");
+          });
         }
       }
 
@@ -273,9 +219,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     if (cached != null) {
       setState(() {
         _currentPageText = cached;
-        _pageTextMap = _buildNormalizedTextMap(cached);
-        _pageSentenceSpans =
-            _pageTextMap == null ? const [] : splitIntoSentences(_pageTextMap!.normalized);
+        _pageTextMap = buildNormalizedTextMap(cached);
+        _pageSentenceSpans = _pageTextMap == null
+            ? const []
+            : splitIntoSentences(_pageTextMap!.normalized);
         _isTextLoading = false;
         _textError = null;
       });
@@ -302,12 +249,18 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       setState(() {
         _pageTextCache[index] = text;
         _currentPageText = text;
-        _pageTextMap = _buildNormalizedTextMap(text);
-        _pageSentenceSpans =
-            _pageTextMap == null ? const [] : splitIntoSentences(_pageTextMap!.normalized);
+        _pageTextMap = buildNormalizedTextMap(text);
+        _pageSentenceSpans = _pageTextMap == null
+            ? const []
+            : splitIntoSentences(_pageTextMap!.normalized);
         _isTextLoading = false;
         _textError = null;
       });
+
+      // Pre-compute character bounds for TTS (non-blocking)
+      if (!_pageCharBoundsCache.containsKey(index)) {
+        unawaited(_precomputeCharacterBounds(index));
+      }
     } catch (e) {
       _pageTextInFlight.remove(index);
       if (!mounted || requestId != _textRequestId) return;
@@ -318,6 +271,21 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
         _pageTextMap = null;
         _pageSentenceSpans = const [];
       });
+    }
+  }
+
+  /// Pre-compute all character bounds for instant TTS highlighting
+  Future<void> _precomputeCharacterBounds(int pageIndex) async {
+    if (_resolvedFile == null) return;
+    try {
+      final bounds = await extractAllPageCharacterBounds(
+        path: _resolvedFile!.path,
+        pageIndex: pageIndex,
+      );
+      if (!mounted) return;
+      _pageCharBoundsCache[pageIndex] = bounds;
+    } catch (e) {
+      debugPrint('TTS: Failed to precompute bounds for page $pageIndex: $e');
     }
   }
 
@@ -428,21 +396,23 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       return;
     }
 
-    final start = _ttsService.currentStartOffset;
-    if (start == null) return;
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart == null || wordEnd == null) return;
 
-    final absoluteOffset = _ttsNormalizedBaseOffset + start;
-    final span = sentenceForOffset(_pageSentenceSpans, absoluteOffset);
-    if (span == null) return;
+    // Calculate absolute position in page text
+    final highlightStart = _ttsNormalizedBaseOffset + wordStart;
+    final highlightEnd = _ttsNormalizedBaseOffset + wordEnd;
 
-    if (span.start == _lastHighlightStart && span.end == _lastHighlightEnd) {
+    // Skip if same highlight
+    if (highlightStart == _lastHighlightStart &&
+        highlightEnd == _lastHighlightEnd) {
       return;
     }
 
-    _lastHighlightStart = span.start;
-    _lastHighlightEnd = span.end;
-    unawaited(_updateHighlightForNormalizedRange(span.start, span.end));
-    _saveTtsSentenceSpan(span);
+    _lastHighlightStart = highlightStart;
+    _lastHighlightEnd = highlightEnd;
+    unawaited(_updateHighlightForNormalizedRange(highlightStart, highlightEnd));
   }
 
   Future<void> _advanceToNextReadablePageAndSpeak() async {
@@ -494,13 +464,39 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     if (normalizedStart < 0 || normalizedEnd <= normalizedStart) return;
     if (normalizedStart >= map.normalizedToRaw.length) return;
 
-    final clampedEnd =
-        normalizedEnd.clamp(0, map.normalizedToRaw.length);
+    final clampedEnd = normalizedEnd.clamp(0, map.normalizedToRaw.length);
     if (clampedEnd <= normalizedStart) return;
 
     final rawStart = map.normalizedToRaw[normalizedStart];
     final rawEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
 
+    // Use pre-computed bounds cache if available (instant lookup)
+    final cachedBounds = _pageCharBoundsCache[_pageIndex];
+    if (cachedBounds != null && cachedBounds.isNotEmpty) {
+      // Extract only non-empty rects in the range
+      final clampedRawEnd = rawEnd.clamp(0, cachedBounds.length);
+      final clampedRawStart = rawStart.clamp(0, clampedRawEnd);
+
+      final rects = <PdfTextRect>[];
+      for (var i = clampedRawStart; i < clampedRawEnd; i++) {
+        final rect = cachedBounds[i];
+        // Skip empty placeholder rects (whitespace)
+        if (rect.left != 0 ||
+            rect.top != 0 ||
+            rect.right != 0 ||
+            rect.bottom != 0) {
+          rects.add(rect);
+        }
+      }
+
+      setState(() {
+        _ttsHighlightRects = rects;
+      });
+      _maybeAutoPanToHighlight(rects);
+      return;
+    }
+
+    // Fallback: FFI call if cache miss
     final requestId = ++_highlightRequestId;
     try {
       final rects = await extractPdfPageTextBounds(
@@ -530,7 +526,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       return;
     }
 
-    final normalized = _normalizePlainText(ttsText);
+    final normalized = normalizePlainText(ttsText);
     if (normalized.isEmpty) {
       _ttsNormalizedBaseOffset = 0;
       return;
@@ -557,7 +553,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   }
 
   void _saveCurrentTtsSentence() {
-    final start = _ttsService.currentStartOffset;
+    final start = _ttsService.currentWordStart;
     if (start == null) return;
     if (_pageTextMap == null) return;
 
@@ -1183,7 +1179,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
                   onPressed: _showReadingModePicker,
                 ),
                 IconButton(
-                  icon: Icon(_showTtsControls ? Icons.volume_off : Icons.volume_up),
+                  icon: Icon(
+                      _showTtsControls ? Icons.volume_off : Icons.volume_up),
                   tooltip: 'Listen',
                   onPressed: () => _toggleTts(),
                 ),

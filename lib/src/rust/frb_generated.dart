@@ -11,6 +11,7 @@ import 'api/docx.dart';
 import 'api/library.dart';
 import 'api/mobi.dart';
 import 'api/pdf.dart';
+import 'api/tts_text.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -75,7 +76,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1820782025;
+  int get rustContentHash => -1920194220;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -87,6 +88,9 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
 abstract class RustLibApi extends BaseApi {
   Future<CropMargins> crateApiCropDetectPdfWhitespace(
+      {required String path, required int pageIndex});
+
+  Future<List<PdfTextRect>> crateApiPdfExtractAllPageCharacterBounds(
       {required String path, required int pageIndex});
 
   Future<String> crateApiCoversExtractCover(
@@ -107,6 +111,9 @@ abstract class RustLibApi extends BaseApi {
       required double xNorm,
       required double yNorm});
 
+  Future<SentenceSpan?> crateApiTtsTextFindSentenceForOffset(
+      {required List<SentenceSpan> sentences, required int offset});
+
   Future<CbzPageData> crateApiCbzGetCbzPage(
       {required String path, required int index, int? maxWidth});
 
@@ -124,6 +131,15 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiHelloWorld();
 
+  Future<String> crateApiTtsTextInsertHtmlHighlight(
+      {required String html,
+      required int highlightStart,
+      required int highlightEnd,
+      required String tagName});
+
+  Future<TextHighlightData> crateApiTtsTextPrecomputeTextHighlights(
+      {required String text});
+
   Future<String> crateApiDocxReadDocxToHtml({required String path});
 
   Future<Uint8List> crateApiPdfRenderPdfPage(
@@ -136,6 +152,8 @@ abstract class RustLibApi extends BaseApi {
       {required String rootPath});
 
   Future<String> crateApiPdfTestPdfModule();
+
+  Future<String> crateApiTtsTextTestTtsTextModule();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -174,6 +192,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<PdfTextRect>> crateApiPdfExtractAllPageCharacterBounds(
+      {required String path, required int pageIndex}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        sse_encode_u_32(pageIndex, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 2, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_pdf_text_rect,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiPdfExtractAllPageCharacterBoundsConstMeta,
+      argValues: [path, pageIndex],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfExtractAllPageCharacterBoundsConstMeta =>
+      const TaskConstMeta(
+        debugName: "extract_all_page_character_bounds",
+        argNames: ["path", "pageIndex"],
+      );
+
+  @override
   Future<String> crateApiCoversExtractCover(
       {required String bookPath, required String savePath}) {
     return handler.executeNormal(NormalTask(
@@ -182,7 +227,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(bookPath, serializer);
         sse_encode_String(savePath, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 2, port: port_);
+            funcId: 3, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -208,7 +253,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(path, serializer);
         sse_encode_u_32(pageIndex, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 3, port: port_);
+            funcId: 4, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -240,7 +285,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_32(startIndex, serializer);
         sse_encode_u_32(endIndex, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 4, port: port_);
+            funcId: 5, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_pdf_text_rect,
@@ -272,7 +317,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_f_64(xNorm, serializer);
         sse_encode_f_64(yNorm, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 5, port: port_);
+            funcId: 6, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -291,6 +336,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<SentenceSpan?> crateApiTtsTextFindSentenceForOffset(
+      {required List<SentenceSpan> sentences, required int offset}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_sentence_span(sentences, serializer);
+        sse_encode_u_32(offset, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 7, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_opt_box_autoadd_sentence_span,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTtsTextFindSentenceForOffsetConstMeta,
+      argValues: [sentences, offset],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTtsTextFindSentenceForOffsetConstMeta =>
+      const TaskConstMeta(
+        debugName: "find_sentence_for_offset",
+        argNames: ["sentences", "offset"],
+      );
+
+  @override
   Future<CbzPageData> crateApiCbzGetCbzPage(
       {required String path, required int index, int? maxWidth}) {
     return handler.executeNormal(NormalTask(
@@ -300,7 +372,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_i_32(index, serializer);
         sse_encode_opt_box_autoadd_i_32(maxWidth, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 6, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_cbz_page_data,
@@ -324,7 +396,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 7, port: port_);
+            funcId: 9, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_i_32,
@@ -348,7 +420,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 8, port: port_);
+            funcId: 10, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_String,
@@ -371,7 +443,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -394,7 +466,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -417,7 +489,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -441,7 +513,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 12, port: port_);
+            funcId: 14, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_u_32,
@@ -464,7 +536,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 13, port: port_);
+            funcId: 15, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -482,13 +554,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiTtsTextInsertHtmlHighlight(
+      {required String html,
+      required int highlightStart,
+      required int highlightEnd,
+      required String tagName}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(html, serializer);
+        sse_encode_u_32(highlightStart, serializer);
+        sse_encode_u_32(highlightEnd, serializer);
+        sse_encode_String(tagName, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 16, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiTtsTextInsertHtmlHighlightConstMeta,
+      argValues: [html, highlightStart, highlightEnd, tagName],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTtsTextInsertHtmlHighlightConstMeta =>
+      const TaskConstMeta(
+        debugName: "insert_html_highlight",
+        argNames: ["html", "highlightStart", "highlightEnd", "tagName"],
+      );
+
+  @override
+  Future<TextHighlightData> crateApiTtsTextPrecomputeTextHighlights(
+      {required String text}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(text, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 17, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_text_highlight_data,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTtsTextPrecomputeTextHighlightsConstMeta,
+      argValues: [text],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTtsTextPrecomputeTextHighlightsConstMeta =>
+      const TaskConstMeta(
+        debugName: "precompute_text_highlights",
+        argNames: ["text"],
+      );
+
+  @override
   Future<String> crateApiDocxReadDocxToHtml({required String path}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 14, port: port_);
+            funcId: 18, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -519,7 +649,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_32(width, serializer);
         sse_encode_u_32(height, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 15, port: port_);
+            funcId: 19, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -544,7 +674,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(rootPath, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 16, port: port_);
+            funcId: 20, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_book_metadata,
@@ -567,7 +697,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 17, port: port_);
+            funcId: 21, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -581,6 +711,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiPdfTestPdfModuleConstMeta => const TaskConstMeta(
         debugName: "test_pdf_module",
+        argNames: [],
+      );
+
+  @override
+  Future<String> crateApiTtsTextTestTtsTextModule() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 22, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTtsTextTestTtsTextModuleConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTtsTextTestTtsTextModuleConstMeta =>
+      const TaskConstMeta(
+        debugName: "test_tts_text_module",
         argNames: [],
       );
 
@@ -613,6 +767,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_box_autoadd_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  SentenceSpan dco_decode_box_autoadd_sentence_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_sentence_span(raw);
   }
 
   @protected
@@ -685,9 +845,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SentenceSpan> dco_decode_list_sentence_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_sentence_span).toList();
+  }
+
+  @protected
+  List<WordSpan> dco_decode_list_word_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_word_span).toList();
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_i_32(raw);
+  }
+
+  @protected
+  SentenceSpan? dco_decode_opt_box_autoadd_sentence_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_sentence_span(raw);
   }
 
   @protected
@@ -701,6 +879,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       top: dco_decode_f_32(arr[1]),
       right: dco_decode_f_32(arr[2]),
       bottom: dco_decode_f_32(arr[3]),
+    );
+  }
+
+  @protected
+  SentenceSpan dco_decode_sentence_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SentenceSpan(
+      start: dco_decode_u_32(arr[0]),
+      end: dco_decode_u_32(arr[1]),
+    );
+  }
+
+  @protected
+  TextHighlightData dco_decode_text_highlight_data(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TextHighlightData(
+      words: dco_decode_list_word_span(arr[0]),
+      sentences: dco_decode_list_sentence_span(arr[1]),
+      normalizedText: dco_decode_String(arr[2]),
     );
   }
 
@@ -720,6 +923,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void dco_decode_unit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return;
+  }
+
+  @protected
+  WordSpan dco_decode_word_span(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return WordSpan(
+      start: dco_decode_u_32(arr[0]),
+      end: dco_decode_u_32(arr[1]),
+      text: dco_decode_String(arr[2]),
+    );
   }
 
   @protected
@@ -749,6 +965,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_box_autoadd_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_i_32(deserializer));
+  }
+
+  @protected
+  SentenceSpan sse_decode_box_autoadd_sentence_span(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_sentence_span(deserializer));
   }
 
   @protected
@@ -836,11 +1059,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SentenceSpan> sse_decode_list_sentence_span(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SentenceSpan>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_sentence_span(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<WordSpan> sse_decode_list_word_span(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <WordSpan>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_word_span(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_i_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  SentenceSpan? sse_decode_opt_box_autoadd_sentence_span(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_sentence_span(deserializer));
     } else {
       return null;
     }
@@ -858,6 +1118,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SentenceSpan sse_decode_sentence_span(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_start = sse_decode_u_32(deserializer);
+    var var_end = sse_decode_u_32(deserializer);
+    return SentenceSpan(start: var_start, end: var_end);
+  }
+
+  @protected
+  TextHighlightData sse_decode_text_highlight_data(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_words = sse_decode_list_word_span(deserializer);
+    var var_sentences = sse_decode_list_sentence_span(deserializer);
+    var var_normalizedText = sse_decode_String(deserializer);
+    return TextHighlightData(
+        words: var_words,
+        sentences: var_sentences,
+        normalizedText: var_normalizedText);
+  }
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
@@ -872,6 +1153,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_decode_unit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  WordSpan sse_decode_word_span(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_start = sse_decode_u_32(deserializer);
+    var var_end = sse_decode_u_32(deserializer);
+    var var_text = sse_decode_String(deserializer);
+    return WordSpan(start: var_start, end: var_end, text: var_text);
   }
 
   @protected
@@ -905,6 +1195,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_sentence_span(
+      SentenceSpan self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_sentence_span(self, serializer);
   }
 
   @protected
@@ -980,6 +1277,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_sentence_span(
+      List<SentenceSpan> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_sentence_span(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_word_span(
+      List<WordSpan> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_word_span(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -990,12 +1307,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_sentence_span(
+      SentenceSpan? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_sentence_span(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_pdf_text_rect(PdfTextRect self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_f_32(self.left, serializer);
     sse_encode_f_32(self.top, serializer);
     sse_encode_f_32(self.right, serializer);
     sse_encode_f_32(self.bottom, serializer);
+  }
+
+  @protected
+  void sse_encode_sentence_span(SentenceSpan self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.start, serializer);
+    sse_encode_u_32(self.end, serializer);
+  }
+
+  @protected
+  void sse_encode_text_highlight_data(
+      TextHighlightData self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_word_span(self.words, serializer);
+    sse_encode_list_sentence_span(self.sentences, serializer);
+    sse_encode_String(self.normalizedText, serializer);
   }
 
   @protected
@@ -1013,6 +1357,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  void sse_encode_word_span(WordSpan self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.start, serializer);
+    sse_encode_u_32(self.end, serializer);
+    sse_encode_String(self.text, serializer);
   }
 
   @protected

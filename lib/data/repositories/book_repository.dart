@@ -1,10 +1,15 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
-class BookRepository {
+/// Repository for managing book data with reactive notifications.
+/// 
+/// Uses ChangeNotifier to allow widgets to automatically rebuild when book
+/// data changes, eliminating the need for manual refresh calls after navigation.
+class BookRepository extends ChangeNotifier {
   static const String _boxName = 'books';
 
   Box<Book>? _box;
@@ -30,21 +35,27 @@ class BookRepository {
 
   Future<void> addBook(Book book) async {
     await box.put(book.id, book);
+    notifyListeners();
   }
 
   Future<void> addBooks(List<Book> books) async {
     final Map<String, Book> bookMap = {for (var b in books) b.id: b};
     await box.putAll(bookMap);
+    notifyListeners();
   }
 
   Future<void> updateBook(Book book) async {
     await box.put(book.id, book);
+    notifyListeners();
   }
 
   Future<void> deleteBook(String id) async {
     await box.delete(id);
+    notifyListeners();
   }
 
+  /// Update reading progress silently (no notification).
+  /// Progress updates happen frequently and don't need to trigger UI rebuilds.
   Future<void> updateReadingProgress(
     String id, {
     int? currentPage,
@@ -75,8 +86,21 @@ class BookRepository {
         lastTtsSection: lastTtsSection,
         lastOpened: DateTime.now(),
       );
-      await updateBook(updated);
+      await box.put(book.id, updated);
+      // Note: No notifyListeners() here - progress updates are silent
+      // to avoid expensive rebuilds during reading
     }
+  }
+
+  /// Update reading progress and notify listeners.
+  /// Use this when progress changes should be immediately reflected in UI.
+  Future<void> updateReadingProgressAndNotify(
+    String id, {
+    int? currentPage,
+    int? totalPages,
+  }) async {
+    await updateReadingProgress(id, currentPage: currentPage, totalPages: totalPages);
+    notifyListeners();
   }
 
   List<Book> getRecentBooks({int limit = 10}) {
@@ -100,8 +124,6 @@ class BookRepository {
   /// Generate covers for all books that don't have one.
   /// [coversDir] is the absolute path to the directory where covers will be saved.
   Future<int> generateCovers(String coversDir) async {
-    // Import dynamically to avoid circular dependencies
-    // Using direct import since it's a simple API call
     final books = getAllBooks();
     int generated = 0;
 
@@ -115,7 +137,6 @@ class BookRepository {
         final savePath = '$coversDir/${book.id}.png';
         final resolved = await resolver.resolve(book);
         try {
-          // Call Rust API - this will be imported from the generated bindings
           await _extractCover(resolved.path, savePath);
         } finally {
           if (resolved.isTemp) {
@@ -127,14 +148,18 @@ class BookRepository {
           }
         }
 
-        // Update book with cover path
+        // Update book with cover path (silently)
         final updated = book.copyWith(coverPath: savePath);
-        await updateBook(updated);
+        await box.put(book.id, updated);
         generated++;
       } catch (e) {
         // Silently fail for books where cover extraction fails
-        // This is expected for some formats or corrupted files
       }
+    }
+
+    // Notify once at the end after all covers are generated
+    if (generated > 0) {
+      notifyListeners();
     }
 
     return generated;

@@ -3,10 +3,11 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
+import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
+import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/src/rust/api/cbz.dart';
 
@@ -39,11 +40,13 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
   Timer? _progressSaveTimer;
   bool _isRestoringScroll = false;
   ResolvedBookFile? _resolvedFile;
-  bool _showChrome = false;
-  bool _lockMode = false;
-  Offset? _lastDoubleTapDown;
   late ReadingMode _readingMode;
   late double _lastScrollPosition;
+
+  // Shared controllers for chrome and reading mode
+  final ReaderChromeController _chromeController = ReaderChromeController();
+  late ReaderModeController _modeController;
+  Offset? _lastDoubleTapDown;
 
   @override
   void initState() {
@@ -51,6 +54,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
     WidgetsBinding.instance.addObserver(this);
     _currentPage = widget.book.currentPage;
     _readingMode = widget.book.readingMode;
+    _modeController = ReaderModeController(_readingMode);
     _lastScrollPosition = widget.book.scrollPosition;
     
     // CRITICAL: Limit image cache size to prevent OOM crashes in continuous scroll mode
@@ -58,10 +62,11 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
     PaintingBinding.instance.imageCache.maximumSize = 10; // Only keep 10 decoded images
     PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50MB max
     
+    _chromeController.addListener(_onChromeChanged);
     _loadCbz();
     _scrollController.addListener(_handleScrollUpdate);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updateSystemUiMode();
+      _chromeController.enterImmersiveMode();
     });
   }
 
@@ -84,7 +89,8 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
     _cleanupTempFile();
     _scrollController.dispose();
     _imageTransformController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _chromeController.removeListener(_onChromeChanged);
+    _chromeController.exitToNormalMode();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -152,35 +158,38 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
     }
   }
 
-  void _updateSystemUiMode() {
-    if (_showChrome && !_lockMode) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    } else {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  void _onChromeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    final screenSize = MediaQuery.of(context).size;
+    if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
+      _chromeController.toggleChrome();
     }
   }
 
-  void _toggleChrome() {
-    if (_lockMode) return;
-    setState(() => _showChrome = !_showChrome);
-    _updateSystemUiMode();
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _lastDoubleTapDown = details.globalPosition;
   }
 
-  void _toggleLockMode() {
-    setState(() {
-      _lockMode = !_lockMode;
-      if (_lockMode) {
-        _showChrome = false;
-      } else {
-        _showChrome = true;
-      }
-    });
-    _updateSystemUiMode();
+  void _handleDoubleTap() {
+    if (!_chromeController.isLocked) return;
+    final position = _lastDoubleTapDown;
+    if (position == null) return;
+    final screenSize = MediaQuery.of(context).size;
+    if (_chromeController.isCenterTap(position, screenSize)) {
+      _toggleLockModeWithFeedback();
+    }
+  }
+
+  void _toggleLockModeWithFeedback() {
+    final isLocked = _chromeController.toggleLockMode();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _lockMode
+            isLocked
                 ? 'Lock mode on. Double-tap center to unlock.'
                 : 'Lock mode off.',
           ),
@@ -190,43 +199,10 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
     }
   }
 
-  bool _isCenterTap(Offset globalPosition) {
-    final size = MediaQuery.of(context).size;
-    if (size.isEmpty) return false;
-    final centerWidth = size.width * 0.45;
-    final centerHeight = size.height * 0.35;
-    final left = (size.width - centerWidth) / 2;
-    final top = (size.height - centerHeight) / 2;
-    final rect = Rect.fromLTWH(left, top, centerWidth, centerHeight);
-    return rect.contains(globalPosition);
-  }
-
-  void _handleTapUp(TapUpDetails details) {
-    if (_isCenterTap(details.globalPosition)) {
-      _toggleChrome();
-    }
-  }
-
-  void _handleDoubleTapDown(TapDownDetails details) {
-    _lastDoubleTapDown = details.globalPosition;
-  }
-
-  void _handleDoubleTap() {
-    if (!_lockMode) return;
-    final position = _lastDoubleTapDown;
-    if (position == null) return;
-    if (_isCenterTap(position)) {
-      _toggleLockMode();
-    }
-  }
-
-  bool get _isPagedMode =>
-      _readingMode == ReadingMode.leftToRight ||
-      _readingMode == ReadingMode.vertical;
-
-  bool get _useHorizontalSwipe => _readingMode == ReadingMode.leftToRight;
-
-  bool get _useVerticalSwipe => _readingMode == ReadingMode.vertical;
+  // Reading mode getters - now using ReaderModeController
+  bool get _isPagedMode => _modeController.isPagedMode;
+  bool get _useHorizontalSwipe => _modeController.useHorizontalSwipe;
+  bool get _useVerticalSwipe => _modeController.useVerticalSwipe;
 
   bool get _isVerticalContinuous =>
       _readingMode == ReadingMode.verticalContinuous ||
@@ -411,7 +387,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
 
   @override
   Widget build(BuildContext context) {
-    final showChrome = _showChrome && !_lockMode;
+    final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
     final showBottomControls = showChrome && _isPagedMode;
 
     return Scaffold(
@@ -628,9 +604,9 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
                     child: Text("${_currentPage + 1} / ${_pageCount}"),
                   ),
                 IconButton(
-                  icon: Icon(_lockMode ? Icons.lock : Icons.lock_open),
-                  tooltip: _lockMode ? 'Unlock' : 'Lock',
-                  onPressed: _toggleLockMode,
+                  icon: Icon(_chromeController.isLocked ? Icons.lock : Icons.lock_open),
+                  tooltip: _chromeController.isLocked ? 'Unlock' : 'Lock',
+                  onPressed: _toggleLockModeWithFeedback,
                 ),
                 IconButton(
                   icon: const Icon(Icons.view_carousel),

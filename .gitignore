@@ -3,7 +3,8 @@
 .metadata
 logs/
 .history/
-
+docs
+SS
 # IntelliJ / Android Studio
 .idea/
 *.iml
@@ -39,6 +40,6 @@ android/app/src/main/jniLibs/**/libpdfium.so
 target/
 **/*.rs.bk
 integration_test
-test
 test_driver
 AGENTS.md
+test
