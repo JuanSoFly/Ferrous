@@ -59,6 +59,7 @@ dependencies:
   http: ^1.2.2
   flutter_tts: ^4.2.3
   html: ^0.15.4
+  hyphenatorx: ^1.5.11
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +75,7 @@ dev_dependencies:
   freezed: ^3.2.3
   build_runner: ^2.10.4
   json_serializable: ^6.10.0
+  hive_ce_generator: ^1.1.0
   # isar_generator: ^3.1.0+1  # Commented out: incompatible with AGP 8.x
   # integration_test: # Commented out due to collection version conflict
   #   sdk: flutter

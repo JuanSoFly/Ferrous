@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:reader_app/data/models/book.dart';
@@ -10,6 +9,11 @@ import 'package:reader_app/features/reader/controllers/reader_chrome_controller.
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/utils/sentence_utils.dart';
 import 'package:reader_app/utils/text_normalization.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/features/reader/hyphenation_helper.dart';
 
 /// Shared base class for HTML-based text readers (DOCX, MOBI).
 /// 
@@ -189,13 +193,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     }
   }
 
-  ReadingMode get _effectiveReadingMode {
-    if (_readingMode == ReadingMode.webtoon) return ReadingMode.webtoon;
-    if (_readingMode == ReadingMode.verticalContinuous) {
-      return ReadingMode.verticalContinuous;
-    }
-    return ReadingMode.verticalContinuous;
-  }
+
 
   Future<void> _showReadingModePicker() async {
     final selected = await showReadingModeSheet(
@@ -208,6 +206,15 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     widget.repository.updateReadingProgress(
       widget.book.id,
       readingMode: selected,
+    );
+  }
+
+  void _showSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const ReaderSettingsSheet(),
     );
   }
 
@@ -304,8 +311,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       );
     }
 
-    final isWebtoon = _effectiveReadingMode == ReadingMode.webtoon;
-    final paragraphSpacing = isWebtoon ? config.webtoonSpacing : config.paragraphSpacing;
+
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
@@ -317,18 +323,47 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       child: SingleChildScrollView(
         controller: _scrollController,
         padding: const EdgeInsets.all(16.0),
-        child: Html(
-          data: _htmlContent,
-          style: {
-            "body": Style(
-              fontSize: FontSize(config.fontSize),
-              lineHeight: LineHeight(config.lineHeight),
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-            ),
-            "p": Style(
-              margin: Margins.only(bottom: paragraphSpacing),
-              textAlign: TextAlign.justify,
-            ),
+        child: Consumer<ReaderThemeRepository>(
+          builder: (context, themeRepo, _) {
+            final themeConfig = themeRepo.config;
+            // Apply user paragraph spacing multiplier/value on top of base? 
+            // The user setting is 0-50 px. Let's use user setting if customized, or add it?
+            // "Paragraph Spacing from 0% to 100%".
+            // Let's assume the slider value is the pixel margin bottom.
+            final spacing = themeConfig.paragraphSpacing; 
+            
+             // Margins
+              final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0; // Reduced margin logic
+
+             final displayContent = themeConfig.hyphenation
+                 ? HyphenationHelper.processHtml(_htmlContent ?? '')
+                 : (_htmlContent ?? '');
+
+             return Padding( // Apply margins here or in Html p style?
+                padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
+                child: Html(
+                 data: displayContent,
+                style: {
+                  "body": Style(
+                    fontSize: FontSize(themeConfig.fontSize),
+                    lineHeight: LineHeight(themeConfig.lineHeight),
+                    fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                    fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                    fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                    textAlign: _parseTextAlign(themeConfig.textAlign),
+                    letterSpacing: themeConfig.wordSpacing,
+                  ),
+                  "p": Style(
+                    margin: Margins.only(
+                      bottom: spacing,
+                      top: 0,
+                    ),
+                    textAlign: _parseTextAlign(themeConfig.textAlign),
+                  ),
+                },
+              ),
+            );
           },
         ),
       ),
@@ -367,6 +402,11 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   onPressed: _toggleLockModeWithFeedback,
                 ),
                 IconButton(
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  onPressed: _showSettingsSheet,
+                ),
+                IconButton(
                   icon: const Icon(Icons.view_carousel),
                   tooltip: 'Reading mode',
                   onPressed: _showReadingModePicker,
@@ -377,5 +417,29 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         ),
       ),
     );
+  }
+
+  /// Get font data for flutter_html Style
+  ({String? fontFamily, List<String>? fontFamilyFallback}) _getGoogleFontData(String family) {
+    try {
+      final textStyle = GoogleFonts.getFont(family);
+      return (
+        fontFamily: textStyle.fontFamily,
+        fontFamilyFallback: textStyle.fontFamilyFallback,
+      );
+    } catch (_) {
+      // Fallback to the raw family name
+      return (fontFamily: family, fontFamilyFallback: null);
+    }
+  }
+
+  TextAlign _parseTextAlign(String align) {
+    switch (align) {
+      case 'left': return TextAlign.left;
+      case 'right': return TextAlign.right;
+      case 'center': return TextAlign.center;
+      case 'justify': return TextAlign.justify;
+      default: return TextAlign.justify;
+    }
   }
 }

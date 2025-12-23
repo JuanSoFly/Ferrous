@@ -12,6 +12,8 @@ import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/utils/app_themes.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -23,6 +25,13 @@ Future<void> main() async {
   Hive.registerAdapter(BookAdapter());
   Hive.registerAdapter(AnnotationAdapter());
   Hive.registerAdapter(CollectionAdapter());
+  try {
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(ReaderThemeConfigAdapter());
+    }
+  } catch (e) {
+    debugPrint('Failed to register ReaderThemeConfigAdapter: $e');
+  }
 
   await _cleanupLinkedCacheFiles();
 
@@ -35,6 +44,14 @@ Future<void> main() async {
 
   final collectionRepository = CollectionRepository();
   await collectionRepository.init();
+
+  ReaderThemeRepository readerThemeRepository = ReaderThemeRepository();
+  try {
+    await readerThemeRepository.init();
+  } catch (e) {
+    debugPrint('ReaderThemeRepository init failed: $e. Using non-initialized repository.');
+    // Repository will use its default config
+  }
 
   // Initialize Rust library
   String? initError;
@@ -49,6 +66,7 @@ Future<void> main() async {
     bookRepository: bookRepository,
     annotationRepository: annotationRepository,
     collectionRepository: collectionRepository,
+    readerThemeRepository: readerThemeRepository,
   ));
 }
 
@@ -78,6 +96,7 @@ class ReaderApp extends StatelessWidget {
   final BookRepository bookRepository;
   final AnnotationRepository annotationRepository;
   final CollectionRepository collectionRepository;
+  final ReaderThemeRepository readerThemeRepository;
 
   const ReaderApp({
     super.key, 
@@ -85,6 +104,7 @@ class ReaderApp extends StatelessWidget {
     required this.bookRepository,
     required this.annotationRepository,
     required this.collectionRepository,
+    required this.readerThemeRepository,
   });
 
 
@@ -98,6 +118,7 @@ class ReaderApp extends StatelessWidget {
         StateNotifierProvider<ThemeController, AppTheme>(
           create: (_) => ThemeController(),
         ),
+        ChangeNotifierProvider<ReaderThemeRepository>.value(value: readerThemeRepository),
       ],
       child: Builder(builder: (context) {
         final currentTheme = context.watch<AppTheme>();

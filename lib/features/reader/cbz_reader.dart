@@ -601,7 +601,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
                 if (_pageCount > 0)
                   Padding(
                     padding: const EdgeInsets.only(right: 8.0),
-                    child: Text("${_currentPage + 1} / ${_pageCount}"),
+                    child: Text("${_currentPage + 1} / $_pageCount"),
                   ),
                 IconButton(
                   icon: Icon(_chromeController.isLocked ? Icons.lock : Icons.lock_open),
@@ -642,7 +642,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen>
                 onPressed:
                     _currentPage > 0 ? () => _jumpToPage(_currentPage - 1) : null,
               ),
-              Text("${_currentPage + 1} / ${_pageCount}"),
+              Text("${_currentPage + 1} / $_pageCount"),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
                 onPressed: _currentPage < _pageCount - 1

@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/reader/html_reader_screen.dart';
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 
@@ -11,9 +9,9 @@ import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 class MobiReaderScreen extends HtmlReaderScreen {
   const MobiReaderScreen({
     super.key,
-    required Book book,
-    required BookRepository repository,
-  }) : super(book: book, repository: repository);
+    required super.book,
+    required super.repository,
+  });
 
   @override
   State<MobiReaderScreen> createState() => _MobiReaderScreenState();

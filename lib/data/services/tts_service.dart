@@ -166,6 +166,7 @@ class TtsService extends ChangeNotifier {
 
   Future<void> setRate(double rate) async {
     _rate = rate.clamp(0.25, 4.0);
+    notifyListeners(); // Notify immediately for UI update
     await _ensureReady();
     await _flutterTts.setSpeechRate(_engineRate());
 

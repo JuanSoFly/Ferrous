@@ -48,7 +48,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   bool _showChrome = false;
   bool _lockMode = false;
   Offset? _lastDoubleTapDown;
-  int _pageTransitionDirection = 0;
   late ReadingMode _readingMode;
 
   // TTS
@@ -127,17 +126,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
 
     final previousIndex = _pageIndex;
     final isPageChanging = index != previousIndex;
-    if (userInitiated) {
-      if (index > previousIndex) {
-        _pageTransitionDirection = 1;
-      } else if (index < previousIndex) {
-        _pageTransitionDirection = -1;
-      } else {
-        _pageTransitionDirection = 0;
-      }
-    } else {
-      _pageTransitionDirection = 0;
-    }
 
     setState(() {
       _isLoading = true;

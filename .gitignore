@@ -5,6 +5,7 @@ logs/
 .history/
 docs
 SS
+openspec
 # IntelliJ / Android Studio
 .idea/
 *.iml

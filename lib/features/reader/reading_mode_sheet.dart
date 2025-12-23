@@ -48,19 +48,25 @@ Future<ReadingMode?> showReadingModeSheet(
           ]);
           break;
         case ReaderFormatType.text:
-          // Text formats only support vertical scrolling
+          // Text formats support vertical scroll and basic paged modes
           modes.addAll([
+            _ModeTile(
+              mode: ReadingMode.vertical,
+              current: current,
+              title: 'Vertical paged',
+              description: 'Swipe up/down to change chapters',
+            ),
+            _ModeTile(
+              mode: ReadingMode.leftToRight,
+              current: current,
+              title: 'Left to right paged',
+              description: 'Swipe left/right to change chapters',
+            ),
             _ModeTile(
               mode: ReadingMode.verticalContinuous,
               current: current,
               title: 'Vertical scroll',
               description: 'Scroll through content',
-            ),
-            _ModeTile(
-              mode: ReadingMode.webtoon,
-              current: current,
-              title: 'Webtoon style',
-              description: 'Scroll with extra spacing',
             ),
           ]);
           break;
