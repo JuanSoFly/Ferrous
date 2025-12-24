@@ -69,6 +69,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   bool _showTtsControls = false;
   bool _ttsContinuous = true;
   bool _ttsFollowMode = true;
+  bool _tapToStartEnabled = true;
   late PageController _pageController;
   int _ttsAdvanceRequestId = 0;
   int _ttsFromHereRequestId = 0;
@@ -747,6 +748,51 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     if (!mounted || requestId != _ttsFromHereRequestId) return;
   }
 
+  /// Start TTS from approximate tap position.
+  /// Uses scroll position + tap Y coordinate to estimate text offset.
+  Future<void> _startTtsFromTap(TapUpDetails details) async {
+    if (!_showTtsControls || !_tapToStartEnabled) return;
+    if (_currentPlainText.trim().isEmpty) return;
+    if (!_scrollController.hasClients) return;
+
+    final text = _currentPlainText;
+    final screenHeight = MediaQuery.of(context).size.height;
+    if (screenHeight <= 0) return;
+
+    // Calculate approximate character offset from tap position
+    final tapY = details.globalPosition.dy;
+    final scrollOffset = _scrollController.offset;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    
+    // Estimate total content height (scroll max + viewport)
+    final totalHeight = maxExtent + screenHeight;
+    if (totalHeight <= 0) return;
+
+    // Calculate the approximate position in the content as a fraction
+    final absoluteY = scrollOffset + tapY;
+    final fraction = (absoluteY / totalHeight).clamp(0.0, 1.0);
+
+    // Map fraction to character offset in plain text
+    final maxIndex = text.length - 1;
+    final approxIndex = maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+
+    // Find sentence boundary
+    final sentenceStart = findSentenceStart(text, approxIndex);
+    final startText = text.substring(sentenceStart);
+
+    if (startText.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No readable text found at that position.')),
+      );
+      return;
+    }
+
+    // Stop any existing TTS and start from new position
+    _ttsAdvanceRequestId++;
+    await _ttsService.stop();
+    await _speakFromHere(startText, baseOffset: sentenceStart);
+  }
+
   Future<void> _advanceToNextReadableChapterAndSpeak() async {
     final chapters = _chapters;
     if (chapters == null || chapters.isEmpty) return;
@@ -844,6 +890,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                   onFollowModeChanged: (value) {
                     setState(() => _ttsFollowMode = value);
                   },
+                  isTapToStart: _tapToStartEnabled,
+                  onTapToStartChanged: (value) {
+                    setState(() => _tapToStartEnabled = value);
+                  },
                   onStop: _saveCurrentTtsSentence,
                   onPause: _saveCurrentTtsSentence,
                   onClose: _closeTtsControls,
@@ -939,6 +989,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       onTapUp: (details) {
         if (_isCenterTap(details.globalPosition)) {
           _toggleChrome();
+        } else if (_showTtsControls && _tapToStartEnabled) {
+          _startTtsFromTap(details);
         }
       },
       child: Consumer<ReaderThemeRepository>(
@@ -1143,6 +1195,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
               onTapUp: (details) {
                 if (_isCenterTap(details.globalPosition)) {
                   _toggleChrome();
+                } else if (_showTtsControls && _tapToStartEnabled) {
+                  _startTtsFromTap(details);
                 }
               },
               child: ListView.builder(
