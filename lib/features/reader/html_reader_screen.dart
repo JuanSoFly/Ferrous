@@ -79,6 +79,10 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   final ReaderChromeController _chromeController = ReaderChromeController();
   Offset? _lastDoubleTapDown;
 
+  // Font preloading
+  String _lastLoadedFontFamily = '';
+  ReaderThemeRepository? _themeRepository;
+
   /// Override to provide reader-specific configuration.
   HtmlReaderConfig get config;
 
@@ -95,11 +99,15 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     _loadDocument();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeController.enterImmersiveMode();
+      // Listen for font changes
+      _themeRepository = context.read<ReaderThemeRepository>();
+      _themeRepository?.addListener(_onThemeChanged);
     });
   }
 
   @override
   void dispose() {
+    _themeRepository?.removeListener(_onThemeChanged);
     _cleanupTempFile();
     _scrollController.dispose();
     _chromeController.removeListener(_onChromeChanged);
@@ -113,12 +121,21 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   Future<void> _loadDocument() async {
+    // Capture theme repository before async operations
+    final themeRepo = context.read<ReaderThemeRepository>();
+    
     try {
       final resolver = BookFileResolver();
       final resolved = await resolver.resolve(widget.book);
       _resolvedFile = resolved;
       final html = await loadContent(resolved.path);
       final plainText = _htmlToPlainText(html);
+
+      // Preload the current font family before rendering
+      final fontFamily = themeRepo.config.fontFamily;
+      await _preloadFont(fontFamily);
+      _lastLoadedFontFamily = fontFamily;
+
       setState(() {
         _htmlContent = html;
         _plainText = plainText;
@@ -134,6 +151,27 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  /// Called when theme settings change - preload font if it changed
+  void _onThemeChanged() {
+    final newFontFamily = _themeRepository?.config.fontFamily ?? '';
+    if (newFontFamily.isNotEmpty && newFontFamily != _lastLoadedFontFamily) {
+      _lastLoadedFontFamily = newFontFamily;
+      _preloadFont(newFontFamily).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  /// Preload the specified font family to ensure it's available before rendering.
+  Future<void> _preloadFont(String fontFamily) async {
+    try {
+      GoogleFonts.getFont(fontFamily);
+      await GoogleFonts.pendingFonts();
+    } catch (e) {
+      debugPrint('Failed to preload font $fontFamily: $e');
     }
   }
 

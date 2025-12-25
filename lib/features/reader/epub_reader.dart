@@ -86,8 +86,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   late int _lastTtsSentenceEnd;
   late int _lastTtsSection;
   late double _lastScrollPosition;
-
-
+  String _lastLoadedFontFamily = '';
+  ReaderThemeRepository? _themeRepository;
 
   @override
   void initState() {
@@ -105,11 +105,15 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     _loadEpub();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateSystemUiMode();
+      // Listen for font changes
+      _themeRepository = context.read<ReaderThemeRepository>();
+      _themeRepository?.addListener(_onThemeChanged);
     });
   }
 
   @override
   void dispose() {
+    _themeRepository?.removeListener(_onThemeChanged);
     _cleanupTempFile();
     _scrollController.dispose();
     _pageController.dispose();
@@ -118,6 +122,17 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Called when theme settings change - preload font if it changed
+  void _onThemeChanged() {
+    final newFontFamily = _themeRepository?.config.fontFamily ?? '';
+    if (newFontFamily.isNotEmpty && newFontFamily != _lastLoadedFontFamily) {
+      _lastLoadedFontFamily = newFontFamily;
+      _preloadFont(newFontFamily).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
@@ -131,6 +146,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   }
 
   Future<void> _loadEpub() async {
+    // Capture theme repository before async operations
+    final themeRepo = context.read<ReaderThemeRepository>();
+    
     try {
       final resolver = BookFileResolver();
       final resolved = await resolver.resolve(widget.book);
@@ -166,6 +184,11 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       // Set current chapter data for TTS compatibility
       final currentContent = allContents[_currentChapterIndex];
       final currentPlainText = allPlainTexts[_currentChapterIndex];
+
+      // Preload the current font family before rendering
+      final fontFamily = themeRepo.config.fontFamily;
+      await _preloadFont(fontFamily);
+      _lastLoadedFontFamily = fontFamily;
 
       setState(() {
         _chapters = chapters;
@@ -1577,6 +1600,19 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
         },
       ),
     );
+  }
+
+  /// Preload the specified font family to ensure it's available before rendering.
+  /// This forces GoogleFonts to download the font and waits for completion.
+  Future<void> _preloadFont(String fontFamily) async {
+    try {
+      // Trigger font loading by getting the TextStyle
+      GoogleFonts.getFont(fontFamily);
+      // Wait for all pending fonts to complete loading
+      await GoogleFonts.pendingFonts();
+    } catch (e) {
+      debugPrint('Failed to preload font $fontFamily: $e');
+    }
   }
 
   /// Get font data for flutter_html Style
