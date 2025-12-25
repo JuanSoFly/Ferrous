@@ -32,6 +32,7 @@ mobi = "0.8"
 scraper = "0.22"
 unicode-segmentation = "1.12"
 regex = "1.11"
+roxmltree = "0.21.1"
 
 [profile.release]
 lto = true

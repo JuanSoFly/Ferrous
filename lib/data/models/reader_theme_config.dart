@@ -2,7 +2,9 @@ import 'package:hive/hive.dart';
 
 part 'reader_theme_config.g.dart';
 
-@HiveType(typeId: 2)
+// IMPORTANT: Hive typeIds must be unique across the entire app.
+// `Collection` already uses typeId 2, so ReaderThemeConfig must use a different id.
+@HiveType(typeId: 3)
 class ReaderThemeConfig {
   @HiveField(0)
   final double fontSize;

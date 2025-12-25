@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/data/models/book.dart';
@@ -56,9 +57,11 @@ class LibraryState {
 class LibraryController extends StateNotifier<LibraryState> {
   final BookRepository _bookRepository;
   final SafService _safService = SafService();
+  bool _coverGenerationStarted = false;
 
   LibraryController(this._bookRepository) : super(const LibraryState()) {
     loadBooks();
+    _maybeGenerateMissingCovers();
   }
 
   void loadBooks() {
@@ -66,6 +69,20 @@ class LibraryController extends StateNotifier<LibraryState> {
     // Sort by recently opened
     books.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
     state = state.copyWith(books: books);
+  }
+
+  void _maybeGenerateMissingCovers() {
+    if (_coverGenerationStarted) return;
+    final books = _bookRepository.getAllBooks();
+    final needsCovers = books.any((book) {
+      final coverPath = book.coverPath;
+      if (coverPath == null || coverPath.isEmpty) return true;
+      return !File(coverPath).existsSync();
+    });
+    if (!needsCovers) return;
+
+    _coverGenerationStarted = true;
+    unawaited(_generateCoversInBackground());
   }
 
   /// Updates the search query for filtering books.

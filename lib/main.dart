@@ -26,7 +26,7 @@ Future<void> main() async {
   Hive.registerAdapter(AnnotationAdapter());
   Hive.registerAdapter(CollectionAdapter());
   try {
-    if (!Hive.isAdapterRegistered(2)) {
+    if (!Hive.isAdapterRegistered(3)) {
       Hive.registerAdapter(ReaderThemeConfigAdapter());
     }
   } catch (e) {

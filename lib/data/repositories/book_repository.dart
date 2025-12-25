@@ -129,15 +129,31 @@ class BookRepository extends ChangeNotifier {
 
     final resolver = BookFileResolver();
     for (final book in books) {
-      if (book.coverPath != null && book.coverPath!.isNotEmpty) {
-        continue; // Already has a cover
+      final existingCoverPath = book.coverPath;
+      final hasExistingCoverFile = existingCoverPath != null &&
+          existingCoverPath.isNotEmpty &&
+          File(existingCoverPath).existsSync();
+
+      final expectedCoverPath = '$coversDir/${book.id}.png';
+
+      // If we already have a valid on-disk cover, keep it.
+      if (hasExistingCoverFile) {
+        continue;
+      }
+
+      // If the cover file exists at the expected location but the Book points
+      // to nothing (or a stale path), just relink it without re-extracting.
+      if (File(expectedCoverPath).existsSync()) {
+        final updated = book.copyWith(coverPath: expectedCoverPath);
+        await box.put(book.id, updated);
+        generated++;
+        continue;
       }
 
       try {
-        final savePath = '$coversDir/${book.id}.png';
         final resolved = await resolver.resolve(book);
         try {
-          await _extractCover(resolved.path, savePath);
+          await _extractCover(resolved.path, expectedCoverPath);
         } finally {
           if (resolved.isTemp) {
             try {
@@ -149,7 +165,7 @@ class BookRepository extends ChangeNotifier {
         }
 
         // Update book with cover path (silently)
-        final updated = book.copyWith(coverPath: savePath);
+        final updated = book.copyWith(coverPath: expectedCoverPath);
         await box.put(book.id, updated);
         generated++;
       } catch (e) {

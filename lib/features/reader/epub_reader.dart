@@ -771,49 +771,180 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     if (!mounted || requestId != _ttsFromHereRequestId) return;
   }
 
-  /// Start TTS from approximate tap position.
-  /// Uses scroll position + tap Y coordinate to estimate text offset.
+  int _wordStartForOffset(String text, int offset) {
+    if (text.isEmpty) return 0;
+
+    var i = offset.clamp(0, text.length);
+
+    // If tap lands past the end, clamp to end.
+    if (i >= text.length) return text.length;
+
+    // If tap lands on whitespace, move forward to the next token.
+    while (i < text.length && text[i].trim().isEmpty) {
+      i++;
+    }
+    if (i >= text.length) return text.length;
+
+    // Walk backwards to the start of the token.
+    var start = i;
+    while (start > 0 && text[start - 1].trim().isNotEmpty) {
+      start--;
+    }
+    return start;
+  }
+
+  int _normalizedOffsetForRawOffset(NormalizedTextMap map, int rawOffset) {
+    if (map.normalizedToRaw.isEmpty) return 0;
+    if (rawOffset <= 0) return 0;
+    if (rawOffset > map.normalizedToRaw.last) {
+      return map.normalizedToRaw.length;
+    }
+
+    // Find greatest normalized index where rawIndex <= rawOffset.
+    var lo = 0;
+    var hi = map.normalizedToRaw.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (map.normalizedToRaw[mid] <= rawOffset) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return (lo - 1).clamp(0, map.normalizedToRaw.length);
+  }
+
+  int? _findChapterIndexAtTap(Offset globalPosition) {
+    if (_isPagedMode) {
+      return _currentChapterIndex.clamp(0, _allChapterPlainTexts.length - 1);
+    }
+    if (_chapterKeys.isEmpty) return null;
+
+    for (var i = 0; i < _chapterKeys.length; i++) {
+      final ctx = _chapterKeys[i].currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      final rect = topLeft & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  ({String rawText, int rawOffset})? _hitTestTextAt(Offset globalPosition) {
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(result, globalPosition, View.of(context).viewId);
+
+    for (final entry in result.path) {
+      final target = entry.target;
+      if (target is RenderParagraph) {
+        final local = target.globalToLocal(globalPosition);
+        final position = target.getPositionForOffset(local);
+        return (rawText: target.text.toPlainText(), rawOffset: position.offset);
+      }
+    }
+    return null;
+  }
+
+  /// Start TTS from the word the user tapped (best-effort).
+  ///
+  /// Strategy:
+  /// - Hit-test for the nearest `RenderParagraph` and map the tap to a text offset.
+  /// - Locate that tapped text fragment inside the chapter plain text.
+  /// - Start speaking from the nearest word boundary at that absolute offset.
+  /// Falls back to a coarse scroll-based estimate if hit-testing/mapping fails.
   Future<void> _startTtsFromTap(TapUpDetails details) async {
     if (!_showTtsControls || !_tapToStartEnabled) return;
-    if (_currentPlainText.trim().isEmpty) return;
-    if (!_scrollController.hasClients) return;
+    if (_allChapterPlainTexts.isEmpty) return;
 
-    final text = _currentPlainText;
-    final screenHeight = MediaQuery.of(context).size.height;
-    if (screenHeight <= 0) return;
+    final tap = details.globalPosition;
+    final chapterIndex =
+        _findChapterIndexAtTap(tap) ?? _currentChapterIndex.clamp(0, _allChapterPlainTexts.length - 1);
+    final chapterText = _allChapterPlainTexts[chapterIndex];
+    if (chapterText.trim().isEmpty) return;
 
-    // Calculate approximate character offset from tap position
-    final tapY = details.globalPosition.dy;
-    final scrollOffset = _scrollController.offset;
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    
-    // Estimate total content height (scroll max + viewport)
-    final totalHeight = maxExtent + screenHeight;
-    if (totalHeight <= 0) return;
+    final hit = _hitTestTextAt(tap);
+    int? absoluteOffset;
 
-    // Calculate the approximate position in the content as a fraction
-    final absoluteY = scrollOffset + tapY;
-    final fraction = (absoluteY / totalHeight).clamp(0.0, 1.0);
+    if (hit != null) {
+      final rawFragment = hit.rawText;
+      if (rawFragment.trim().isNotEmpty) {
+        final fragmentMap = buildNormalizedTextMap(rawFragment);
+        final fragment = fragmentMap.normalized;
 
-    // Map fraction to character offset in plain text
-    final maxIndex = text.length - 1;
-    final approxIndex = maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+        if (fragment.isNotEmpty) {
+          // Approximate where in the chapter we tapped to disambiguate duplicates.
+          var approxIndex = 0;
+          final ctx = !_isPagedMode ? _chapterKeys[chapterIndex].currentContext : null;
+          final chapterBox = ctx?.findRenderObject() as RenderBox?;
+          if (chapterBox != null && chapterBox.hasSize) {
+            final topLeft = chapterBox.localToGlobal(Offset.zero);
+            final dy = (tap.dy - topLeft.dy).clamp(0.0, chapterBox.size.height);
+            final frac =
+                chapterBox.size.height <= 0 ? 0.0 : (dy / chapterBox.size.height).clamp(0.0, 1.0);
+            final maxIndex = chapterText.length - 1;
+            approxIndex = maxIndex <= 0 ? 0 : (frac * maxIndex).floor().clamp(0, maxIndex);
+          }
 
-    // Find sentence boundary
-    final sentenceStart = findSentenceStart(text, approxIndex);
-    final startText = text.substring(sentenceStart);
+          final startFrom = approxIndex.clamp(0, chapterText.length);
+          final forward = chapterText.indexOf(fragment, startFrom);
+          final backward = chapterText.lastIndexOf(fragment, startFrom);
 
+          final fragmentStart = switch ((forward, backward)) {
+            (-1, -1) => -1,
+            (final f, -1) => f,
+            (-1, final b) => b,
+            (final f, final b) => (approxIndex - b).abs() <= (f - approxIndex).abs() ? b : f,
+          };
+
+          if (fragmentStart >= 0) {
+            final fragmentOffset =
+                _normalizedOffsetForRawOffset(fragmentMap, hit.rawOffset.clamp(0, rawFragment.length));
+            absoluteOffset = (fragmentStart + fragmentOffset).clamp(0, chapterText.length);
+          }
+        }
+      }
+    }
+
+    // Fallback: coarse estimate based on scroll position + tap Y.
+    if (absoluteOffset == null && _scrollController.hasClients) {
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      final viewport = MediaQuery.of(context).size.height;
+      final totalHeight = maxExtent + viewport;
+
+      if (totalHeight > 0 && viewport > 0) {
+        final scrollOffset = _scrollController.offset;
+        final absoluteY = scrollOffset + tap.dy;
+        final fraction = (absoluteY / totalHeight).clamp(0.0, 1.0);
+        final maxIndex = chapterText.length - 1;
+        absoluteOffset = maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+      }
+    }
+
+    if (absoluteOffset == null) return;
+
+    final wordStart = _wordStartForOffset(chapterText, absoluteOffset);
+    if (wordStart >= chapterText.length) return;
+
+    final startText = chapterText.substring(wordStart);
     if (startText.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No readable text found at that position.')),
       );
       return;
     }
 
-    // Stop any existing TTS and start from new position
     _ttsAdvanceRequestId++;
     await _ttsService.stop();
-    await _speakFromHere(startText, baseOffset: sentenceStart);
+    if (!mounted) return;
+
+    if (chapterIndex != _currentChapterIndex) {
+      await _loadChapter(chapterIndex, userInitiated: false);
+      if (!mounted) return;
+    }
+
+    await _speakFromHere(startText, baseOffset: wordStart);
   }
 
   Future<void> _advanceToNextReadableChapterAndSpeak() async {
