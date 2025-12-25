@@ -86,8 +86,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
   late int _lastTtsSentenceEnd;
   late int _lastTtsSection;
   late double _lastScrollPosition;
+  late int _lastReadingSentenceStart;
+  late int _lastReadingSentenceEnd;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
+  final Map<int, ScrollController> _chapterScrollControllers = {};
+  bool _isRestoringPosition = false;
+  int _restoreGeneration = 0;
 
   @override
   void initState() {
@@ -101,6 +106,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     _lastTtsSentenceEnd = widget.book.lastTtsSentenceEnd;
     _lastTtsSection = widget.book.lastTtsSection;
     _lastScrollPosition = widget.book.scrollPosition;
+    _lastReadingSentenceStart = widget.book.lastReadingSentenceStart;
+    _lastReadingSentenceEnd = widget.book.lastReadingSentenceEnd;
     _readingMode = widget.book.readingMode;
     _loadEpub();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -116,6 +123,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     _themeRepository?.removeListener(_onThemeChanged);
     _cleanupTempFile();
     _scrollController.dispose();
+    _disposeChapterScrollControllers();
     _pageController.dispose();
     _ttsService.setOnFinished(null);
     _ttsService.dispose();
@@ -140,7 +148,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      _saveReadingPositionFromScroll();
+      _saveReadingPositionForMode();
       _saveCurrentTtsSentence();
     }
   }
@@ -202,7 +210,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _restoreScrollPosition();
+        _restoreReadingPosition();
       });
     } catch (e) {
       setState(() {
@@ -298,6 +306,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       formatType: ReaderFormatType.text,
     );
     if (selected == null || selected == _readingMode) return;
+    _saveReadingPositionForMode();
     setState(() => _readingMode = selected);
     unawaited(
       widget.repository.updateReadingProgress(
@@ -305,6 +314,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
         readingMode: selected,
       ),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restoreReadingPosition();
+    });
   }
 
   void _showSettingsSheet() {
@@ -382,14 +394,28 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
       _ttsNormalizedBaseOffset = 0;
     });
 
+    SentenceSpan? resetSpan;
+    if (userInitiated) {
+      if (_currentPlainText.trim().isNotEmpty) {
+        resetSpan = _sentenceSpans.isNotEmpty
+            ? _sentenceSpans.first
+            : SentenceSpan(0, _currentPlainText.length);
+        _lastReadingSentenceStart = resetSpan.start;
+        _lastReadingSentenceEnd = resetSpan.end;
+      } else {
+        _lastReadingSentenceStart = -1;
+        _lastReadingSentenceEnd = -1;
+      }
+    }
+
     // Save progress
     unawaited(widget.repository.updateReadingProgress(
       widget.book.id,
       sectionIndex: index,
       totalPages: _chapters!.length,
       scrollPosition: userInitiated ? 0.0 : null,
-      lastReadingSentenceStart: userInitiated ? -1 : null,
-      lastReadingSentenceEnd: userInitiated ? -1 : null,
+      lastReadingSentenceStart: resetSpan?.start ?? (userInitiated ? -1 : null),
+      lastReadingSentenceEnd: resetSpan?.end ?? (userInitiated ? -1 : null),
     ));
 
     // Scroll to the chapter position
@@ -609,62 +635,299 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     );
   }
 
-  void _restoreScrollPosition() {
+  ScrollController _chapterScrollController(int index) {
+    return _chapterScrollControllers.putIfAbsent(
+      index,
+      () => ScrollController(),
+    );
+  }
+
+  void _disposeChapterScrollControllers() {
+    for (final controller in _chapterScrollControllers.values) {
+      controller.dispose();
+    }
+    _chapterScrollControllers.clear();
+  }
+
+  void _markRestoringPosition() {
+    _isRestoringPosition = true;
+    final generation = ++_restoreGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_restoreGeneration == generation) {
+        _isRestoringPosition = false;
+      }
+    });
+  }
+
+  double _fractionForTextOffset(int chapterIndex, int offset) {
+    if (chapterIndex < 0 || chapterIndex >= _allChapterPlainTexts.length) {
+      return 0.0;
+    }
+    final text = _allChapterPlainTexts[chapterIndex];
+    if (text.trim().isEmpty) return 0.0;
+    final maxIndex = text.length - 1;
+    if (maxIndex <= 0) return 0.0;
+    final clamped = offset.clamp(0, maxIndex);
+    return clamped / maxIndex;
+  }
+
+  int _readingAnchorOffset() {
+    if (_lastReadingSentenceStart >= 0) return _lastReadingSentenceStart;
+    if (_lastReadingSentenceEnd >= 0) return _lastReadingSentenceEnd;
+    return -1;
+  }
+
+  SentenceSpan _sentenceSpanForFraction(int chapterIndex, double fraction) {
+    if (chapterIndex < 0 || chapterIndex >= _allChapterPlainTexts.length) {
+      return const SentenceSpan(0, 0);
+    }
+    final text = _allChapterPlainTexts[chapterIndex];
+    if (text.trim().isEmpty) {
+      return SentenceSpan(0, text.length);
+    }
+    final maxIndex = text.length - 1;
+    final approxIndex = maxIndex <= 0
+        ? 0
+        : (fraction * maxIndex).round().clamp(0, maxIndex);
+    final spans = chapterIndex == _currentChapterIndex
+        ? _sentenceSpans
+        : splitIntoSentences(text);
+    return sentenceForOffset(spans, approxIndex) ?? SentenceSpan(0, text.length);
+  }
+
+  double? _chapterFractionAtViewportAnchor(int chapterIndex) {
+    if (!_scrollController.hasClients) return null;
+    if (chapterIndex < 0 || chapterIndex >= _chapterKeys.length) return null;
+
+    final key = _chapterKeys[chapterIndex];
+    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || renderBox.size.height <= 0) return null;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final anchorY = _scrollController.offset + viewportHeight * 0.5;
+    final chapterTop = _scrollController.offset +
+        renderBox.localToGlobal(Offset.zero).dy;
+    final localY =
+        (anchorY - chapterTop).clamp(0.0, renderBox.size.height);
+    return localY / renderBox.size.height;
+  }
+
+  double? _scrollOffsetForChapterFraction(int chapterIndex, double fraction) {
+    if (!_scrollController.hasClients) return null;
+    if (chapterIndex < 0 || chapterIndex >= _chapterKeys.length) return null;
+
+    final key = _chapterKeys[chapterIndex];
+    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || renderBox.size.height <= 0) return null;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final chapterTop = _scrollController.offset +
+        renderBox.localToGlobal(Offset.zero).dy;
+    final anchorY = renderBox.size.height * fraction;
+    final target = chapterTop + anchorY - viewportHeight * 0.5;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    return target.clamp(0.0, maxExtent);
+  }
+
+  double _scrollOffsetForPagedFraction(
+    ScrollController controller,
+    double fraction,
+  ) {
+    final viewportHeight = controller.position.viewportDimension;
+    final contentHeight = controller.position.maxScrollExtent + viewportHeight;
+    if (contentHeight <= 0) return 0.0;
+    final anchorY = contentHeight * fraction;
+    final target = anchorY - viewportHeight * 0.5;
+    return target.clamp(0.0, controller.position.maxScrollExtent);
+  }
+
+  void _restoreReadingPosition() {
+    if (_isPagedMode) {
+      _restorePagedPosition();
+    } else {
+      _restoreContinuousPosition();
+    }
+  }
+
+  void _restoreContinuousPosition({int attempt = 0}) {
     if (!_scrollController.hasClients) return;
     if (_chapterKeys.isEmpty) return;
 
-    // Wait for the ListView to be laid out before scrolling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
 
       final chapterIndex =
           _currentChapterIndex.clamp(0, _chapterKeys.length - 1);
-      final key = _chapterKeys[chapterIndex];
-      final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+      final anchorOffset = _readingAnchorOffset();
+      final fraction = anchorOffset >= 0
+          ? _fractionForTextOffset(chapterIndex, anchorOffset)
+          : null;
 
-      if (renderBox != null) {
-        // Scroll to the chapter position
-        final position = renderBox.localToGlobal(Offset.zero);
-        final scrollOffset = _scrollController.offset + position.dy;
-        final maxExtent = _scrollController.position.maxScrollExtent;
-        final clamped = scrollOffset.clamp(0.0, maxExtent);
-        _scrollController.jumpTo(clamped);
-      } else if (_lastScrollPosition > 0) {
-        // Fallback: use saved scroll position
-        final maxExtent = _scrollController.position.maxScrollExtent;
-        final clamped = _lastScrollPosition.clamp(0.0, maxExtent);
-        _scrollController.jumpTo(clamped);
+      final target = fraction == null
+          ? null
+          : _scrollOffsetForChapterFraction(chapterIndex, fraction);
+
+      if (target != null) {
+        _markRestoringPosition();
+        _scrollController.jumpTo(target);
+        return;
+      }
+
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      if (fraction != null && attempt < 2 && maxExtent > 0) {
+        final totalChapters = _chapterKeys.length;
+        final estimated = totalChapters <= 1
+            ? 0.0
+            : (chapterIndex / (totalChapters - 1)) * maxExtent;
+        _markRestoringPosition();
+        _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
+        _restoreContinuousPosition(attempt: attempt + 1);
+        return;
+      }
+
+      if (_lastScrollPosition > 0) {
+        _markRestoringPosition();
+        _scrollController.jumpTo(
+          _lastScrollPosition.clamp(0.0, maxExtent),
+        );
+        return;
+      }
+
+      if (attempt < 2 && maxExtent > 0) {
+        final totalChapters = _chapterKeys.length;
+        final estimated = totalChapters <= 1
+            ? 0.0
+            : (chapterIndex / (totalChapters - 1)) * maxExtent;
+        _markRestoringPosition();
+        _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
+        _restoreContinuousPosition(attempt: attempt + 1);
       }
     });
   }
 
+  void _restorePagedPosition({int attempt = 0}) {
+    if (_allChapterContents.isEmpty) return;
+    final chapterIndex =
+        _currentChapterIndex.clamp(0, _allChapterContents.length - 1);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_pageController.hasClients) {
+        _markRestoringPosition();
+        _pageController.jumpToPage(chapterIndex);
+      }
+
+      final controller = _chapterScrollController(chapterIndex);
+      if (!controller.hasClients) {
+        if (attempt < 3) {
+          _restorePagedPosition(attempt: attempt + 1);
+        }
+        return;
+      }
+
+      final anchorOffset = _readingAnchorOffset();
+      final fraction = anchorOffset >= 0
+          ? _fractionForTextOffset(chapterIndex, anchorOffset)
+          : 0.0;
+      final target = _scrollOffsetForPagedFraction(controller, fraction);
+      _markRestoringPosition();
+      controller.jumpTo(target);
+    });
+  }
+
+  void _saveReadingPositionForMode({bool refreshChapter = true}) {
+    if (_isPagedMode) {
+      _saveReadingPositionFromPagedController(_currentChapterIndex);
+    } else {
+      if (refreshChapter) {
+        _updateCurrentChapterFromScroll();
+      }
+      _saveReadingPositionFromScroll();
+    }
+  }
+
   void _saveReadingPositionFromScroll() {
+    if (_isRestoringPosition) return;
     if (!_scrollController.hasClients) return;
-    final text = _currentPlainText;
+    if (_currentChapterIndex < 0 ||
+        _currentChapterIndex >= _allChapterPlainTexts.length) {
+      return;
+    }
+    final text = _allChapterPlainTexts[_currentChapterIndex];
     if (text.trim().isEmpty) return;
 
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    final offset = _scrollController.offset.clamp(0.0, maxExtent);
-    final fraction = maxExtent <= 0 ? 0.0 : (offset / maxExtent);
-    final maxIndex = text.length - 1;
-    final approxIndex =
-        maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+    final fraction = _chapterFractionAtViewportAnchor(_currentChapterIndex);
+    if (fraction == null) {
+      _lastScrollPosition = _scrollController.offset;
+      unawaited(
+        widget.repository.updateReadingProgress(
+          widget.book.id,
+          sectionIndex: _currentChapterIndex,
+          totalPages: _chapters?.length ?? 0,
+          scrollPosition: _lastScrollPosition,
+        ),
+      );
+      return;
+    }
 
-    final span = sentenceForOffset(_sentenceSpans, approxIndex) ??
-        SentenceSpan(0, text.length);
-
-    _lastScrollPosition = offset;
+    final span = _sentenceSpanForFraction(_currentChapterIndex, fraction);
+    _lastScrollPosition = _scrollController.offset;
+    _lastReadingSentenceStart = span.start;
+    _lastReadingSentenceEnd = span.end;
 
     unawaited(
       widget.repository.updateReadingProgress(
         widget.book.id,
         sectionIndex: _currentChapterIndex,
         totalPages: _chapters?.length ?? 0,
-        scrollPosition: offset,
+        scrollPosition: _lastScrollPosition,
         lastReadingSentenceStart: span.start,
         lastReadingSentenceEnd: span.end,
       ),
     );
+  }
+
+  void _saveReadingPositionFromPagedMetrics(
+    int chapterIndex,
+    ScrollMetrics metrics,
+  ) {
+    if (_isRestoringPosition) return;
+    if (chapterIndex < 0 ||
+        chapterIndex >= _allChapterPlainTexts.length) {
+      return;
+    }
+    final text = _allChapterPlainTexts[chapterIndex];
+    if (text.trim().isEmpty) return;
+
+    final contentHeight = metrics.maxScrollExtent + metrics.viewportDimension;
+    final anchorY = metrics.pixels + metrics.viewportDimension * 0.5;
+    final fraction =
+        contentHeight <= 0 ? 0.0 : (anchorY / contentHeight).clamp(0.0, 1.0);
+    final span = _sentenceSpanForFraction(chapterIndex, fraction);
+
+    _lastReadingSentenceStart = span.start;
+    _lastReadingSentenceEnd = span.end;
+
+    unawaited(
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        sectionIndex: chapterIndex,
+        totalPages: _chapters?.length ?? 0,
+        lastReadingSentenceStart: span.start,
+        lastReadingSentenceEnd: span.end,
+      ),
+    );
+  }
+
+  void _saveReadingPositionFromPagedController(int chapterIndex) {
+    if (chapterIndex < 0 ||
+        chapterIndex >= _allChapterPlainTexts.length) {
+      return;
+    }
+    final controller = _chapterScrollController(chapterIndex);
+    if (!controller.hasClients) return;
+    _saveReadingPositionFromPagedMetrics(chapterIndex, controller.position);
   }
 
   void _saveCurrentTtsSentence() {
@@ -1004,57 +1267,64 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
     final showTtsControls = showChrome && _showTtsControls;
     final showBottomControls = showChrome && !_showTtsControls;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Content layer
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onDoubleTapDown: _handleDoubleTapDown,
-              onDoubleTap: _handleDoubleTap,
-              child: _buildBody(),
-            ),
-          ),
-          // Removed center overlay - tap detection handled via the content layer
-          if (showChrome) _buildTopBar(),
-          if (showBottomControls && _buildControls() != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _buildControls()!,
-            ),
-          if (showTtsControls)
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: SafeArea(
-                top: false,
-                child: TtsControlsSheet(
-                  ttsService: _ttsService,
-                  textToSpeak: _currentPlainText,
-                  resolveTextToSpeak: _resolveTtsText,
-                  emptyTextMessage: 'No readable text in this chapter.',
-                  isContinuous: _ttsContinuous,
-                  onContinuousChanged: (value) {
-                    _ttsAdvanceRequestId++;
-                    setState(() => _ttsContinuous = value);
-                  },
-                  isFollowMode: _ttsFollowMode,
-                  onFollowModeChanged: (value) {
-                    setState(() => _ttsFollowMode = value);
-                  },
-                  isTapToStart: _tapToStartEnabled,
-                  onTapToStartChanged: (value) {
-                    setState(() => _tapToStartEnabled = value);
-                  },
-                  onStop: _saveCurrentTtsSentence,
-                  onPause: _saveCurrentTtsSentence,
-                  onClose: _closeTtsControls,
-                ),
+    return WillPopScope(
+      onWillPop: () async {
+        _saveReadingPositionForMode();
+        _saveCurrentTtsSentence();
+        return true;
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Content layer
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTapDown: _handleDoubleTapDown,
+                onDoubleTap: _handleDoubleTap,
+                child: _buildBody(),
               ),
             ),
-        ],
+            // Removed center overlay - tap detection handled via the content layer
+            if (showChrome) _buildTopBar(),
+            if (showBottomControls && _buildControls() != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildControls()!,
+              ),
+            if (showTtsControls)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  top: false,
+                  child: TtsControlsSheet(
+                    ttsService: _ttsService,
+                    textToSpeak: _currentPlainText,
+                    resolveTextToSpeak: _resolveTtsText,
+                    emptyTextMessage: 'No readable text in this chapter.',
+                    isContinuous: _ttsContinuous,
+                    onContinuousChanged: (value) {
+                      _ttsAdvanceRequestId++;
+                      setState(() => _ttsContinuous = value);
+                    },
+                    isFollowMode: _ttsFollowMode,
+                    onFollowModeChanged: (value) {
+                      setState(() => _ttsFollowMode = value);
+                    },
+                    isTapToStart: _tapToStartEnabled,
+                    onTapToStartChanged: (value) {
+                      setState(() => _tapToStartEnabled = value);
+                    },
+                    onStop: _saveCurrentTtsSentence,
+                    onPause: _saveCurrentTtsSentence,
+                    onClose: _closeTtsControls,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1158,7 +1428,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
             itemCount: _allChapterContents.length,
             onPageChanged: (index) {
                if (index != _currentChapterIndex) {
-                  _loadChapter(index);
+                  final userInitiated = !_isRestoringPosition;
+                  _loadChapter(index, userInitiated: userInitiated);
                }
             },
             itemBuilder: (context, index) {
@@ -1166,6 +1437,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
               final displayContent = themeConfig.hyphenation
                     ? HyphenationHelper.processHtml(htmlContent)
                     : htmlContent;
+              final scrollController = _chapterScrollController(index);
               
               final isTtsActive = _showTtsControls && _ttsService.state == TtsState.playing;
               
@@ -1174,27 +1446,46 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                    // This works because we call _loadChapter on page change which updates state.
                }
               
-              return AnimatedBuilder(
-                animation: _ttsService,
-                builder: (context, _) {
-                   if (isTtsActive && index == _currentChapterIndex) {
-                       return Html(
-                          data: _buildTtsHighlightedHtml(),
+              return NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (index == _currentChapterIndex &&
+                      (notification is ScrollEndNotification ||
+                          (notification is UserScrollNotification &&
+                              notification.direction ==
+                                  ScrollDirection.idle))) {
+                    _saveReadingPositionFromPagedMetrics(
+                      index,
+                      notification.metrics,
+                    );
+                  }
+                  return false;
+                },
+                child: AnimatedBuilder(
+                  animation: _ttsService,
+                  builder: (context, _) {
+                    final htmlData =
+                        isTtsActive && index == _currentChapterIndex
+                            ? _buildTtsHighlightedHtml()
+                            : displayContent;
+                    return SingleChildScrollView(
+                      controller: scrollController,
+                      child: Padding(
+                        key: index < _chapterKeys.length
+                            ? _chapterKeys[index]
+                            : null,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalMargin,
+                          vertical: 24.0,
+                        ),
+                        child: Html(
+                          data: htmlData,
                           extensions: extensions,
                           style: _buildHtmlStyles(themeConfig),
-                       );
-                   }
-                   return SingleChildScrollView(
-                     child: Padding(
-                       padding: EdgeInsets.symmetric(horizontal: horizontalMargin, vertical: 24.0),
-                       child: Html(
-                          data: displayContent,
-                          extensions: extensions,
-                          style: _buildHtmlStyles(themeConfig),
-                       ),
-                     ),
-                   );
-                }
+                        ),
+                      ),
+                    );
+                  },
+                ),
               );
             },
           );
@@ -1268,8 +1559,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
-          _saveReadingPositionFromScroll();
           _updateCurrentChapterFromScroll();
+          _saveReadingPositionFromScroll();
         }
         return false;
       },
@@ -1531,7 +1822,11 @@ class _EpubReaderScreenState extends State<EpubReaderScreen>
                 IconButton(
                   icon: const Icon(Icons.arrow_back),
                   tooltip: 'Back',
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () {
+                    _saveReadingPositionForMode();
+                    _saveCurrentTtsSentence();
+                    Navigator.of(context).maybePop();
+                  },
                 ),
                 Expanded(
                   child: Text(
