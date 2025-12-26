@@ -126,11 +126,13 @@ class SafService {
   Future<String> copyUriToCache({
     required String uri,
     String? suggestedName,
+    bool force = false,
   }) async {
     try {
       final result = await _channel.invokeMethod<String>('copyUriToCache', {
         'uri': uri,
         'suggestedName': suggestedName,
+        'force': force,
       });
       if (result == null || result.isEmpty) {
         throw SafException('Failed to copy linked file to cache.');

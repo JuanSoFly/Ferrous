@@ -13,6 +13,9 @@ class MainActivity : FlutterActivity() {
         
         safHandler = SafHandler(this)
         
+        // Clean up temp file cache on startup (Plan 05)
+        safHandler.cleanupSafCache()
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SafHandler.CHANNEL)
             .setMethodCallHandler { call, result ->
                 safHandler.handleMethodCall(call, result)

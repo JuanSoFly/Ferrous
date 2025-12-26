@@ -6,9 +6,9 @@ import 'package:reader_app/data/models/book.dart';
 /// - Determines if horizontal/vertical swipe navigation is active
 /// - Determines if paged or continuous scrolling mode is active
 class ReaderModeController {
-  final ReadingMode mode;
+  ReadingMode mode;
 
-  const ReaderModeController(this.mode);
+  ReaderModeController(this.mode);
 
   /// Whether to use horizontal swipe for page navigation (left-to-right or horizontal continuous).
   bool get useHorizontalSwipe {

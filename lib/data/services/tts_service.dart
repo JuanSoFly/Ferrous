@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:reader_app/utils/performance.dart';
 
 enum TtsState { stopped, playing, paused }
 
@@ -286,38 +287,40 @@ class TtsService extends ChangeNotifier {
   // --- Public API ---
 
   Future<void> speak(String text) async {
-    await _ensureReady();
-    final normalized = _normalize(text);
-    if (normalized.isEmpty) return;
+    await measureAsync('tts_speak', () async {
+      await _ensureReady();
+      final normalized = _normalize(text);
+      if (normalized.isEmpty) return;
 
-    // Stop existing speech (non-blocking)
-    _stopFallback();
-    if (_state != TtsState.stopped) {
-      _stopRequested = true;
-      unawaited(_flutterTts.stop());
-      await Future.delayed(const Duration(milliseconds: 50));
-    }
+      // Stop existing speech (non-blocking)
+      _stopFallback();
+      if (_state != TtsState.stopped) {
+        _stopRequested = true;
+        unawaited(_flutterTts.stop());
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
 
-    _clear();
-    _stopRequested = false;
-    _nativeProgressReceived = false;
-    _fullText = normalized;
-
-    final maxChars = await _maxChunkSize();
-    _chunks = _splitText(normalized, maxChars);
-    _chunkIndex = 0;
-    _chunkOffset = 0;
-
-    _wordPositions = _parseWords(_chunks[0]);
-    _currentWordIndex = 0;
-
-    if (!await _speakChunk(_chunks[0])) {
       _clear();
-      _setState(TtsState.stopped);
-      return;
-    }
+      _stopRequested = false;
+      _nativeProgressReceived = false;
+      _fullText = normalized;
 
-    _setState(TtsState.playing);
+      final maxChars = await _maxChunkSize();
+      _chunks = _splitText(normalized, maxChars);
+      _chunkIndex = 0;
+      _chunkOffset = 0;
+
+      _wordPositions = _parseWords(_chunks[0]);
+      _currentWordIndex = 0;
+
+      if (!await _speakChunk(_chunks[0])) {
+        _clear();
+        _setState(TtsState.stopped);
+        return;
+      }
+
+      _setState(TtsState.playing);
+    }, metadata: {'text_length': text.length});
   }
 
   Future<bool> _speakChunk(String chunk) async {

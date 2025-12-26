@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:reader_app/features/reader/html_reader_screen.dart';
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
+import 'package:reader_app/utils/performance.dart';
 
 /// MOBI reader using the shared HTML reader infrastructure.
 /// 
@@ -23,7 +24,9 @@ class _MobiReaderScreenState extends HtmlReaderScreenState<MobiReaderScreen> {
 
   @override
   Future<String> loadContent(String path) async {
-    // Note: getMobiContent is synchronous in the current API
-    return rust_mobi.getMobiContent(path: path);
+    // Note: getMobiContent is synchronous, wrap in async for measureAsync
+    return await measureAsync('load_mobi_content', () async {
+      return rust_mobi.getMobiContent(path: path);
+    });
   }
 }

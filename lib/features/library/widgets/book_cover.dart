@@ -25,19 +25,16 @@ class BookCover extends StatelessWidget {
     final coverPath = book.coverPath;
     
     if (coverPath != null && coverPath.isNotEmpty) {
-      final file = File(coverPath);
-      if (file.existsSync()) {
-        return SizedBox(
-          height: height,
-          width: width,
-          child: Image.file(
-            file,
-            fit: fit,
-            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(context),
-            cacheHeight: height != null ? (height! * 2).toInt() : null,
-          ),
-        );
-      }
+      return SizedBox(
+        height: height,
+        width: width,
+        child: Image.file(
+          File(coverPath),
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(context),
+          cacheHeight: height != null ? (height! * 2).toInt() : null,
+        ),
+      );
     }
     return _buildPlaceholder(context);
   }

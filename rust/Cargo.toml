@@ -9,6 +9,8 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 flutter_rust_bridge = "=2.11.1"
 anyhow = "1.0.100"
+hotpath = "0.9.2"
+lru = "0.13"
 
 # File scanning
 walkdir = "2.5.0"
@@ -37,5 +39,5 @@ roxmltree = "0.21.1"
 [profile.release]
 lto = true
 codegen-units = 1
-opt-level = "z"
+opt-level = 3
 strip = true

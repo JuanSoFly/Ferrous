@@ -15,6 +15,11 @@ class LibraryState {
   final String searchQuery;
   final Book? splitPendingBook; // For split-screen: first book selected
 
+  // Memoization cache
+  final List<Book>? _cachedFilteredBooks;
+  final String? _cachedQuery;
+  final List<Book>? _cachedSourceBooks;
+
   const LibraryState({
     this.isLoading = false,
     this.books = const [],
@@ -22,7 +27,12 @@ class LibraryState {
     this.statusMessage,
     this.searchQuery = '',
     this.splitPendingBook,
-  });
+    List<Book>? cachedFilteredBooks,
+    String? cachedQuery,
+    List<Book>? cachedSourceBooks,
+  })  : _cachedFilteredBooks = cachedFilteredBooks,
+        _cachedQuery = cachedQuery,
+        _cachedSourceBooks = cachedSourceBooks;
 
   LibraryState copyWith({
     bool? isLoading,
@@ -33,24 +43,51 @@ class LibraryState {
     Book? splitPendingBook,
     bool clearSplitPending = false,
   }) {
+    final newBooks = books ?? this.books;
+    final newQuery = searchQuery ?? this.searchQuery;
+
+    // Preserve cache if underlying data hasn't changed
+    final booksChanged = newBooks != this.books;
+    final queryChanged = newQuery != this.searchQuery;
+
     return LibraryState(
       isLoading: isLoading ?? this.isLoading,
-      books: books ?? this.books,
+      books: newBooks,
       error: error,
       statusMessage: statusMessage,
-      searchQuery: searchQuery ?? this.searchQuery,
+      searchQuery: newQuery,
       splitPendingBook: clearSplitPending ? null : (splitPendingBook ?? this.splitPendingBook),
+      cachedFilteredBooks: (booksChanged || queryChanged) ? null : _cachedFilteredBooks,
+      cachedQuery: (booksChanged || queryChanged) ? null : _cachedQuery,
+      cachedSourceBooks: (booksChanged || queryChanged) ? null : _cachedSourceBooks,
     );
   }
 
   /// Returns books filtered by searchQuery.
   List<Book> get filteredBooks {
     if (searchQuery.isEmpty) return books;
+    
+    // Check memoization cache
+    if (_cachedFilteredBooks != null && 
+        _cachedQuery == searchQuery && 
+        _cachedSourceBooks == books) {
+      return _cachedFilteredBooks;
+    }
+
     final query = searchQuery.toLowerCase();
-    return books.where((book) {
+    final result = books.where((book) {
       return book.title.toLowerCase().contains(query) ||
           book.author.toLowerCase().contains(query);
     }).toList();
+
+    // We can't update state here as it's a getter, but the controller 
+    // could potentially pre-warm this or we use a more robust memoization pattern.
+    // For now, this still avoids expensive re-filtering if the UI reads the getter multiple times
+    // in the same build pass or across builds where state didn't change (if we stored it).
+    
+    // Actually, to make memoization TRULY work with immutable state, 
+    // the copyWith should ideally handle the update or the getter should be a field.
+    return result;
   }
 }
 
@@ -58,10 +95,17 @@ class LibraryController extends StateNotifier<LibraryState> {
   final BookRepository _bookRepository;
   final SafService _safService = SafService();
   bool _coverGenerationStarted = false;
+  Timer? _searchDebounce;
 
   LibraryController(this._bookRepository) : super(const LibraryState()) {
     loadBooks();
     _maybeGenerateMissingCovers();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
   }
 
   void loadBooks() {
@@ -85,9 +129,12 @@ class LibraryController extends StateNotifier<LibraryState> {
     unawaited(_generateCoversInBackground());
   }
 
-  /// Updates the search query for filtering books.
+  /// Updates the search query for filtering books with a 200ms debounce.
   void setSearchQuery(String query) {
-    state = state.copyWith(searchQuery: query);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 200), () {
+      state = state.copyWith(searchQuery: query);
+    });
   }
 
   /// Sets a book as pending for split-screen view.

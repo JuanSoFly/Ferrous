@@ -3,6 +3,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
+use crate::timed;
 
 /// A word span with character offsets
 #[derive(Debug, Clone)]
@@ -47,66 +48,68 @@ fn normalize_text(text: &str) -> String {
 /// Pre-compute all word and sentence boundaries for TTS highlighting.
 /// This eliminates per-word computation during TTS playback.
 pub fn precompute_text_highlights(text: String) -> TextHighlightData {
-    let normalized = normalize_text(&text);
-    
-    if normalized.is_empty() {
-        return TextHighlightData {
-            words: Vec::new(),
-            sentences: Vec::new(),
+    timed!("precompute_text_highlights", {
+        let normalized = normalize_text(&text);
+        
+        if normalized.is_empty() {
+            return TextHighlightData {
+                words: Vec::new(),
+                sentences: Vec::new(),
+                normalized_text: normalized,
+            };
+        }
+        
+        // Extract words using Unicode word boundaries
+        let mut words = Vec::new();
+        let mut char_offset = 0u32;
+        
+        for word in normalized.split_word_bounds() {
+            let word_len = word.chars().count() as u32;
+            
+            // Only include non-whitespace words
+            if !word.trim().is_empty() {
+                words.push(WordSpan {
+                    start: char_offset,
+                    end: char_offset + word_len,
+                    text: word.to_string(),
+                });
+            }
+            
+            char_offset += word_len;
+        }
+        
+        // Extract sentences using Unicode sentence boundaries
+        let mut sentences = Vec::new();
+        char_offset = 0;
+        
+        for sentence in normalized.split_sentence_bounds() {
+            let sentence_len = sentence.chars().count() as u32;
+            let trimmed = sentence.trim();
+            
+            if !trimmed.is_empty() {
+                // Find actual start (skip leading whitespace)
+                let leading_ws = sentence.len() - sentence.trim_start().len();
+                let leading_chars = sentence[..leading_ws].chars().count() as u32;
+                
+                // Find actual end (skip trailing whitespace)
+                let trailing_ws = sentence.len() - sentence.trim_end().len();
+                let trailing_chars = sentence[sentence.len() - trailing_ws..].chars().count() as u32;
+                
+                sentences.push(SentenceSpan {
+                    start: char_offset + leading_chars,
+                    end: char_offset + sentence_len - trailing_chars,
+                });
+            }
+            
+            char_offset += sentence_len;
+        }
+        
+        TextHighlightData {
+            words,
+            sentences,
             normalized_text: normalized,
-        };
-    }
-    
-    // Extract words using Unicode word boundaries
-    let mut words = Vec::new();
-    let mut char_offset = 0u32;
-    
-    for word in normalized.split_word_bounds() {
-        let word_len = word.chars().count() as u32;
-        
-        // Only include non-whitespace words
-        if !word.trim().is_empty() {
-            words.push(WordSpan {
-                start: char_offset,
-                end: char_offset + word_len,
-                text: word.to_string(),
-            });
         }
-        
-        char_offset += word_len;
-    }
-    
-    // Extract sentences using Unicode sentence boundaries
-    let mut sentences = Vec::new();
-    char_offset = 0;
-    
-    for sentence in normalized.split_sentence_bounds() {
-        let sentence_len = sentence.chars().count() as u32;
-        let trimmed = sentence.trim();
-        
-        if !trimmed.is_empty() {
-            // Find actual start (skip leading whitespace)
-            let leading_ws = sentence.len() - sentence.trim_start().len();
-            let leading_chars = sentence[..leading_ws].chars().count() as u32;
-            
-            // Find actual end (skip trailing whitespace)
-            let trailing_ws = sentence.len() - sentence.trim_end().len();
-            let trailing_chars = sentence[sentence.len() - trailing_ws..].chars().count() as u32;
-            
-            sentences.push(SentenceSpan {
-                start: char_offset + leading_chars,
-                end: char_offset + sentence_len - trailing_chars,
-            });
-        }
-        
-        char_offset += sentence_len;
-    }
-    
-    TextHighlightData {
-        words,
-        sentences,
-        normalized_text: normalized,
-    }
+    })
 }
 
 /// Find the sentence containing a given character offset
@@ -135,10 +138,10 @@ pub fn insert_html_highlight(
         return Ok(html);
     }
     
-    let document = Html::parse_document(&html);
+    let _document = Html::parse_document(&html);
     
     // Extract text content to build character mapping
-    let body_selector = Selector::parse("body").unwrap_or_else(|_| Selector::parse("*").unwrap());
+    let _body_selector = Selector::parse("body").unwrap_or_else(|_| Selector::parse("*").unwrap());
     
     // For speed, we'll use a simpler approach: find text, wrap in string manipulation
     // This avoids full DOM reconstruction which scraper doesn't support well
@@ -150,8 +153,8 @@ pub fn insert_html_highlight(
     }
     
     // Build mapping from normalized offset to raw offset
-    let text_regex = get_whitespace_regex();
-    let raw_text = extract_text_from_html(&html);
+    let _text_regex = get_whitespace_regex();
+    let _raw_text = extract_text_from_html(&html);
     
     // For now, use a simplified approach: find the text range and wrap it
     // This is a fallback until we implement full DOM manipulation

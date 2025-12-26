@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
+use crate::timed;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};
 use std::path::Path;
 use zip::ZipArchive;
 
-use crate::api::pdf::with_pdfium;
+use crate::api::pdf::{load_pdf_document, with_pdfium};
 
 fn percent_decode_to_string(input: &str) -> String {
     let bytes = input.as_bytes();
@@ -161,27 +162,24 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
 
 /// Extract cover from a book file and save it to the specified path.
 /// Returns the saved path on success.
+#[hotpath::measure]
 pub fn extract_cover(book_path: String, save_path: String) -> Result<String> {
-    let path = Path::new(&book_path);
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-
-    match extension.as_str() {
-        "pdf" => extract_pdf_cover(&book_path, &save_path),
-        "epub" => extract_epub_cover(&book_path, &save_path),
-        "cbz" | "cbr" => extract_cbz_cover(&book_path, &save_path),
-        _ => Err(anyhow::anyhow!("Unsupported format for cover extraction: {}", extension)),
-    }
+    timed!("extract_cover", {
+        let format = book_path.split('.').last().unwrap_or("").to_lowercase();
+        match format.as_str() {
+            "pdf" => extract_pdf_cover(&book_path, &save_path),
+            "epub" => extract_epub_cover(&book_path, &save_path),
+            "cbz" | "cbr" => extract_cbz_cover(&book_path, &save_path),
+            // TODO: Implement MOBI cover extraction
+            // "mobi" | "azw3" => extract_mobi_cover(&book_path, &save_path),
+            _ => Err(anyhow::anyhow!("Unsupported format for cover extraction: {}", format)),
+        }
+    })
 }
 
 fn extract_pdf_cover(book_path: &str, save_path: &str) -> Result<String> {
     with_pdfium(|pdfium| {
-        let doc = pdfium
-            .load_pdf_from_file(book_path, None)
-            .map_err(|e| anyhow::anyhow!("Failed to load PDF: {:?}", e))?;
+        let doc = load_pdf_document(pdfium, book_path)?;
 
         let page = doc
             .pages()

@@ -32,6 +32,12 @@ class HyphenationHelper {
     }
   }
 
+  /// Entry point for compute() isolate
+  static Future<String> processHtmlIsolated(String html) async {
+    await init();
+    return processHtml(html);
+  }
+
   static void _processNode(dom.Node? node) {
     if (node == null) return;
 

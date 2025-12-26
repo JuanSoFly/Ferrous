@@ -32,6 +32,7 @@ class SafHandler(private val activity: MainActivity) {
         private const val PREFS_KEY_URIS = "persisted_uris"
         private const val PREFS_KEY_URI_MODES = "persisted_uri_modes"
         private const val BOOKS_DIR = "books"
+        private const val SAF_CACHE_DIR = "saf_cache"
         private const val MODE_LINKED = "linked"
         private const val MODE_IMPORTED = "imported"
     }
@@ -81,9 +82,10 @@ class SafHandler(private val activity: MainActivity) {
                     return
                 }
                 val suggestedName = call.argument<String>("suggestedName")
+                val force = call.argument<Boolean>("force") ?: false
                 scope.launch {
                     try {
-                        val path = copyUriToCache(Uri.parse(uriString), suggestedName)
+                        val path = copyUriToCache(Uri.parse(uriString), suggestedName, force)
                         result.success(path)
                     } catch (e: Exception) {
                         result.error("COPY_URI_ERROR", e.message, null)
@@ -104,6 +106,16 @@ class SafHandler(private val activity: MainActivity) {
                     try {
                         val removedCount = cleanupStalePermissions()
                         result.success(removedCount)
+                    } catch (e: Exception) {
+                        result.error("CLEANUP_ERROR", e.message, null)
+                    }
+                }
+            }
+            "cleanupCache" -> {
+                scope.launch {
+                    try {
+                        cleanupSafCache()
+                        result.success(true)
                     } catch (e: Exception) {
                         result.error("CLEANUP_ERROR", e.message, null)
                     }
@@ -495,9 +507,13 @@ class SafHandler(private val activity: MainActivity) {
 
     /**
      * Copies a single SAF URI into cache and returns the temp file path.
-     * Validates permission before attempting to copy.
+     * Uses a caching mechanism based on URI hash, size, and last modified time.
      */
-    private suspend fun copyUriToCache(uri: Uri, suggestedName: String?): String =
+    private suspend fun copyUriToCache(
+        uri: Uri,
+        suggestedName: String?,
+        force: Boolean = false
+    ): String =
         withContext(Dispatchers.IO) {
             // Validate permission first
             if (!hasValidPermission(uri)) {
@@ -506,29 +522,97 @@ class SafHandler(private val activity: MainActivity) {
                     "Please re-add the folder containing this book."
                 )
             }
+
+            // Get metadata for cache key
+            var size = 0L
+            var mtime = 0L
             
+            try {
+                activity.contentResolver.query(
+                    uri,
+                    arrayOf(
+                        android.provider.OpenableColumns.SIZE,
+                        android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                    ),
+                    null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        val mtimeIdx = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                        if (sizeIdx != -1) size = cursor.getLong(sizeIdx)
+                        if (mtimeIdx != -1) mtime = cursor.getLong(mtimeIdx)
+                    }
+                }
+            } catch (e: Exception) {
+                // Metadata query failed, fallback to fresh copy every time by using random key
+                mtime = System.currentTimeMillis()
+            }
+
+            val cacheDir = File(activity.cacheDir, SAF_CACHE_DIR)
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+
+            val cacheKey = "${uri.toString().hashCode().toUInt()}_${size}_$mtime"
             val safeName = sanitizeFileName(suggestedName ?: "linked")
             val extension = safeName.substringAfterLast('.', "")
             val suffix = if (extension.isNotEmpty()) ".$extension" else ""
-            val tempFile = File.createTempFile("linked_", suffix, activity.cacheDir)
             
+            // Check cache
+            val cachedFile = File(cacheDir, "$cacheKey$suffix")
+            if (!force && cachedFile.exists() && cachedFile.length() > 0 && cachedFile.length() == size) {
+                // Cache hit! Update mtime to prevent early cleanup
+                cachedFile.setLastModified(System.currentTimeMillis())
+                return@withContext cachedFile.absolutePath
+            }
+
+            // Cache miss — copy file
             try {
+                if (force && cachedFile.exists()) {
+                    cachedFile.delete()
+                }
                 val input = activity.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("Unable to open URI stream. The file may no longer exist.")
                 input.use { stream ->
-                    FileOutputStream(tempFile).use { output ->
+                    FileOutputStream(cachedFile).use { output ->
                         stream.copyTo(output)
                     }
                 }
-            } catch (e: SecurityException) {
-                tempFile.delete()
-                throw SecurityException(
-                    "Permission denied for URI. Please re-add the folder containing this book."
-                )
+            } catch (e: Exception) {
+                if (cachedFile.exists()) cachedFile.delete()
+                throw e
             }
             
-            tempFile.absolutePath
+            cachedFile.absolutePath
         }
+
+    /**
+     * Cleans up the SAF cache based on age and total size.
+     */
+    fun cleanupSafCache(
+        maxAgeMs: Long = 7 * 24 * 60 * 60 * 1000L, // 7 days
+        maxSizeMB: Int = 500
+    ) {
+        val cacheDir = File(activity.cacheDir, SAF_CACHE_DIR)
+        if (!cacheDir.exists()) return
+
+        val files = cacheDir.listFiles() ?: return
+        val now = System.currentTimeMillis()
+
+        // Phase 1: Delete files older than maxAge
+        files.filter { now - it.lastModified() > maxAgeMs }
+             .forEach { it.delete() }
+
+        // Phase 2: If still too big, delete oldest first
+        val remaining = cacheDir.listFiles()?.toList() ?: return
+        val sorted = remaining.sortedBy { it.lastModified() }
+        var totalSize = sorted.sumOf { it.length() }
+        val maxBytes = maxSizeMB * 1024L * 1024L
+
+        for (file in sorted) {
+            if (totalSize <= maxBytes) break
+            totalSize -= file.length()
+            file.delete()
+        }
+    }
 
     private fun sanitizeFileName(name: String): String {
         return name.replace(Regex("[\\\\/:*?\"<>|]"), "_")

@@ -5,6 +5,8 @@ import 'package:reader_app/data/models/book.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
+import 'package:reader_app/utils/performance.dart';
+
 /// Repository for managing book data with reactive notifications.
 /// 
 /// Uses ChangeNotifier to allow widgets to automatically rebuild when book
@@ -121,57 +123,66 @@ class BookRepository extends ChangeNotifier {
     });
   }
 
+  static final Semaphore _coverSemaphore = Semaphore(2);
+
   /// Generate covers for all books that don't have one.
   /// [coversDir] is the absolute path to the directory where covers will be saved.
   Future<int> generateCovers(String coversDir) async {
     final books = getAllBooks();
-    int generated = 0;
-
     final resolver = BookFileResolver();
+    
+    final List<Future<bool>> tasks = [];
+
     for (final book in books) {
-      final existingCoverPath = book.coverPath;
-      final hasExistingCoverFile = existingCoverPath != null &&
-          existingCoverPath.isNotEmpty &&
-          File(existingCoverPath).existsSync();
+      tasks.add(() async {
+        final existingCoverPath = book.coverPath;
+        final hasExistingCoverFile = existingCoverPath != null &&
+            existingCoverPath.isNotEmpty &&
+            File(existingCoverPath).existsSync();
 
-      final expectedCoverPath = '$coversDir/${book.id}.png';
+        final expectedCoverPath = '$coversDir/${book.id}.png';
 
-      // If we already have a valid on-disk cover, keep it.
-      if (hasExistingCoverFile) {
-        continue;
-      }
-
-      // If the cover file exists at the expected location but the Book points
-      // to nothing (or a stale path), just relink it without re-extracting.
-      if (File(expectedCoverPath).existsSync()) {
-        final updated = book.copyWith(coverPath: expectedCoverPath);
-        await box.put(book.id, updated);
-        generated++;
-        continue;
-      }
-
-      try {
-        final resolved = await resolver.resolve(book);
-        try {
-          await _extractCover(resolved.path, expectedCoverPath);
-        } finally {
-          if (resolved.isTemp) {
-            try {
-              await File(resolved.path).delete();
-            } catch (_) {
-              // Ignore cleanup failures for temp files
-            }
-          }
+        // If we already have a valid on-disk cover, keep it.
+        if (hasExistingCoverFile) {
+          return false;
         }
 
-        // Update book with cover path (silently)
-        final updated = book.copyWith(coverPath: expectedCoverPath);
-        await box.put(book.id, updated);
-        generated++;
-      } catch (e) {
-        // Silently fail for books where cover extraction fails
-      }
+        // If the cover file exists at the expected location but the Book points
+        // to nothing (or a stale path), just relink it without re-extracting.
+        if (File(expectedCoverPath).existsSync()) {
+          final updated = book.copyWith(coverPath: expectedCoverPath);
+          await box.put(book.id, updated);
+          return true;
+        }
+
+        await _coverSemaphore.acquire();
+        try {
+          final resolved = await resolver.resolve(book);
+          try {
+            await _extractCover(resolved.path, expectedCoverPath);
+          } finally {
+            if (resolved.isTemp) {
+              try {
+                await File(resolved.path).delete();
+              } catch (_) {}
+            }
+          }
+
+          // Update book with cover path (silently)
+          final updated = book.copyWith(coverPath: expectedCoverPath);
+          await box.put(book.id, updated);
+          return true;
+        } catch (e) {
+          debugPrint('Cover Extraction failed for ${book.title}: $e');
+          return false;
+        } finally {
+          _coverSemaphore.release();
+        }
+      }());
     }
+
+    final results = await Future.wait(tasks);
+    final generated = results.where((r) => r).length;
 
     // Notify once at the end after all covers are generated
     if (generated > 0) {
@@ -191,6 +202,6 @@ class BookRepository extends ChangeNotifier {
   }
 
   Future<void> _extractCover(String bookPath, String savePath) async {
-    await covers_api.extractCover(bookPath: bookPath, savePath: savePath);
+    await measureAsync('extract_cover', () => covers_api.extractCover(bookPath: bookPath, savePath: savePath), metadata: {'format': bookPath.split('.').last});
   }
 }

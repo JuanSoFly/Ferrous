@@ -132,9 +132,13 @@ class _LibraryView extends StatelessWidget {
     }
     
     final displayedBooks = state.filteredBooks;
+    final continueReadingBooks = state.searchQuery.isEmpty 
+        ? displayedBooks.where((b) => b.progress > 0).toList()
+        : <Book>[];
+
     return CustomScrollView(
       slivers: [
-        if (state.searchQuery.isEmpty && displayedBooks.any((b) => b.progress > 0))
+        if (continueReadingBooks.isNotEmpty)
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,13 +157,9 @@ class _LibraryView extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8),
-                    itemCount: displayedBooks
-                        .where((b) => b.progress > 0)
-                        .length,
+                    itemCount: continueReadingBooks.length,
                     itemBuilder: (context, index) {
-                      final book = displayedBooks
-                          .where((b) => b.progress > 0)
-                          .toList()[index];
+                      final book = continueReadingBooks[index];
                       return SizedBox(
                         width: 160,
                         child: _BookCard(book: book),

@@ -16,30 +16,41 @@ class EpubFallbackParser {
   };
 
   static List<EpubChapter> parseChapters(List<int> bytes) {
-    final archive = ZipDecoder().decodeBytes(bytes);
-    final filesByLowerPath = <String, ArchiveFile>{};
+    final Archive archive;
+    final Map<String, ArchiveFile> filesByLowerPath;
+    final String opfPath;
+    final ArchiveFile opfFile;
 
-    for (final file in archive.files) {
-      if (!file.isFile) continue;
-      final normalized = _normalizePath(file.name).toLowerCase();
-      filesByLowerPath[normalized] = file;
-    }
+    try {
+      archive = ZipDecoder().decodeBytes(bytes);
+      filesByLowerPath = <String, ArchiveFile>{};
 
-    final containerFile = _findFile(filesByLowerPath, 'META-INF/container.xml');
-    if (containerFile == null) {
-      throw Exception('EPUB parsing error: container.xml not found.');
-    }
+      for (final file in archive.files) {
+        if (!file.isFile) continue;
+        final normalized = _normalizePath(file.name).toLowerCase();
+        filesByLowerPath[normalized] = file;
+      }
 
-    final containerDoc = xml.XmlDocument.parse(_decodeText(containerFile));
-    final rootfilePath = _readRootfilePath(containerDoc);
-    if (rootfilePath == null || rootfilePath.trim().isEmpty) {
-      throw Exception('EPUB parsing error: rootfile path not found in container.xml.');
-    }
+      final containerFile = _findFile(filesByLowerPath, 'META-INF/container.xml');
+      if (containerFile == null) {
+        throw Exception('EPUB parsing error: container.xml not found.');
+      }
 
-    final opfPath = _normalizePath(Uri.decodeFull(rootfilePath));
-    final opfFile = _findFile(filesByLowerPath, opfPath);
-    if (opfFile == null) {
-      throw Exception('EPUB parsing error: OPF file $opfPath not found in archive.');
+      final containerDoc = xml.XmlDocument.parse(_decodeText(containerFile));
+      final rootfilePath = _readRootfilePath(containerDoc);
+      if (rootfilePath == null || rootfilePath.trim().isEmpty) {
+        throw Exception('EPUB parsing error: rootfile path not found in container.xml.');
+      }
+
+      opfPath = _normalizePath(Uri.decodeFull(rootfilePath));
+      final tempOpfFile = _findFile(filesByLowerPath, opfPath);
+      if (tempOpfFile == null) {
+        throw Exception('EPUB parsing error: OPF file $opfPath not found in archive.');
+      }
+      opfFile = tempOpfFile;
+    } catch (e) {
+      // Enhanced error reporting for debugging
+      throw Exception('EPUB fallback parsing failed: ${e.toString()}');
     }
 
     final opfDoc = xml.XmlDocument.parse(_decodeText(opfFile));

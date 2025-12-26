@@ -19,18 +19,24 @@ class _AppShellState extends State<AppShell> {
     SettingsScreen(),
   ];
 
+  final List<bool> _activated = [true, false, false];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: List.generate(_screens.length, (i) {
+          if (_activated[i]) return _screens[i];
+          return const SizedBox.shrink();
+        }),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
+            _activated[index] = true;
           });
         },
         destinations: const [

@@ -17,7 +17,10 @@ class BookFileResolver {
   BookFileResolver({SafService? safService})
       : _safService = safService ?? SafService();
 
-  Future<ResolvedBookFile> resolve(Book book) async {
+  Future<ResolvedBookFile> resolve(
+    Book book, {
+    bool forceRefresh = false,
+  }) async {
     if (book.sourceType == BookSourceType.imported ||
         (book.sourceUri == null || book.sourceUri!.isEmpty)) {
       if (book.filePath.isEmpty) {
@@ -35,6 +38,7 @@ class BookFileResolver {
     final tempPath = await _safService.copyUriToCache(
       uri: uri,
       suggestedName: suggestedName,
+      force: forceRefresh,
     );
     return ResolvedBookFile(path: tempPath, isTemp: true);
   }

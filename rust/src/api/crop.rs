@@ -2,7 +2,7 @@ use anyhow::Result;
 use image::{GenericImageView, Pixel};
 use pdfium_render::prelude::*;
 
-use crate::api::pdf::with_pdfium;
+use crate::api::pdf::{load_pdf_document, with_pdfium};
 
 #[derive(Debug, Clone, Copy)]
 pub struct CropMargins {
@@ -16,9 +16,7 @@ pub struct CropMargins {
 /// Returns relative margins (0.0 to 1.0).
 pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargins> {
     with_pdfium(|pdfium| {
-        let doc = pdfium
-            .load_pdf_from_file(&path, None)
-            .map_err(|e| anyhow::anyhow!("Failed to load PDF: {:?}", e))?;
+        let doc = load_pdf_document(pdfium, &path)?;
 
         let page = doc
             .pages()
