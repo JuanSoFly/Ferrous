@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:state_notifier/state_notifier.dart';

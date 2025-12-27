@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:reader_app/data/models/annotation.dart';
+import 'package:reader_app/core/models/annotation.dart';
 
 /// Repository for managing annotations with reactive notifications.
 class AnnotationRepository extends ChangeNotifier {

@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:reader_app/data/models/annotation.dart';
+import 'package:reader_app/core/models/annotation.dart';
 
 class AnnotationAdapter extends TypeAdapter<Annotation> {
   @override

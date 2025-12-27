@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';

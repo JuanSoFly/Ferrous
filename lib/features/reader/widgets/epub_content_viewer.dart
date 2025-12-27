@@ -8,7 +8,7 @@ import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
-import 'package:reader_app/utils/performance.dart';
+import 'package:reader_app/core/utils/performance.dart';
 
 class EpubContentViewer extends StatefulWidget {
   final int chapterIndex;

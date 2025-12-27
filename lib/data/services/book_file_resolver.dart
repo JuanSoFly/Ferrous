@@ -1,4 +1,4 @@
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 
 class ResolvedBookFile {

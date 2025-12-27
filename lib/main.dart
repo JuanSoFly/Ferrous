@@ -14,7 +14,7 @@ import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
-import 'package:reader_app/utils/app_themes.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:path_provider/path_provider.dart';
 
 Future<void> main() async {
@@ -112,9 +112,9 @@ class ReaderApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<BookRepository>.value(value: bookRepository),
-        Provider<AnnotationRepository>.value(value: annotationRepository),
-        Provider<CollectionRepository>.value(value: collectionRepository),
+        ChangeNotifierProvider<BookRepository>.value(value: bookRepository),
+        ChangeNotifierProvider<AnnotationRepository>.value(value: annotationRepository),
+        ChangeNotifierProvider<CollectionRepository>.value(value: collectionRepository),
         StateNotifierProvider<ThemeController, AppTheme>(
           create: (_) => ThemeController(),
         ),

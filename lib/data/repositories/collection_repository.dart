@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
-import 'package:reader_app/data/models/collection.dart';
+import 'package:reader_app/core/models/collection.dart';
 
 /// Repository for managing book collections with reactive notifications.
 class CollectionRepository extends ChangeNotifier {

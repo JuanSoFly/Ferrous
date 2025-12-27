@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
-import 'package:reader_app/utils/app_themes.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class AppearanceScreen extends StatelessWidget {
   const AppearanceScreen({super.key});

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:reader_app/features/library/library_state.dart';
 import 'package:reader_app/features/reader/reader_screen.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';

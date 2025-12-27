@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:epubx/epubx.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/features/reader/epub_fallback_parser.dart';
-import 'package:reader_app/utils/performance.dart';
-import 'package:reader_app/utils/sentence_utils.dart';
+import 'package:reader_app/core/utils/performance.dart';
+import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
 
 class EpubChapterController extends ChangeNotifier {

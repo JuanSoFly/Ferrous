@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 

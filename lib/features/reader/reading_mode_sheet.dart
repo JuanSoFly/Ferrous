@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 
 /// Format types that affect which reading modes are available
 enum ReaderFormatType {

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/word_definition.dart';
+import 'package:reader_app/core/models/word_definition.dart';
 import 'package:reader_app/data/repositories/dictionary_repository.dart';
 
 class DictionaryDialog extends StatefulWidget {

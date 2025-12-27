@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/models/collection.dart';
+import 'package:reader_app/core/models/collection.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/features/collections/collection_detail_screen.dart';
 

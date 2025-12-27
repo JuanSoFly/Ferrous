@@ -6,10 +6,10 @@ import 'package:flutter/scheduler.dart';
 import 'package:reader_app/src/rust/api/pdf.dart' as pdf_api;
 import 'package:reader_app/src/rust/api/pdf.dart' show PdfTextRect;
 import 'package:reader_app/src/rust/api/crop.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
-import 'package:reader_app/utils/performance.dart';
+import 'package:reader_app/core/utils/performance.dart';
 
 class PdfPageController extends ChangeNotifier {
   final Book book;

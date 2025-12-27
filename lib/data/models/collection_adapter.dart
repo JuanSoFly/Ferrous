@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:reader_app/data/models/collection.dart';
+import 'package:reader_app/core/models/collection.dart';
 
 class CollectionAdapter extends TypeAdapter<Collection> {
   @override

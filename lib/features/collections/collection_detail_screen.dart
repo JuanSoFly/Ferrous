@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/models/book.dart';
-import 'package:reader_app/data/models/collection.dart';
+import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/core/models/collection.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';

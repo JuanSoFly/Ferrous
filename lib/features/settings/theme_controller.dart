@@ -1,6 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:state_notifier/state_notifier.dart';
-import 'package:reader_app/utils/app_themes.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class ThemeController extends StateNotifier<AppTheme> {
   static const String _boxName = 'settings';

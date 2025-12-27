@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/utils/sentence_utils.dart';
-import 'package:reader_app/utils/normalized_text_map.dart';
-import 'package:reader_app/utils/text_normalization.dart';
+import 'package:reader_app/core/utils/sentence_utils.dart';
+import 'package:reader_app/core/utils/normalized_text_map.dart';
+import 'package:reader_app/core/utils/text_normalization.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'epub_chapter_controller.dart';

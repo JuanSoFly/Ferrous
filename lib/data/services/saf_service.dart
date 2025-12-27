@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/core/errors/exceptions.dart';
+
 
 enum SafStorageMode { linked, imported }
 
@@ -170,13 +172,4 @@ class SafService {
       throw SafException('Failed to cleanup stale permissions: ${e.message}');
     }
   }
-}
-
-/// Exception thrown by SAF operations.
-class SafException implements Exception {
-  final String message;
-  SafException(this.message);
-
-  @override
-  String toString() => 'SafException: $message';
 }

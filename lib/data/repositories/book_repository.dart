@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
-import 'package:reader_app/utils/performance.dart';
+import 'package:reader_app/core/utils/performance.dart';
 
 /// Repository for managing book data with reactive notifications.
 /// 

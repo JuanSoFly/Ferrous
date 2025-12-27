@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
-import 'package:reader_app/utils/performance.dart';
+import 'package:reader_app/core/utils/performance.dart';
 import 'cbz_cache_controller.dart';
 
 class CbzPageController extends ChangeNotifier {

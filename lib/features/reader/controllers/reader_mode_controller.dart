@@ -1,4 +1,4 @@
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 
 /// Controller for reading mode behavior and swipe direction logic.
 /// 

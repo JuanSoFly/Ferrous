@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
-import 'package:reader_app/utils/performance.dart';
+import 'package:reader_app/core/utils/performance.dart';
 
 /// Controller for CBZ page image caching and preloading.
 /// This replaces the static cache in _CbzPageImageState.

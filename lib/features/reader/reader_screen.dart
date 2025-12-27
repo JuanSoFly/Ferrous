@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/models/book.dart';
-import 'package:reader_app/data/models/book_format.dart';
+import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/core/models/book_format.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/reader/pdf_reader.dart';
 import 'package:reader_app/features/reader/epub_reader.dart';

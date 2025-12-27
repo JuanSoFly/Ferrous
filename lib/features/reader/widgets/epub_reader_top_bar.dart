@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:reader_app/data/models/book.dart';
+import 'package:reader_app/core/models/book.dart';
 
 class EpubReaderTopBar extends StatelessWidget {
   final Book book;
