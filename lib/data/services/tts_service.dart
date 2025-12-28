@@ -72,7 +72,7 @@ class TtsService extends ChangeNotifier {
 
   // UI debouncing
   Timer? _uiBatchTimer;
-  static const _uiBatchInterval = Duration(milliseconds: 50);
+  static const _uiBatchInterval = Duration(milliseconds: 16); // One frame at 60fps for smooth highlighting
   bool _pendingNotify = false;
 
   TtsService() {

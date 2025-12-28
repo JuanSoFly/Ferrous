@@ -22,6 +22,11 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Critical: Set application name and icon for recent apps/task switcher -->
+            <meta-data
+              android:name="android.app.label"
+              android:resource="@string/app_name"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

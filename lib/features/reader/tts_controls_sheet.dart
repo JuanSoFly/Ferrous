@@ -13,6 +13,7 @@ class TtsControlsSheet extends StatelessWidget {
   final ValueChanged<bool>? onFollowModeChanged;
   final bool isTapToStart;
   final ValueChanged<bool>? onTapToStartChanged;
+  final VoidCallback? onStart;
   final VoidCallback? onStop;
   final VoidCallback? onPause;
   final VoidCallback onClose;
@@ -30,6 +31,7 @@ class TtsControlsSheet extends StatelessWidget {
     this.onFollowModeChanged,
     this.isTapToStart = true,
     this.onTapToStartChanged,
+    this.onStart,
     this.onStop,
     this.onPause,
     required this.onClose,
@@ -85,7 +87,12 @@ class TtsControlsSheet extends StatelessWidget {
                           return;
                         }
 
-                        await ttsService.speak(speakText);
+                        // Call onStart callback if provided to let controller initialize state
+                        if (onStart != null) {
+                          onStart!();
+                        } else {
+                          await ttsService.speak(speakText);
+                        }
                       },
                     ),
                     IconButton(

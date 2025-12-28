@@ -21,6 +21,7 @@ import 'package:reader_app/features/reader/widgets/epub_paged_viewer.dart';
 import 'package:reader_app/features/reader/widgets/epub_reader_top_bar.dart';
 import 'package:reader_app/features/reader/widgets/epub_reader_bottom_controls.dart';
 import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
+import 'package:reader_app/features/reader/widgets/tap_selection_overlay.dart';
 
 class EpubReaderScreen extends StatefulWidget {
   final Book book;
@@ -47,6 +48,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   Offset? _lastDoubleTapDown;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
+
+  // Tap-to-start confirmation state
+  TapDetectionResult? _pendingTapResult;
 
   @override
   void initState() {
@@ -149,6 +153,16 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     }
   }
 
+  /// Toggle all UI together: chrome + TTS controls.
+  /// This gives a true full-screen reading experience.
+  /// TTS continues playing in background when hidden.
+  void _toggleAllUi() {
+    _chromeController.toggleChrome();
+    
+    // Sync TTS controls visibility with chrome (without stopping TTS)
+    _ttsController.setTtsControlsVisible(_chromeController.showChrome);
+  }
+
   Future<void> _showReadingModePicker() async {
     final selected = await showReadingModeSheet(
       context,
@@ -207,6 +221,67 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
         },
       ),
     );
+  }
+
+  /// Handle tap-up for TTS: detect word and show confirmation overlay.
+  /// Only active when TTS controls are visible and tap-to-start is enabled.
+  /// Center taps are ignored to allow UI toggle via onTap.
+  void _handleTapUpForTts(TapUpDetails details) {
+    // Do nothing if TTS is not active - let onTap handle UI toggle
+    if (!_ttsController.showTtsControls) {
+      return;
+    }
+
+    // Ignore center taps - those are for toggling chrome UI
+    final screenSize = MediaQuery.of(context).size;
+    if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
+      return;
+    }
+
+    // If tap-to-start is disabled, use immediate TTS start
+    if (!_ttsController.tapToStartEnabled) {
+      _ttsController.startTtsFromTap(
+        details,
+        modeController: _modeController,
+        context: context,
+      );
+      return;
+    }
+
+    // Detect word and show confirmation overlay
+    final result = _ttsController.detectWordAtTap(
+      details,
+      modeController: _modeController,
+      context: context,
+    );
+
+    if (result != null) {
+      setState(() {
+        _pendingTapResult = result;
+      });
+    }
+  }
+
+  /// Confirm the pending tap selection and start TTS.
+  void _confirmTapSelection() {
+    final result = _pendingTapResult;
+    if (result == null) return;
+
+    setState(() {
+      _pendingTapResult = null;
+    });
+
+    _ttsController.speakFromLocation(
+      chapterIndex: result.chapterIndex,
+      offset: result.offset,
+    );
+  }
+
+  /// Cancel the pending tap selection.
+  void _cancelTapSelection() {
+    setState(() {
+      _pendingTapResult = null;
+    });
   }
 
   void _showSearchDialog() {
@@ -300,24 +375,16 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                         chapterController: _chapterController,
                         ttsController: _ttsController,
                         pageController: _pageController,
-                        onToggleChrome: _chromeController.toggleChrome,
-                        onTapUp: (details) => _ttsController.startTtsFromTap(
-                          details,
-                          modeController: _modeController,
-                          context: context,
-                        ),
+                        onToggleChrome: _toggleAllUi,
+                        onTapUp: _handleTapUpForTts,
                       )
                     else
                       EpubContinuousViewer(
                         chapterController: _chapterController,
                         ttsController: _ttsController,
                         modeController: _modeController,
-                        onToggleChrome: _chromeController.toggleChrome,
-                        onTapUp: (details) => _ttsController.startTtsFromTap(
-                          details,
-                          modeController: _modeController,
-                          context: context,
-                        ),
+                        onToggleChrome: _toggleAllUi,
+                        onTapUp: _handleTapUpForTts,
                       ),
 
                   // UI Overlays
@@ -355,6 +422,15 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                       ),
                   ],
 
+                  // Tap Selection Overlay
+                  if (_pendingTapResult != null)
+                    TapSelectionOverlay(
+                      word: _pendingTapResult!.word,
+                      position: _pendingTapResult!.tapPosition,
+                      onConfirm: _confirmTapSelection,
+                      onCancel: _cancelTapSelection,
+                    ),
+
                   // TTS Controls
                   if (_ttsController.showTtsControls)
                     Positioned(
@@ -365,6 +441,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                         ttsService: _ttsController.ttsService,
                         textToSpeak: '', // Let resolveTextToSpeak handle it
                         resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
+                        onStart: () async {
+                          // resolveTtsText also sets the base offset internally
+                          final text = _ttsController.resolveTtsText(modeController: _modeController);
+                          if (text.trim().isNotEmpty) {
+                            await _ttsController.ttsService.speak(text);
+                          }
+                        },
                         isContinuous: _ttsController.ttsContinuous,
                         isFollowMode: _ttsController.ttsFollowMode,
                         isTapToStart: _ttsController.tapToStartEnabled,

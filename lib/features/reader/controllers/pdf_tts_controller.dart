@@ -102,6 +102,7 @@ class PdfTtsController extends ChangeNotifier {
       return;
     }
 
+    // Jump to saved TTS position if available
     if (_lastTtsSentenceStart >= 0 &&
         pageController.pageCount > 0 &&
         _lastTtsPage >= 0 &&
@@ -110,12 +111,13 @@ class PdfTtsController extends ChangeNotifier {
       await pageController.renderPage(_lastTtsPage, userInitiated: false);
     }
 
+    // Load page text and character bounds for TTS preparation
     await pageController.loadPageText(pageController.pageIndex);
+    await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);
     _updatePageTextState();
 
-    if (_lastTtsSentenceStart < 0 && _ttsStartOverrideText == null) {
-      unawaited(primeTtsFromViewport());
-    }
+    // Only prepare TTS state, don't auto-play
+    // User must explicitly click play button to start
   }
 
   void _updatePageTextState() {
@@ -171,6 +173,10 @@ class PdfTtsController extends ChangeNotifier {
       _ttsStartOverrideText = trimmed.isEmpty ? null : trimmed;
       
       if (trimmed.isNotEmpty) {
+        // Ensure character bounds are loaded for highlighting
+        await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);
+        if (requestId != _tapToStartRequestId) return;
+        
         _setNormalizedBaseOffset(trimmed);
         unawaited(_ttsService.speak(trimmed));
       }
@@ -197,9 +203,12 @@ class PdfTtsController extends ChangeNotifier {
       return;
     }
 
+    // Ensure page text is loaded
     if (_pageTextMap == null && !pageController.isTextLoading) {
       pageController.loadPageText(pageController.pageIndex).then((_) {
         _updatePageTextState();
+        // Retry progress update after text loads
+        _handleTtsProgress();
       });
       return;
     }
@@ -211,12 +220,15 @@ class PdfTtsController extends ChangeNotifier {
     final highlightStart = _ttsNormalizedBaseOffset + wordStart;
     final highlightEnd = _ttsNormalizedBaseOffset + wordEnd;
 
+    // Skip if same position
     if (highlightStart == _lastHighlightStart && highlightEnd == _lastHighlightEnd) {
       return;
     }
 
     _lastHighlightStart = highlightStart;
     _lastHighlightEnd = highlightEnd;
+    
+    // Update highlight rectangles immediately for current word
     unawaited(_updateHighlightForNormalizedRange(highlightStart, highlightEnd));
   }
 
@@ -234,6 +246,7 @@ class PdfTtsController extends ChangeNotifier {
       if (requestId != _ttsAdvanceRequestId) return;
 
       await pageController.loadPageText(index);
+      await pageController.ensureCharacterBoundsLoaded(index);
       _updatePageTextState();
       if (requestId != _ttsAdvanceRequestId) return;
 
@@ -469,6 +482,8 @@ class PdfTtsController extends ChangeNotifier {
   void dispose() {
     _ttsService.setOnFinished(null);
     _ttsService.removeListener(_handleTtsProgress);
+    // CRITICAL: Stop TTS when leaving reader screen
+    unawaited(_ttsService.stop());
     super.dispose();
   }
 }

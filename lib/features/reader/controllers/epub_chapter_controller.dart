@@ -10,6 +10,7 @@ import 'package:reader_app/features/reader/epub_fallback_parser.dart';
 import 'package:reader_app/core/utils/performance.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:reader_app/core/utils/dom_text_utils.dart';
 
 class EpubChapterController extends ChangeNotifier {
   final Book book;
@@ -116,7 +117,7 @@ class EpubChapterController extends ChangeNotifier {
   String _htmlToPlainText(String html) {
     if (html.isEmpty) return '';
     final document = html_parser.parse(html);
-    return document.body?.text ?? document.documentElement?.text ?? '';
+    return DomTextUtils.extractPlainText(document.body ?? document.documentElement);
   }
 
   static Future<List<EpubChapter>> _parseEpubIsolated(List<int> bytes) async {

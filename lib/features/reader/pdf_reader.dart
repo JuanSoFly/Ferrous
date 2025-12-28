@@ -196,6 +196,13 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                           ttsService: _ttsController.ttsService,
                           textToSpeak: _pageController.currentPageText,
                           resolveTextToSpeak: _ttsController.resolveTtsText,
+                          onStart: () async {
+                            // resolveTtsText also sets the base offset internally
+                            final text = _ttsController.resolveTtsText();
+                            if (text.trim().isNotEmpty) {
+                              await _ttsController.ttsService.speak(text);
+                            }
+                          },
                           isTextLoading: _pageController.isTextLoading,
                           emptyTextMessage: _pageController.textError ?? 'No readable text on this page.',
                           isContinuous: _ttsController.ttsContinuous,

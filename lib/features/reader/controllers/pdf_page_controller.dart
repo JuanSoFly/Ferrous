@@ -362,6 +362,8 @@ class PdfPageController extends ChangeNotifier {
 
   Future<void> precomputeCharacterBounds(int pageIndex) async {
     if (_resolvedFile == null) return;
+    if (_pageCharBoundsCache.containsKey(pageIndex)) return;
+    
     try {
       final bounds = await measureAsync('extract_all_page_character_bounds', () => pdf_api.extractAllPageCharacterBounds(
         path: _resolvedFile!.path,
@@ -371,6 +373,13 @@ class PdfPageController extends ChangeNotifier {
     } catch (e) {
       debugPrint('TTS: Failed to precompute bounds for page $pageIndex: $e');
     }
+  }
+
+  /// Ensures character bounds are loaded for the current page.
+  /// Call this before starting TTS to guarantee highlight data is available.
+  Future<void> ensureCharacterBoundsLoaded(int pageIndex) async {
+    if (_pageCharBoundsCache.containsKey(pageIndex)) return;
+    await precomputeCharacterBounds(pageIndex);
   }
 
   void cleanup() {

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
+import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
@@ -71,7 +72,9 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final themeRepo = context.watch<ReaderThemeRepository>();
     final themeConfig = themeRepo.config;
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
-    final isTtsActive = widget.ttsController.showTtsControls;
+    // Show highlights when TTS is playing OR controls are visible (paused state)
+    final isTtsActive = widget.ttsController.showTtsControls || 
+                        widget.ttsController.ttsService.state == TtsState.playing;
     final isCurrentChapter = widget.chapterIndex == widget.chapterController.currentChapterIndex;
 
     const ttsHighlightTag = 'tts-highlight';

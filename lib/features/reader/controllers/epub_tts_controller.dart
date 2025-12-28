@@ -6,9 +6,9 @@ import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:reader_app/core/utils/normalized_text_map.dart';
-import 'package:reader_app/core/utils/text_normalization.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
+import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'epub_chapter_controller.dart';
 import 'reader_mode_controller.dart';
 
@@ -38,7 +38,10 @@ class EpubTtsController extends ChangeNotifier {
   bool _tapToStartEnabled = true;
 
   int _ttsAdvanceRequestId = 0;
-  int _ttsNormalizedBaseOffset = 0;
+  // Raw text offset where TTS text starts in currentPlainText
+  int _ttsRawBaseOffset = 0;
+  // Map to convert TTS normalized positions back to raw text positions
+  NormalizedTextMap? _ttsNormalizationMap;
   final GlobalKey _ttsHighlightKey = GlobalKey();
   bool highlightKeyAssigned = false;
 
@@ -79,6 +82,14 @@ class EpubTtsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Set TTS controls visibility without stopping playback.
+  /// Use this for hiding UI while TTS continues in background.
+  void setTtsControlsVisible(bool visible) {
+    if (_showTtsControls == visible) return;
+    _showTtsControls = visible;
+    notifyListeners();
+  }
+
   Future<void> toggleTts({required ReaderModeController modeController}) async {
     final next = !_showTtsControls;
     _showTtsControls = next;
@@ -94,16 +105,15 @@ class EpubTtsController extends ChangeNotifier {
       return;
     }
 
+    // Jump to saved TTS position if available
     if (_lastTtsSentenceStart >= 0 &&
         _lastTtsSection >= 0 &&
         _lastTtsSection != chapterController.currentChapterIndex) {
       await chapterController.loadChapter(_lastTtsSection, userInitiated: false);
     }
 
-    final text = resolveTtsText(modeController: modeController);
-    if (text.isNotEmpty) {
-      await _ttsService.speak(text);
-    }
+    // Only prepare TTS state, don't auto-play
+    // User must explicitly click play button to start
   }
 
   void _handleTtsFinished() {
@@ -124,9 +134,22 @@ class EpubTtsController extends ChangeNotifier {
     final wordEnd = _ttsService.currentWordEnd;
     if (wordStart == null || wordEnd == null) return;
 
-    final baseOffset = _ttsNormalizedBaseOffset.clamp(0, chapterController.currentPlainText.length);
-    final highlightStart = baseOffset + wordStart;
-    final highlightEnd = baseOffset + wordEnd;
+    // Convert TTS normalized positions to raw text positions for highlighting
+    final map = _ttsNormalizationMap;
+    if (map == null || map.normalizedToRaw.isEmpty) return;
+
+    // Clamp to valid range
+    final maxIdx = map.normalizedToRaw.length;
+    final clampedStart = wordStart.clamp(0, maxIdx - 1);
+    final clampedEnd = wordEnd.clamp(0, maxIdx);
+    if (clampedEnd <= clampedStart) return;
+
+    // Convert to raw positions and add base offset
+    final rawWordStart = map.normalizedToRaw[clampedStart];
+    final rawWordEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+    
+    final highlightStart = _ttsRawBaseOffset + rawWordStart;
+    final highlightEnd = _ttsRawBaseOffset + rawWordEnd;
 
     if (highlightStart == _lastHighlightStart && highlightEnd == _lastHighlightEnd) {
       return;
@@ -135,7 +158,10 @@ class EpubTtsController extends ChangeNotifier {
     _lastHighlightStart = highlightStart;
     _lastHighlightEnd = highlightEnd;
     
-    // Save reading progress (debounced via repository)
+    // Clear cached HTML to force regeneration with new highlight
+    _cachedHighlightedHtml = null;
+    
+    // Save reading progress (RAW positions for persistence)
     _lastTtsSentenceStart = highlightStart;
     _lastTtsSentenceEnd = highlightEnd;
     _lastTtsSection = chapterController.currentChapterIndex;
@@ -149,7 +175,11 @@ class EpubTtsController extends ChangeNotifier {
       lastTtsSection: chapterController.currentChapterIndex,
     ));
 
+    // Always notify listeners for UI update
     notifyListeners();
+    
+    // Ensure highlight is visible if follow mode is enabled
+    maybeEnsureHighlightVisible();
   }
 
   Future<void> advanceToNextReadableChapterAndSpeak() async {
@@ -164,27 +194,25 @@ class EpubTtsController extends ChangeNotifier {
       await chapterController.loadChapter(index, userInitiated: false);
       if (requestId != _ttsAdvanceRequestId) return;
 
-      final text = chapterController.currentPlainText.trim();
-      if (text.isEmpty) continue;
+      final rawText = chapterController.currentPlainText;
+      if (rawText.trim().isEmpty) continue;
 
-      _ttsNormalizedBaseOffset = 0;
-      await _ttsService.speak(text);
+      // Set up for TTS with raw text starting from beginning
+      _ttsRawBaseOffset = 0;
+      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+      
+      await _ttsService.speak(_ttsNormalizationMap!.normalized);
       return;
     }
   }
 
   String buildTtsHighlightedHtml(String html) {
-    final wordStart = _ttsService.currentWordStart;
-    final wordEnd = _ttsService.currentWordEnd;
-    if (wordStart == null || wordEnd == null) return html;
+    // Use the raw positions already computed in _handleTtsProgress
+    final highlightStart = _lastHighlightStart;
+    final highlightEnd = _lastHighlightEnd;
+    if (highlightStart == null || highlightEnd == null) return html;
 
-    final baseOffset = _ttsNormalizedBaseOffset.clamp(0, chapterController.currentPlainText.length);
-    final highlightStart = baseOffset + wordStart;
-    final highlightEnd = baseOffset + wordEnd;
-
-    if (_cachedHighlightedHtml != null &&
-        highlightStart == _lastHighlightStart &&
-        highlightEnd == _lastHighlightEnd) {
+    if (_cachedHighlightedHtml != null) {
       return _cachedHighlightedHtml!;
     }
 
@@ -193,36 +221,19 @@ class EpubTtsController extends ChangeNotifier {
     return highlighted;
   }
 
-  String _buildHighlightedHtmlAround(String html, int start, int end) {
-    if (start < 0 || end <= start) return html;
+  String _buildHighlightedHtmlAround(String html, int rawStart, int rawEnd) {
+    if (rawStart < 0 || rawEnd <= rawStart) return html;
 
     final document = html_parser.parse(html);
     final root = document.body ?? document.documentElement;
     if (root == null) return html;
 
-    final textNodes = <dom.Text>[];
-    _collectTextNodes(root, textNodes);
+    // Use DomTextUtils for consistent text extraction with block spacing
+    final textNodes = DomTextUtils.collectTextNodes(root);
     if (textNodes.isEmpty) return html;
 
-    final rawBuffer = StringBuffer();
-    for (final node in textNodes) {
-      rawBuffer.write(node.data);
-    }
-
-    final rawText = rawBuffer.toString();
-    final map = buildNormalizedTextMap(rawText);
-    if (map.normalizedToRaw.isEmpty) return html;
-
-    final maxIndex = map.normalizedToRaw.length - 1;
-    if (maxIndex < 0) return html;
-
-    final clampedStart = start.clamp(0, maxIndex);
-    final clampedEnd = end.clamp(0, map.normalizedToRaw.length);
-    if (clampedEnd <= clampedStart) return html;
-
-    final rawStart = map.normalizedToRaw[clampedStart];
-    final rawEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
-
+    // Iterate through text nodes and find which node contains the highlight range.
+    // Positions are already in raw text space (matching currentPlainText).
     var offset = 0;
     for (final node in textNodes) {
       final nodeText = node.data;
@@ -230,8 +241,13 @@ class EpubTtsController extends ChangeNotifier {
       final nodeEnd = offset + nodeText.length;
       offset = nodeEnd;
 
+      // Skip nodes that don't overlap with highlight range
       if (rawEnd <= nodeStart || rawStart >= nodeEnd) continue;
 
+      // Skip synthetic nodes (block separators) - they can't be modified in DOM
+      if (node.parent == null) continue;
+
+      // Calculate local positions within this node
       final localStart = (rawStart - nodeStart).clamp(0, nodeText.length);
       final localEnd = (rawEnd - nodeStart).clamp(0, nodeText.length);
 
@@ -258,79 +274,82 @@ class EpubTtsController extends ChangeNotifier {
 
       parent.nodes.removeAt(index);
       parent.nodes.insertAll(index, newNodes);
+      
+      // Break after first match for simplicity
+      break;
     }
 
     return root.outerHtml;
   }
 
-  void _collectTextNodes(dom.Node node, List<dom.Text> out) {
-    if (node is dom.Text) {
-      out.add(node);
-      return;
-    }
-    if (node is dom.Element) {
-      final tag = node.localName?.toLowerCase();
-      if (tag == 'script' || tag == 'style' || tag == 'noscript') return;
-    }
-    for (final child in node.nodes) {
-      _collectTextNodes(child, out);
-    }
-  }
-
   String resolveTtsText({required ReaderModeController modeController}) {
-    final text = chapterController.currentPlainText;
-    if (text.trim().isEmpty) return '';
+    final rawText = chapterController.currentPlainText;
+    if (rawText.trim().isEmpty) return '';
 
+    // Check if we have a saved position in raw text space
     if (_lastTtsSentenceStart >= 0 &&
         _lastTtsSentenceEnd > _lastTtsSentenceStart &&
         _lastTtsSection == chapterController.currentChapterIndex) {
-      final start = _lastTtsSentenceStart.clamp(0, text.length);
-      _ttsNormalizedBaseOffset = start;
-      return text.substring(start);
+      // Resume from saved raw position
+      final start = _lastTtsSentenceStart.clamp(0, rawText.length);
+      _ttsRawBaseOffset = start;
+      
+      final textToSpeak = rawText.substring(start);
+      _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
+      return _ttsNormalizationMap!.normalized;
     }
 
     return _ttsTextFromScrollPosition(modeController: modeController);
   }
 
   String _ttsTextFromScrollPosition({required ReaderModeController modeController}) {
-    final text = chapterController.currentPlainText;
-    if (text.trim().isEmpty) return '';
+    final rawText = chapterController.currentPlainText;
+    if (rawText.trim().isEmpty) return '';
 
     if (modeController.isPagedMode) {
-      _ttsNormalizedBaseOffset = 0;
-      return text;
+      _ttsRawBaseOffset = 0;
+      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+      return _ttsNormalizationMap!.normalized;
     }
 
     final scrollController = chapterController.scrollController;
     if (!scrollController.hasClients) {
-      _ttsNormalizedBaseOffset = 0;
-      return text;
+      _ttsRawBaseOffset = 0;
+      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+      return _ttsNormalizationMap!.normalized;
     }
 
     final maxExtent = scrollController.position.maxScrollExtent;
     final offset = scrollController.offset.clamp(0.0, maxExtent);
     final fraction = maxExtent <= 0 ? 0.0 : (offset / maxExtent);
-    final maxIndex = text.length - 1;
+    final maxIndex = rawText.length - 1;
     final approxIndex = maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
     
-    final start = findSentenceStart(text, approxIndex);
-    _ttsNormalizedBaseOffset = start;
-    return text.substring(start);
+    // Find sentence start in raw text
+    final start = findSentenceStart(rawText, approxIndex);
+    _ttsRawBaseOffset = start;
+    
+    final textToSpeak = rawText.substring(start);
+    _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
+    return _ttsNormalizationMap!.normalized;
   }
 
-  Future<void> startTtsFromTap(TapUpDetails details, {required ReaderModeController modeController, required BuildContext context}) async {
-    if (!_showTtsControls || !_tapToStartEnabled) return;
-    if (chapterController.allChapterPlainTexts.isEmpty) return;
+  /// Result of detecting a word at a tap position.
+  /// Used for the tap-to-start confirmation flow.
+  TapDetectionResult? detectWordAtTap(TapUpDetails details, {required ReaderModeController modeController, required BuildContext context}) {
+    if (!_showTtsControls || !_tapToStartEnabled) return null;
+    if (chapterController.allChapterPlainTexts.isEmpty) return null;
 
     final tap = details.globalPosition;
     final chapterIndex = _findChapterIndexAtTap(tap, modeController: modeController, context: context) ?? 
                          chapterController.currentChapterIndex.clamp(0, chapterController.allChapterPlainTexts.length - 1);
     
     final chapterText = chapterController.allChapterPlainTexts[chapterIndex];
-    if (chapterText.trim().isEmpty) return;
+    if (chapterText.trim().isEmpty) return null;
 
     final hit = _hitTestTextAt(tap, context: context);
     int? absoluteOffset;
+    String? detectedWord;
 
     if (hit != null) {
       final rawFragment = hit.rawText;
@@ -365,18 +384,58 @@ class EpubTtsController extends ChangeNotifier {
           if (fragmentStart != null) {
             final fragmentOffset = _normalizedOffsetForRawOffset(fragmentMap, hit.rawOffset);
             absoluteOffset = _wordStartForOffset(chapterText, fragmentStart + fragmentOffset);
+            
+            // Extract the detected word for display
+            if (absoluteOffset < chapterText.length) {
+              final wordEnd = _findWordEnd(chapterText, absoluteOffset);
+              detectedWord = chapterText.substring(absoluteOffset, wordEnd).trim();
+            }
           }
         }
       }
     }
 
+    if (absoluteOffset != null && detectedWord != null && detectedWord.isNotEmpty) {
+      return TapDetectionResult(
+        word: detectedWord,
+        chapterIndex: chapterIndex,
+        offset: absoluteOffset,
+        tapPosition: tap,
+      );
+    }
+    return null;
+  }
+
+  /// Find the end of a word starting at [start].
+  int _findWordEnd(String text, int start) {
+    var end = start;
+    while (end < text.length && text[end].trim().isNotEmpty) {
+      end++;
+    }
+    return end;
+  }
+
+  /// Speak from a confirmed location (called after user confirms tap selection).
+  Future<void> speakFromLocation({
+    required int chapterIndex,
+    required int offset,
+  }) async {
     if (chapterIndex != chapterController.currentChapterIndex) {
       await chapterController.loadChapter(chapterIndex, userInitiated: false);
     }
 
-    if (absoluteOffset != null) {
-      final startText = chapterText.substring(absoluteOffset);
-      await _speakFromHere(startText, baseOffset: absoluteOffset);
+    final chapterText = chapterController.allChapterPlainTexts[chapterIndex];
+    if (offset >= 0 && offset < chapterText.length) {
+      final startText = chapterText.substring(offset);
+      await _speakFromHere(startText, baseOffset: offset);
+    }
+  }
+
+  /// Legacy method for backward compatibility - immediately starts TTS from tap.
+  Future<void> startTtsFromTap(TapUpDetails details, {required ReaderModeController modeController, required BuildContext context}) async {
+    final result = detectWordAtTap(details, modeController: modeController, context: context);
+    if (result != null) {
+      await speakFromLocation(chapterIndex: result.chapterIndex, offset: result.offset);
     } else {
       // Fallback
       final text = resolveTtsText(modeController: modeController);
@@ -385,22 +444,31 @@ class EpubTtsController extends ChangeNotifier {
   }
 
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
-    final normalized = normalizePlainText(startText);
-    if (normalized.isEmpty) return;
+    if (startText.trim().isEmpty) return;
 
+    // Build normalization map from the text we're going to speak
+    final map = buildNormalizedTextMap(startText);
+    if (map.normalized.isEmpty) return;
+
+    // Set the raw base offset
     if (baseOffset != null && baseOffset >= 0) {
-      _ttsNormalizedBaseOffset = baseOffset;
+      _ttsRawBaseOffset = baseOffset;
     } else {
-      final index = chapterController.currentPlainText.indexOf(normalized);
-      _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
+      // Find raw offset by searching for the text in full chapter
+      final fullRaw = chapterController.currentPlainText;
+      final index = fullRaw.indexOf(startText);
+      _ttsRawBaseOffset = index >= 0 ? index : 0;
     }
+    
+    // Store the normalization map for converting TTS positions back to raw
+    _ttsNormalizationMap = map;
 
     _ttsAdvanceRequestId++;
 
     _showTtsControls = true;
     notifyListeners();
 
-    await _ttsService.speak(normalized);
+    await _ttsService.speak(map.normalized);
   }
 
   int? _findChapterIndexAtTap(Offset globalPosition, {required ReaderModeController modeController, required BuildContext context}) {
@@ -496,26 +564,37 @@ class EpubTtsController extends ChangeNotifier {
   }
 
   void saveCurrentTtsSentence() {
-    final start = _ttsService.currentWordStart;
-    if (start == null) return;
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart == null || wordEnd == null) return;
     if (chapterController.currentPlainText.trim().isEmpty) return;
 
-    final baseOffset = _ttsNormalizedBaseOffset.clamp(0, chapterController.currentPlainText.length);
-    final absoluteOffset = baseOffset + start;
-    final spans = chapterController.sentenceSpans;
-    final span = sentenceForOffset(spans, absoluteOffset);
-    if (span == null) return;
+    // Convert TTS positions to raw text positions using stored map
+    final map = _ttsNormalizationMap;
+    if (map == null || map.normalizedToRaw.isEmpty) return;
 
-    _lastTtsSentenceStart = span.start;
-    _lastTtsSentenceEnd = span.end;
+    final maxIdx = map.normalizedToRaw.length;
+    final clampedStart = wordStart.clamp(0, maxIdx - 1);
+    final clampedEnd = wordEnd.clamp(0, maxIdx);
+    if (clampedEnd <= clampedStart) return;
+
+    // Convert to raw positions and add base offset
+    final rawWordStart = map.normalizedToRaw[clampedStart];
+    final rawWordEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+    
+    final absoluteStart = _ttsRawBaseOffset + rawWordStart;
+    final absoluteEnd = _ttsRawBaseOffset + rawWordEnd;
+
+    _lastTtsSentenceStart = absoluteStart;
+    _lastTtsSentenceEnd = absoluteEnd;
     _lastTtsSection = chapterController.currentChapterIndex;
 
     unawaited(repository.updateReadingProgress(
       book.id,
       sectionIndex: chapterController.currentChapterIndex,
       totalPages: chapterController.chapters?.length ?? 0,
-      lastTtsSentenceStart: span.start,
-      lastTtsSentenceEnd: span.end,
+      lastTtsSentenceStart: absoluteStart,
+      lastTtsSentenceEnd: absoluteEnd,
       lastTtsSection: chapterController.currentChapterIndex,
     ));
   }
@@ -533,6 +612,23 @@ class EpubTtsController extends ChangeNotifier {
   void dispose() {
     _ttsService.setOnFinished(null);
     _ttsService.removeListener(_handleTtsProgress);
+    // CRITICAL: Stop TTS when leaving reader screen
+    unawaited(_ttsService.stop());
     super.dispose();
   }
+}
+
+/// Result of tap detection for confirmation flow.
+class TapDetectionResult {
+  final String word;
+  final int chapterIndex;
+  final int offset;
+  final Offset tapPosition;
+
+  const TapDetectionResult({
+    required this.word,
+    required this.chapterIndex,
+    required this.offset,
+    required this.tapPosition,
+  });
 }
