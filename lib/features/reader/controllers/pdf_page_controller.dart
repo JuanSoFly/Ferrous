@@ -30,6 +30,7 @@ class PdfPageController extends ChangeNotifier {
   final Map<int, CropMargins> _marginsCache = {};
   Size _renderedPageSize = Size.zero;
   Size _viewerSize = Size.zero;
+  double _devicePixelRatio = 2.0; // Default 2x, can be updated from widget
 
   // LRU cache for rendered pages (R5)
   final LinkedHashMap<int, Uint8List> _pageRenderCache = LinkedHashMap();
@@ -74,6 +75,10 @@ class PdfPageController extends ChangeNotifier {
     // When viewer size changes (e.g. rotation), we might need to invalidate cache
     // but for now let's just keep it to avoid excessive re-renders.
     notifyListeners();
+  }
+
+  set devicePixelRatio(double ratio) {
+    _devicePixelRatio = ratio.clamp(2.0, 3.0); // Clamp between 2x and 3x for quality/memory balance
   }
 
   void setAutoCrop(bool value) {
@@ -163,33 +168,32 @@ class PdfPageController extends ChangeNotifier {
           });
         }
 
-        // Render at high resolution
-        final width = (_viewerSize.width * 2).toInt().clamp(800, 4000);
-        final height = (_viewerSize.height * 2).toInt().clamp(800, 4000);
+        // Render at high resolution using device pixel ratio for crisp display
+        final width = (_viewerSize.width * _devicePixelRatio).toInt().clamp(800, 6000);
+        final height = (_viewerSize.height * _devicePixelRatio).toInt().clamp(800, 6000);
 
-        Uint8List? bytes; // Declare bytes outside try block
         await _renderSemaphore.acquire();
         try {
-          bytes = await measureAsync('render_pdf_page', () => pdf_api.renderPdfPage(
+          final result = await measureAsync('render_pdf_page', () => pdf_api.renderPdfPage(
             path: _resolvedFile!.path,
             pageIndex: index,
             width: width,
             height: height,
           ), metadata: {'page': index, 'width': width, 'height': height});
 
-          _currentPageImage = bytes;
-          _renderedPageSize = Size(width.toDouble(), height.toDouble());
+          // Use ACTUAL dimensions from the rendered result, not requested dimensions
+          _currentPageImage = result.data;
+          _renderedPageSize = Size(result.width.toDouble(), result.height.toDouble());
           _isLoading = false;
           _error = null;
           notifyListeners();
+          
+          // Add to cache using actual data
+          _addToCache(index, result.data);
         } finally {
           _renderSemaphore.release();
         }
         
-        // Add to cache (R5)
-        if (bytes != null) { // Only add to cache if rendering was successful
-          _addToCache(index, bytes);
-        }
         _schedulePrefetch(index);
         
       } catch (e) {
@@ -284,19 +288,19 @@ class PdfPageController extends ChangeNotifier {
 
     _prefetchInFlight.add(index);
     try {
-      final width = (_viewerSize.width * 2).toInt().clamp(800, 4000);
-      final height = (_viewerSize.height * 2).toInt().clamp(800, 4000);
+      final width = (_viewerSize.width * _devicePixelRatio).toInt().clamp(800, 6000);
+      final height = (_viewerSize.height * _devicePixelRatio).toInt().clamp(800, 6000);
 
       await _renderSemaphore.acquire();
       try {
-        final bytes = await measureAsync('render_pdf_page_prefetch', () => pdf_api.renderPdfPage(
+        final result = await measureAsync('render_pdf_page_prefetch', () => pdf_api.renderPdfPage(
           path: _resolvedFile!.path,
           pageIndex: index,
           width: width,
           height: height,
         ), metadata: {'page': index, 'width': width, 'height': height});
         
-        _addToCache(index, bytes);
+        _addToCache(index, result.data);
         debugPrint("PDF: Prefetched page $index");
       } finally {
         _renderSemaphore.release();

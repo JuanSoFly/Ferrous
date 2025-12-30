@@ -83,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SentenceSpan? dco_decode_opt_box_autoadd_sentence_span(dynamic raw);
 
   @protected
+  PdfPageRenderResult dco_decode_pdf_page_render_result(dynamic raw);
+
+  @protected
   PdfTextRect dco_decode_pdf_text_rect(dynamic raw);
 
   @protected
@@ -159,6 +162,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SentenceSpan? sse_decode_opt_box_autoadd_sentence_span(
+      SseDeserializer deserializer);
+
+  @protected
+  PdfPageRenderResult sse_decode_pdf_page_render_result(
       SseDeserializer deserializer);
 
   @protected
@@ -246,6 +253,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_sentence_span(
       SentenceSpan? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pdf_page_render_result(
+      PdfPageRenderResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_pdf_text_rect(PdfTextRect self, SseSerializer serializer);

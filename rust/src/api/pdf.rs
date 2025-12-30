@@ -120,6 +120,15 @@ pub struct PdfTextRect {
     pub bottom: f32,
 }
 
+/// Result of rendering a PDF page, including actual dimensions.
+/// The dimensions may differ from requested due to aspect ratio preservation.
+#[derive(Debug, Clone)]
+pub struct PdfPageRenderResult {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Execute a function with the global Pdfium instance
 pub fn with_pdfium<F, R>(f: F) -> Result<R>
 where
@@ -136,28 +145,43 @@ pub fn get_pdf_page_count(path: String) -> Result<u32> {
     })
 }
 
-/// Render a specific page of a PDF to PNG bytes
+/// Render a specific page of a PDF to PNG bytes with actual dimensions.
+/// Returns PdfPageRenderResult containing the image data and actual rendered size.
 #[hotpath::measure]
-pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -> Result<Vec<u8>> {
+pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -> Result<PdfPageRenderResult> {
     timed!("render_pdf_page", {
         with_document(&path, |document| {
             let page = document.pages().get(page_index as u16)?;
             
-            // Render to bitmap
+            // Render to bitmap with high-quality settings
             let bitmap = page
                 .render_with_config(&PdfRenderConfig::new()
                     .set_target_width(width as i32)
-                    .set_maximum_height(height as i32))?;
+                    .set_maximum_height(height as i32)
+                    // Enable high-quality rendering options
+                    .use_lcd_text_rendering(true)    // Sharper text on LCD screens
+                    .use_print_quality(true)         // Higher quality output
+                    .set_text_smoothing(true)        // Enable text anti-aliasing
+                    .set_image_smoothing(true)       // Enable image anti-aliasing
+                    .set_path_smoothing(true)        // Enable path anti-aliasing
+                    .render_form_data(true))?;       // Render form elements
             
-            // Convert to PNG bytes
+            // Convert to PNG bytes and get actual dimensions
             let dynamic_image = bitmap.as_image();
+            let actual_width = dynamic_image.width();
+            let actual_height = dynamic_image.height();
+            
             let mut png_bytes = Vec::new();
             dynamic_image.write_to(
                 &mut std::io::Cursor::new(&mut png_bytes),
                 image::ImageFormat::Png,
             )?;
             
-            Ok(png_bytes)
+            Ok(PdfPageRenderResult {
+                data: png_bytes,
+                width: actual_width,
+                height: actual_height,
+            })
         })
     })
 }
@@ -289,8 +313,10 @@ pub fn extract_pdf_page_text_bounds(
 
             let end = end.min(total);
             let page_rect = page.page_size();
-            let width = page_rect.width().value as f32;
-            let height = page_rect.height().value as f32;
+            let page_left = page_rect.left().value;
+            let page_bottom = page_rect.bottom().value;
+            let width = page_rect.width().value;
+            let height = page_rect.height().value;
 
             if width <= 0.0 || height <= 0.0 {
                 return Ok(Vec::new());
@@ -316,10 +342,12 @@ pub fn extract_pdf_page_text_bounds(
                 let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
                 let Ok(bounds) = bounds else { continue };
 
-                let mut left = bounds.left().value / width;
-                let mut right = bounds.right().value / width;
-                let mut top = 1.0 - (bounds.top().value / height);
-                let mut bottom = 1.0 - (bounds.bottom().value / height);
+                // PDF coordinates: origin at bottom-left, Y increases upward
+                // Flutter coordinates: origin at top-left, Y increases downward
+                let mut left = (bounds.left().value - page_left) / width;
+                let mut right = (bounds.right().value - page_left) / width;
+                let mut top = 1.0 - ((bounds.top().value - page_bottom) / height);
+                let mut bottom = 1.0 - ((bounds.bottom().value - page_bottom) / height);
 
                 if left > right {
                     std::mem::swap(&mut left, &mut right);
@@ -361,8 +389,10 @@ pub fn extract_all_page_character_bounds(
             }
 
             let page_rect = page.page_size();
-            let width = page_rect.width().value as f32;
-            let height = page_rect.height().value as f32;
+            let page_left = page_rect.left().value;
+            let page_bottom = page_rect.bottom().value;
+            let width = page_rect.width().value;
+            let height = page_rect.height().value;
 
             if width <= 0.0 || height <= 0.0 {
                 return Ok(Vec::new());
@@ -397,10 +427,19 @@ pub fn extract_all_page_character_bounds(
                     continue;
                 };
 
-                let mut left = bounds.left().value / width;
-                let mut right = bounds.right().value / width;
-                let mut top = 1.0 - (bounds.top().value / height);
-                let mut bottom = 1.0 - (bounds.bottom().value / height);
+                // PDF coordinates: origin at bottom-left, Y increases upward
+                // Flutter coordinates: origin at top-left, Y increases downward
+                // bounds.left/right/top/bottom are in page user space (points from page origin)
+                
+                // Normalize X: (bounds.x - page_left) / width -> [0.0, 1.0]
+                let mut left = (bounds.left().value - page_left) / width;
+                let mut right = (bounds.right().value - page_left) / width;
+                
+                // Normalize Y with flip: PDF top is higher Y value, Flutter top is lower Y value
+                // In PDF: bounds.top > bounds.bottom (top is higher Y)
+                // After flip: flutter_top < flutter_bottom
+                let mut top = 1.0 - ((bounds.top().value - page_bottom) / height);
+                let mut bottom = 1.0 - ((bounds.bottom().value - page_bottom) / height);
 
                 if left > right { std::mem::swap(&mut left, &mut right); }
                 if top > bottom { std::mem::swap(&mut top, &mut bottom); }

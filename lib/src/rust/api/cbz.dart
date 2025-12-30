@@ -19,6 +19,16 @@ Future<List<String>> getCbzPageNames({required String path}) =>
 
 /// Extract and optionally resize a single page
 /// Returns raw RGBA bytes for memory efficiency
+/// Extract and optionally resize a single page by its known entry name.
+/// This avoids the O(n) scan of the archive when page names are already cached in Dart.
+Future<CbzPageData> getCbzPageByName(
+        {required String path, required String entryName, int? maxWidth}) =>
+    RustLib.instance.api.crateApiCbzGetCbzPageByName(
+        path: path, entryName: entryName, maxWidth: maxWidth);
+
+/// Extract and optionally resize a single page by index.
+/// Note: This is O(n) as it must scan the archive to find the stable sorted image at 'index'.
+/// Prefer get_cbz_page_by_name if the list of names has already been retrieved.
 Future<CbzPageData> getCbzPage(
         {required String path, required int index, int? maxWidth}) =>
     RustLib.instance.api

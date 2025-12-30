@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1920194220;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1958760212;
 
 // Section: executor
 
@@ -356,6 +356,47 @@ fn wire__crate__api__cbz__get_cbz_page_impl(
         },
     )
 }
+fn wire__crate__api__cbz__get_cbz_page_by_name_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_cbz_page_by_name",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_entry_name = <String>::sse_decode(&mut deserializer);
+            let api_max_width = <Option<i32>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::cbz::get_cbz_page_by_name(
+                            api_path,
+                            api_entry_name,
+                            api_max_width,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__cbz__get_cbz_page_count_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -427,15 +468,16 @@ fn wire__crate__api__cbz__get_cbz_page_names_impl(
     )
 }
 fn wire__crate__api__mobi__get_mobi_author_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "get_mobi_author",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -449,25 +491,28 @@ fn wire__crate__api__mobi__get_mobi_author_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok = crate::api::mobi::get_mobi_author(api_path)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::mobi::get_mobi_author(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
 fn wire__crate__api__mobi__get_mobi_content_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "get_mobi_content",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -481,25 +526,28 @@ fn wire__crate__api__mobi__get_mobi_content_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok = crate::api::mobi::get_mobi_content(api_path)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::mobi::get_mobi_content(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
 fn wire__crate__api__mobi__get_mobi_title_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "get_mobi_title",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -513,12 +561,14 @@ fn wire__crate__api__mobi__get_mobi_title_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
-            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
-                (move || {
-                    let output_ok = crate::api::mobi::get_mobi_title(api_path)?;
-                    Ok(output_ok)
-                })(),
-            )
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::mobi::get_mobi_title(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
@@ -1028,6 +1078,20 @@ impl SseDecode for Option<crate::api::tts_text::SentenceSpan> {
     }
 }
 
+impl SseDecode for crate::api::pdf::PdfPageRenderResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_data = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_width = <u32>::sse_decode(deserializer);
+        let mut var_height = <u32>::sse_decode(deserializer);
+        return crate::api::pdf::PdfPageRenderResult {
+            data: var_data,
+            width: var_width,
+            height: var_height,
+        };
+    }
+}
+
 impl SseDecode for crate::api::pdf::PdfTextRect {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1147,27 +1211,31 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         8 => wire__crate__api__cbz__get_cbz_page_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__cbz__get_cbz_page_count_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__cbz__get_cbz_page_names_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__pdf__get_pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__hello_world_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__tts_text__insert_html_highlight_impl(
+        9 => wire__crate__api__cbz__get_cbz_page_by_name_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__cbz__get_cbz_page_count_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__cbz__get_cbz_page_names_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__mobi__get_mobi_author_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__mobi__get_mobi_content_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__mobi__get_mobi_title_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__pdf__get_pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__hello_world_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__tts_text__insert_html_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__crate__api__tts_text__precompute_text_highlights_impl(
+        18 => wire__crate__api__tts_text__precompute_text_highlights_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
-        22 => {
+        19 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
+        23 => {
             wire__crate__api__tts_text__test_tts_text_module_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1182,9 +1250,6 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        11 => wire__crate__api__mobi__get_mobi_author_impl(ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__mobi__get_mobi_content_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__mobi__get_mobi_title_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1249,6 +1314,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::crop::CropMargins>
     for crate::api::crop::CropMargins
 {
     fn into_into_dart(self) -> crate::api::crop::CropMargins {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::pdf::PdfPageRenderResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.data.into_into_dart().into_dart(),
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::pdf::PdfPageRenderResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::pdf::PdfPageRenderResult>
+    for crate::api::pdf::PdfPageRenderResult
+{
+    fn into_into_dart(self) -> crate::api::pdf::PdfPageRenderResult {
         self
     }
 }
@@ -1478,6 +1565,15 @@ impl SseEncode for Option<crate::api::tts_text::SentenceSpan> {
         if let Some(value) = self {
             <crate::api::tts_text::SentenceSpan>::sse_encode(value, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::api::pdf::PdfPageRenderResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<u8>>::sse_encode(self.data, serializer);
+        <u32>::sse_encode(self.width, serializer);
+        <u32>::sse_encode(self.height, serializer);
     }
 }
 

@@ -6,16 +6,17 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `get_pdfium`
-// These functions are ignored because they have generic arguments: `with_pdfium`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `ensure_pdf_header`, `get_pdfium`, `get_pool`, `load_pdf_document`, `map_pdfium_load_error`
+// These functions are ignored because they have generic arguments: `with_document`, `with_pdfium`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 /// Get the page count of a PDF file
 Future<int> getPdfPageCount({required String path}) =>
     RustLib.instance.api.crateApiPdfGetPdfPageCount(path: path);
 
-/// Render a specific page of a PDF to PNG bytes
-Future<Uint8List> renderPdfPage(
+/// Render a specific page of a PDF to PNG bytes with actual dimensions.
+/// Returns PdfPageRenderResult containing the image data and actual rendered size.
+Future<PdfPageRenderResult> renderPdfPage(
         {required String path,
         required int pageIndex,
         required int width,
@@ -24,11 +25,6 @@ Future<Uint8List> renderPdfPage(
         path: path, pageIndex: pageIndex, width: width, height: height);
 
 /// Extract the text of a specific page of a PDF file.
-///
-/// Notes:
-/// - Many PDFs (especially scanned documents) have no text layer, in which case this returns an
-///   empty string.
-/// - The extracted character order can differ from visual reading order for complex layouts.
 Future<String> extractPdfPageText(
         {required String path, required int pageIndex}) =>
     RustLib.instance.api
@@ -73,6 +69,32 @@ Future<List<PdfTextRect>> extractAllPageCharacterBounds(
 /// Test function to verify PDF module is working
 Future<String> testPdfModule() =>
     RustLib.instance.api.crateApiPdfTestPdfModule();
+
+/// Result of rendering a PDF page, including actual dimensions.
+/// The dimensions may differ from requested due to aspect ratio preservation.
+class PdfPageRenderResult {
+  final Uint8List data;
+  final int width;
+  final int height;
+
+  const PdfPageRenderResult({
+    required this.data,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  int get hashCode => data.hashCode ^ width.hashCode ^ height.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfPageRenderResult &&
+          runtimeType == other.runtimeType &&
+          data == other.data &&
+          width == other.width &&
+          height == other.height;
+}
 
 class PdfTextRect {
   final double left;

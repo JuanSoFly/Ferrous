@@ -7,13 +7,13 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Extracts content from a MOBI file as HTML.
-String getMobiContent({required String path}) =>
+Future<String> getMobiContent({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiContent(path: path);
 
 /// Returns the title of a MOBI file.
-String getMobiTitle({required String path}) =>
+Future<String> getMobiTitle({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiTitle(path: path);
 
 /// Returns the author of a MOBI file.
-String getMobiAuthor({required String path}) =>
+Future<String> getMobiAuthor({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiAuthor(path: path);
