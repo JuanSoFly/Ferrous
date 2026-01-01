@@ -48,6 +48,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   Offset? _lastDoubleTapDown;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
+  bool _hasRestoredPosition = false;
 
   // Tap-to-start confirmation state
   TapDetectionResult? _pendingTapResult;
@@ -65,6 +66,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
       book: widget.book,
       repository: widget.repository,
     )..init();
+
+    // Listen for loading completion to restore reading position
+    _chapterController.addListener(_onChapterControllerChanged);
 
     _ttsController = EpubTtsController(
       book: widget.book,
@@ -94,12 +98,25 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   @override
   void dispose() {
     _themeRepository?.removeListener(_onThemeChanged);
+    _chapterController.removeListener(_onChapterControllerChanged);
     _chapterController.dispose();
     _ttsController.dispose();
     _chromeController.dispose();
     _pageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onChapterControllerChanged() {
+    // Once loading completes and we haven't restored position yet, do it now
+    if (!_chapterController.isLoading && !_hasRestoredPosition) {
+      _hasRestoredPosition = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _chapterController.restoreReadingPosition(_readingMode);
+        }
+      });
+    }
   }
 
   void _onThemeChanged() {
