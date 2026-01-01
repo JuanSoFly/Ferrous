@@ -13,9 +13,6 @@ import 'package:reader_app/features/reader/mobi_reader.dart';
 typedef ReaderBuilder = Widget Function(Book book, BookRepository repository);
 
 /// Registry of reader widgets by format.
-/// 
-/// This replaces the previous if/else ladder with a type-safe map lookup.
-/// Adding a new format only requires adding an entry here.
 final Map<BookFormat, ReaderBuilder> _readerBuilders = {
   BookFormat.pdf: (book, repo) => PdfReaderScreen(book: book, repository: repo),
   BookFormat.epub: (book, repo) => EpubReaderScreen(book: book, repository: repo),

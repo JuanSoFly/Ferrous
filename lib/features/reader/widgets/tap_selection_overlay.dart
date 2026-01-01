@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// A minimal overlay widget for confirming a tap-to-start TTS selection.
-/// Shows the selected word with confirm (✓) and cancel (✗) buttons.
 class TapSelectionOverlay extends StatelessWidget {
   final String word;
   final Offset position;
@@ -21,12 +19,11 @@ class TapSelectionOverlay extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Truncate long words for display
     final displayWord = word.length > 20 ? '${word.substring(0, 17)}...' : word;
 
     return Positioned(
-      left: position.dx - 60, // Center the overlay roughly
-      top: position.dy - 70, // Position above the tap
+      left: position.dx - 60,
+      top: position.dy - 70,
       child: Material(
         elevation: 8,
         borderRadius: BorderRadius.circular(12),

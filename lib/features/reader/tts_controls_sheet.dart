@@ -123,7 +123,7 @@ class TtsControlsSheet extends StatelessWidget {
                         max: 2.0,
                         divisions: 6,
                         onChanged: (value) {
-                          ttsService.setRate(value); // Fire-and-forget, no await
+                          ttsService.setRate(value);
                         },
                       ),
                     ),

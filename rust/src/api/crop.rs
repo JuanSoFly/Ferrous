@@ -12,8 +12,6 @@ pub struct CropMargins {
     pub right: f32,
 }
 
-/// Analyze a PDF page to detect whitespace margins.
-/// Returns relative margins (0.0 to 1.0).
 pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargins> {
     with_pdfium(|pdfium| {
         let doc = load_pdf_document(pdfium, &path)?;
@@ -23,7 +21,6 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
             .get(page_index as u16)
             .map_err(|e| anyhow::anyhow!("Failed to get page: {:?}", e))?;
 
-        // Render at a fixed width for analysis (500px is enough for layout detection)
         let width = 500;
         let scale = width as f32 / page.width().value;
         let height = (page.height().value * scale) as i32;
@@ -44,14 +41,13 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
         let mut left = 0;
         let mut right = w - 1;
         
-        let threshold: u8 = 5; // Tolerance for "white" (0-255).
+        let threshold: u8 = 5;
         let white_cutoff = 255u8.saturating_sub(threshold);
         let is_white = |p: image::Rgba<u8>| {
             let ch = p.channels();
             ch[0] > white_cutoff && ch[1] > white_cutoff && ch[2] > white_cutoff
         };
 
-        // Find Top
         'top_loop: for y in 0..h {
             for x in 0..w {
                 if !is_white(img.get_pixel(x, y)) {
@@ -61,7 +57,6 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
             }
         }
 
-        // Find Bottom
         'bottom_loop: for y in (0..h).rev() {
             for x in 0..w {
                 if !is_white(img.get_pixel(x, y)) {
@@ -71,7 +66,6 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
             }
         }
 
-        // Find Left
         'left_loop: for x in 0..w {
             for y in top..=bottom {
                 if !is_white(img.get_pixel(x, y)) {
@@ -81,7 +75,6 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
             }
         }
 
-        // Find Right
         'right_loop: for x in (0..w).rev() {
             for y in top..=bottom {
                 if !is_white(img.get_pixel(x, y)) {
@@ -91,14 +84,12 @@ pub fn detect_pdf_whitespace(path: String, page_index: u32) -> Result<CropMargin
             }
         }
 
-        // Add a small padding (e.g. 5px scaled)
         let padding = 5;
         top = top.saturating_sub(padding);
         bottom = (bottom + padding).min(h - 1);
         left = left.saturating_sub(padding);
         right = (right + padding).min(w - 1);
 
-        // Convert to relative
         Ok(CropMargins {
             top: top as f32 / h as f32,
             bottom: 1.0 - (bottom as f32 / h as f32),

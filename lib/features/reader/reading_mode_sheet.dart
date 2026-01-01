@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:reader_app/core/models/book.dart';
 
-/// Format types that affect which reading modes are available
 enum ReaderFormatType {
-  /// PDF - single page rendering, only paged modes work
   pdf,
-  /// EPUB/MOBI/DOCX - HTML content, only vertical scroll works
   text,
-  /// CBZ/CBR - images, all modes supported
   image,
 }
 
@@ -31,7 +27,6 @@ Future<ReadingMode?> showReadingModeSheet(
 
       switch (formatType) {
         case ReaderFormatType.pdf:
-          // PDF only supports paged modes
           modes.addAll([
             _ModeTile(
               mode: ReadingMode.vertical,
@@ -48,7 +43,6 @@ Future<ReadingMode?> showReadingModeSheet(
           ]);
           break;
         case ReaderFormatType.text:
-          // Text formats support vertical scroll and basic paged modes
           modes.addAll([
             _ModeTile(
               mode: ReadingMode.vertical,
@@ -71,7 +65,6 @@ Future<ReadingMode?> showReadingModeSheet(
           ]);
           break;
         case ReaderFormatType.image:
-          // Image formats support all modes
           modes.addAll([
             _ModeTile(
               mode: ReadingMode.vertical,

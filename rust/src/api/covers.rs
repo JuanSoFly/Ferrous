@@ -146,7 +146,6 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
         }
     }
 
-    // Some EPUBs use inline SVG with <image href="...">.
     if let Ok(selector) = scraper::Selector::parse("image") {
         if let Some(img) = doc.select(&selector).next() {
             if let Some(href) = img.value().attr("href").or_else(|| img.value().attr("xlink:href")) {
@@ -160,8 +159,6 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
     None
 }
 
-/// Extract cover from a book file and save it to the specified path.
-/// Returns the saved path on success.
 #[hotpath::measure]
 pub fn extract_cover(book_path: String, save_path: String) -> Result<String> {
     timed!("extract_cover", {
@@ -170,8 +167,6 @@ pub fn extract_cover(book_path: String, save_path: String) -> Result<String> {
             "pdf" => extract_pdf_cover(&book_path, &save_path),
             "epub" => extract_epub_cover(&book_path, &save_path),
             "cbz" | "cbr" => extract_cbz_cover(&book_path, &save_path),
-            // TODO: Implement MOBI cover extraction
-            // "mobi" | "azw3" => extract_mobi_cover(&book_path, &save_path),
             _ => Err(anyhow::anyhow!("Unsupported format for cover extraction: {}", format)),
         }
     })
@@ -186,7 +181,6 @@ fn extract_pdf_cover(book_path: &str, save_path: &str) -> Result<String> {
             .get(0)
             .map_err(|e| anyhow::anyhow!("Failed to get first page: {:?}", e))?;
 
-        // Render at a reasonable thumbnail size (300px width)
         let width = 300;
         let scale = width as f32 / page.width().value;
         let height = (page.height().value * scale) as i32;
@@ -212,12 +206,10 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader).context("Failed to read EPUB archive")?;
 
-    // Prefer OPF-based cover detection (EPUB2/EPUB3).
     if let Ok(saved) = extract_epub_cover_from_opf(&mut archive, save_path) {
         return Ok(saved);
     }
 
-    // Common cover image paths in EPUB
     let possible_cover_paths = [
         "cover.jpg",
         "cover.jpeg",
@@ -246,7 +238,6 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
         "Images/cover.gif",
     ];
 
-    // Try common paths first
     for cover_path in &possible_cover_paths {
         if let Ok(mut entry) = archive.by_name(cover_path) {
             let mut buffer = Vec::new();
@@ -260,7 +251,6 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
         }
     }
 
-    // Fallback: find any image file that might be a cover
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let name = entry.name().to_lowercase();
@@ -363,7 +353,6 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
         })
     };
 
-    // 1) EPUB3: <item properties="cover-image" ... />
     if let Some(item) = manifest.iter().find(|item| {
         is_image_item(item)
             && item
@@ -376,7 +365,6 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
         return save_from_href(archive, &opf_path, &item.href);
     }
 
-    // 2) EPUB2: <meta name="cover" content="cover-image-id" />
     let mut cover_id: Option<String> = None;
     for node in opf_doc.descendants().filter(|n| n.is_element()) {
         if node.tag_name().name() != "meta" {
@@ -404,7 +392,6 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
         }
     }
 
-    // 3) Guide reference to cover page or cover image.
     for node in opf_doc.descendants().filter(|n| n.is_element()) {
         if node.tag_name().name() != "reference" {
             continue;
@@ -451,7 +438,6 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
         }
     }
 
-    // 4) Heuristic: any manifest image item whose id/href suggests cover.
     if let Some(item) = manifest.iter().find(|item| {
         if !is_image_item(item) {
             return false;
@@ -471,7 +457,6 @@ fn extract_cbz_cover(book_path: &str, save_path: &str) -> Result<String> {
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader).context("Failed to read CBZ archive")?;
 
-    // Get first image in archive (sorted by name)
     let mut image_names: Vec<String> = Vec::new();
     for i in 0..archive.len() {
         let entry = archive.by_index(i)?;

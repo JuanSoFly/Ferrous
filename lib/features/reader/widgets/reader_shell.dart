@@ -2,13 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 
 /// A shared shell widget that wraps reader content with chrome (UI overlays).
-/// 
-/// This centralizes the repeated layout pattern from all reader implementations:
-/// - Top bar with title and actions
-/// - Optional bottom controls
-/// - Animated chrome visibility
-/// - Center tap detection for chrome toggle
-/// - Gesture handling for swipe navigation
 class ReaderShell extends StatelessWidget {
   /// The main reader content.
   final Widget body;

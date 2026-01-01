@@ -74,10 +74,6 @@ pub fn get_cbz_page_names(path: String) -> Result<Vec<String>> {
     })
 }
 
-/// Extract and optionally resize a single page
-/// Returns raw RGBA bytes for memory efficiency
-/// Extract and optionally resize a single page by its known entry name.
-/// This avoids the O(n) scan of the archive when page names are already cached in Dart.
 #[flutter_rust_bridge::frb]
 #[hotpath::measure]
 pub fn get_cbz_page_by_name(
@@ -129,8 +125,6 @@ pub fn get_cbz_page_by_name(
 }
 
 /// Extract and optionally resize a single page by index.
-/// Note: This is O(n) as it must scan the archive to find the stable sorted image at 'index'.
-/// Prefer get_cbz_page_by_name if the list of names has already been retrieved.
 #[flutter_rust_bridge::frb]
 #[hotpath::measure]
 pub fn get_cbz_page(

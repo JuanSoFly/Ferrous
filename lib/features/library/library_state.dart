@@ -13,7 +13,7 @@ class LibraryState {
   final String? error;
   final String? statusMessage;
   final String searchQuery;
-  final Book? splitPendingBook; // For split-screen: first book selected
+  final Book? splitPendingBook;
 
   // Memoization cache
   final List<Book>? _cachedFilteredBooks;
@@ -79,14 +79,6 @@ class LibraryState {
       return book.title.toLowerCase().contains(query) ||
           book.author.toLowerCase().contains(query);
     }).toList();
-
-    // We can't update state here as it's a getter, but the controller 
-    // could potentially pre-warm this or we use a more robust memoization pattern.
-    // For now, this still avoids expensive re-filtering if the UI reads the getter multiple times
-    // in the same build pass or across builds where state didn't change (if we stored it).
-    
-    // Actually, to make memoization TRULY work with immutable state, 
-    // the copyWith should ideally handle the update or the getter should be a field.
     return result;
   }
 }
@@ -110,7 +102,6 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   void loadBooks() {
     final books = _bookRepository.getAllBooks();
-    // Sort by recently opened
     books.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
     state = state.copyWith(books: books);
   }
@@ -128,8 +119,6 @@ class LibraryController extends StateNotifier<LibraryState> {
     _coverGenerationStarted = true;
     unawaited(_generateCoversInBackground());
   }
-
-  /// Updates the search query for filtering books with a 200ms debounce.
   void setSearchQuery(String query) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 200), () {
@@ -137,17 +126,14 @@ class LibraryController extends StateNotifier<LibraryState> {
     });
   }
 
-  /// Sets a book as pending for split-screen view.
   void setSplitPendingBook(Book book) {
     state = state.copyWith(splitPendingBook: book);
   }
 
-  /// Clears the split-pending book.
   void clearSplitPending() {
     state = state.copyWith(clearSplitPending: true);
   }
 
-  /// Opens the folder picker using SAF and links or imports any ebook files found.
   Future<void> pickAndScanDirectory(SafStorageMode mode) async {
     try {
       state = state.copyWith(
@@ -159,7 +145,6 @@ class LibraryController extends StateNotifier<LibraryState> {
       final refs = await _safService.pickFolder(mode: mode);
 
       if (refs.isEmpty) {
-        // User canceled or no supported files found
         state = state.copyWith(isLoading: false, statusMessage: null);
         return;
       }
@@ -199,7 +184,6 @@ class LibraryController extends StateNotifier<LibraryState> {
     }
   }
 
-  /// Rescans all previously granted folders for new books.
   Future<void> rescanFolders() async {
     try {
       state = state.copyWith(
@@ -293,20 +277,15 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   Future<void> _generateCoversInBackground() async {
     try {
-      // Get the app's document directory for storing covers
       final appDir = await _getAppDocumentsDirectory();
       final coversDir = '$appDir/covers';
 
-      // Create covers directory if it doesn't exist
       await _ensureDirectoryExists(coversDir);
 
-      // Generate covers
       await _bookRepository.generateCovers(coversDir);
 
-      // Refresh to show new covers
       loadBooks();
     } catch (e) {
-      // Silently fail - cover generation is optional
     }
   }
 

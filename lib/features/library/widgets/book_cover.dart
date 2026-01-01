@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:reader_app/core/models/book.dart';
 
 /// Shared widget for displaying book covers consistently across the app.
-/// 
-/// Handles cover loading from file path with proper error fallback to placeholder.
-/// Used in library_screen, collection_detail_screen, and annotations_hub_screen.
 class BookCover extends StatelessWidget {
   final Book book;
   final double? height;
