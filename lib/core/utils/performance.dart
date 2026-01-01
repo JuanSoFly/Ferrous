@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'perf_logger.dart';
 
-/// A utility to measure the execution time of an asynchronous function.
-/// It logs the duration to both the console and the [PerfLogger].
 Future<T> measureAsync<T>(String label, Future<T> Function() fn, {Map<String, dynamic>? metadata}) async {
   final sw = Stopwatch()..start();
   try {
@@ -12,7 +10,6 @@ Future<T> measureAsync<T>(String label, Future<T> Function() fn, {Map<String, dy
     
     debugPrint('⏱️ $label: ${duration}ms');
     
-    // Log to JSON file for baseline collection
     unawaited(PerfLogger().logEvent(
       event: label,
       durationMs: duration,
@@ -26,7 +23,6 @@ Future<T> measureAsync<T>(String label, Future<T> Function() fn, {Map<String, dy
   }
 }
 
-/// A utility to measure the execution time of a synchronous function.
 T measureSync<T>(String label, T Function() fn, {Map<String, dynamic>? metadata}) {
   final sw = Stopwatch()..start();
   try {
@@ -48,7 +44,6 @@ T measureSync<T>(String label, T Function() fn, {Map<String, dynamic>? metadata}
   }
 }
 
-/// A simple semaphore to limit parallel asynchronous operations.
 class Semaphore {
   final int max;
   int _current = 0;

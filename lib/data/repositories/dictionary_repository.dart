@@ -6,8 +6,6 @@ class DictionaryRepository {
   static const String _baseUrl = 'https://api.dictionaryapi.dev/api/v2/entries/en';
 
   /// Fetches definitions for a word.
-  /// Returns a list of WordDefinition objects.
-  /// Throws an exception if the word is not found or network error.
   Future<List<WordDefinition>> fetchDefinition(String word) async {
     final cleanWord = word.trim().toLowerCase();
     if (cleanWord.isEmpty) {

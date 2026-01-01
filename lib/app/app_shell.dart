@@ -45,7 +45,7 @@ class _AppShellState extends State<AppShell> {
             label: 'Library',
           ),
           NavigationDestination(
-            icon: Icon(Icons.comment), // Use appropriate icon for annotations
+            icon: Icon(Icons.comment),
             label: 'Annotations',
           ),
           NavigationDestination(

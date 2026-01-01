@@ -11,7 +11,7 @@ class AnnotationDialog extends StatefulWidget {
 
 class _AnnotationDialogState extends State<AnnotationDialog> {
   final TextEditingController _noteController = TextEditingController();
-  int _selectedColor = 0xFFFFF176; // Default Yellow (Colors.yellow[300])
+  int _selectedColor = 0xFFFFF176;
 
   final List<int> _colors = [
     0xFFFFF176, // Yellow

@@ -50,7 +50,6 @@ pub fn read_docx_to_html(path: String) -> Result<String> {
                             open_tags.push_str("<i>");
                             close_tags.insert_str(0, "</i>");
                         }
-                        // Add more formatting as needed (underline, color, etc.)
 
                         html_output.push_str(&open_tags);
                         html_output.push_str(&text_content);
@@ -62,7 +61,7 @@ pub fn read_docx_to_html(path: String) -> Result<String> {
             DocumentChild::Table(_) => {
                 html_output.push_str("<p><i>[Table - Not Supported]</i></p>");
             }
-            _ => {} // Ignore other elements for now
+            _ => {}
         }
     }
 

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 
-/// A singleton logger that writes performance events to a JSONL file.
 class PerfLogger {
   static final PerfLogger _instance = PerfLogger._internal();
   factory PerfLogger() => _instance;
@@ -26,7 +25,6 @@ class PerfLogger {
       _logFile = File('${perfDir.path}/$fileName');
       _initialized = true;
       
-      // Rotate logs: keep last 10 sessions
       final files = await perfDir.list().where((e) => e is File).toList();
       if (files.length > 10) {
         files.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));

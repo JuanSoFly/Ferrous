@@ -3,7 +3,6 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:reader_app/core/models/collection.dart';
 
-/// Repository for managing book collections with reactive notifications.
 class CollectionRepository extends ChangeNotifier {
   static const String _boxName = 'collections';
 

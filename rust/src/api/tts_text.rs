@@ -45,8 +45,6 @@ fn normalize_text(text: &str) -> String {
         .to_string()
 }
 
-/// Pre-compute all word and sentence boundaries for TTS highlighting.
-/// This eliminates per-word computation during TTS playback.
 pub fn precompute_text_highlights(text: String) -> TextHighlightData {
     timed!("precompute_text_highlights", {
         let normalized = normalize_text(&text);
@@ -87,11 +85,8 @@ pub fn precompute_text_highlights(text: String) -> TextHighlightData {
             let trimmed = sentence.trim();
             
             if !trimmed.is_empty() {
-                // Find actual start (skip leading whitespace)
                 let leading_ws = sentence.len() - sentence.trim_start().len();
                 let leading_chars = sentence[..leading_ws].chars().count() as u32;
-                
-                // Find actual end (skip trailing whitespace)
                 let trailing_ws = sentence.len() - sentence.trim_end().len();
                 let trailing_chars = sentence[sentence.len() - trailing_ws..].chars().count() as u32;
                 
@@ -112,7 +107,6 @@ pub fn precompute_text_highlights(text: String) -> TextHighlightData {
     })
 }
 
-/// Find the sentence containing a given character offset
 pub fn find_sentence_for_offset(
     sentences: &[SentenceSpan],
     offset: u32,
@@ -122,12 +116,9 @@ pub fn find_sentence_for_offset(
             return Some(sentence.clone());
         }
     }
-    // If offset is past all sentences, return the last one
     sentences.last().cloned()
 }
 
-/// Insert TTS highlight tags into HTML at the specified character range.
-/// Uses the scraper crate for fast HTML parsing.
 pub fn insert_html_highlight(
     html: String,
     highlight_start: u32,
@@ -140,11 +131,7 @@ pub fn insert_html_highlight(
     
     let _document = Html::parse_document(&html);
     
-    // Extract text content to build character mapping
     let _body_selector = Selector::parse("body").unwrap_or_else(|_| Selector::parse("*").unwrap());
-    
-    // For speed, we'll use a simpler approach: find text, wrap in string manipulation
-    // This avoids full DOM reconstruction which scraper doesn't support well
     let text_content = extract_text_from_html(&html);
     let normalized = normalize_text(&text_content);
     
@@ -155,9 +142,6 @@ pub fn insert_html_highlight(
     // Build mapping from normalized offset to raw offset
     let _text_regex = get_whitespace_regex();
     let _raw_text = extract_text_from_html(&html);
-    
-    // For now, use a simplified approach: find the text range and wrap it
-    // This is a fallback until we implement full DOM manipulation
     let start = highlight_start as usize;
     let end = highlight_end.min(normalized.len() as u32) as usize;
     
@@ -167,8 +151,6 @@ pub fn insert_html_highlight(
     
     let highlight_text = &normalized[start..end];
     
-    // Try to find this text in the original HTML and wrap it
-    // This is an approximation - full solution would track DOM nodes
     if let Some(pos) = html.find(highlight_text) {
         let mut result = String::with_capacity(html.len() + tag_name.len() * 2 + 10);
         result.push_str(&html[..pos]);
@@ -183,11 +165,9 @@ pub fn insert_html_highlight(
         return Ok(result);
     }
     
-    // Fallback: return original HTML
     Ok(html)
 }
 
-/// Extract plain text from HTML (fast version using scraper)
 fn extract_text_from_html(html: &str) -> String {
     let document = Html::parse_document(html);
     let selector = Selector::parse("body").ok();
@@ -199,7 +179,6 @@ fn extract_text_from_html(html: &str) -> String {
             text.push_str(&element.text().collect::<String>());
         }
     } else {
-        // Fallback: extract all text
         for node in document.root_element().descendants() {
             if let Some(text_node) = node.value().as_text() {
                 text.push_str(text_node);

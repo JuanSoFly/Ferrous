@@ -47,7 +47,7 @@ class ReaderThemeRepository extends ChangeNotifier {
 
   Future<void> updateConfig(ReaderThemeConfig newConfig) async {
     _config = newConfig;
-    notifyListeners(); // Notify immediately for instant UI update
+    notifyListeners();
     
     // Only persist if box is available
     if (_box != null) {

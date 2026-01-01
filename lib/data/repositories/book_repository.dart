@@ -7,10 +7,6 @@ import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
 import 'package:reader_app/core/utils/performance.dart';
 
-/// Repository for managing book data with reactive notifications.
-/// 
-/// Uses ChangeNotifier to allow widgets to automatically rebuild when book
-/// data changes, eliminating the need for manual refresh calls after navigation.
 class BookRepository extends ChangeNotifier {
   static const String _boxName = 'books';
 
@@ -56,8 +52,6 @@ class BookRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Update reading progress silently (no notification).
-  /// Progress updates happen frequently and don't need to trigger UI rebuilds.
   Future<void> updateReadingProgress(
     String id, {
     int? currentPage,
@@ -89,13 +83,8 @@ class BookRepository extends ChangeNotifier {
         lastOpened: DateTime.now(),
       );
       await box.put(book.id, updated);
-      // Note: No notifyListeners() here - progress updates are silent
-      // to avoid expensive rebuilds during reading
     }
   }
-
-  /// Update reading progress and notify listeners.
-  /// Use this when progress changes should be immediately reflected in UI.
   Future<void> updateReadingProgressAndNotify(
     String id, {
     int? currentPage,
@@ -125,8 +114,6 @@ class BookRepository extends ChangeNotifier {
 
   static final Semaphore _coverSemaphore = Semaphore(2);
 
-  /// Generate covers for all books that don't have one.
-  /// [coversDir] is the absolute path to the directory where covers will be saved.
   Future<int> generateCovers(String coversDir) async {
     final books = getAllBooks();
     final resolver = BookFileResolver();
@@ -142,13 +129,10 @@ class BookRepository extends ChangeNotifier {
 
         final expectedCoverPath = '$coversDir/${book.id}.png';
 
-        // If we already have a valid on-disk cover, keep it.
         if (hasExistingCoverFile) {
           return false;
         }
 
-        // If the cover file exists at the expected location but the Book points
-        // to nothing (or a stale path), just relink it without re-extracting.
         if (File(expectedCoverPath).existsSync()) {
           final updated = book.copyWith(coverPath: expectedCoverPath);
           await box.put(book.id, updated);
@@ -168,7 +152,6 @@ class BookRepository extends ChangeNotifier {
             }
           }
 
-          // Update book with cover path (silently)
           final updated = book.copyWith(coverPath: expectedCoverPath);
           await box.put(book.id, updated);
           return true;
@@ -184,7 +167,6 @@ class BookRepository extends ChangeNotifier {
     final results = await Future.wait(tasks);
     final generated = results.where((r) => r).length;
 
-    // Notify once at the end after all covers are generated
     if (generated > 0) {
       notifyListeners();
     }
@@ -192,7 +174,6 @@ class BookRepository extends ChangeNotifier {
     return generated;
   }
   
-  /// Update the cover path for a book
   Future<void> updateCoverPath(String id, String coverPath) async {
     final book = getBook(id);
     if (book != null) {

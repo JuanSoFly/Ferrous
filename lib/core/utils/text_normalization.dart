@@ -1,4 +1,3 @@
-/// Normalize plain text and collapse whitespace.
 String normalizePlainText(String text) {
   return text
       .replaceAll('\u00A0', ' ')

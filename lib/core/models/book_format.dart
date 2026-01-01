@@ -1,7 +1,4 @@
 /// Canonical book format enum for type-safe format handling.
-/// 
-/// Replaces string-based format checks with a proper enum,
-/// enabling exhaustive switch statements and better IDE support.
 enum BookFormat {
   pdf,
   epub,
