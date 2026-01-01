@@ -6,7 +6,6 @@ import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
-
 import 'controllers/pdf_page_controller.dart';
 import 'controllers/pdf_tts_controller.dart';
 import 'controllers/reader_chrome_controller.dart';
@@ -107,8 +106,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     );
     if (selected == null || selected == _modeController.mode) return;
     
-    // Note: Re-initializing the screen or controller might be needed if reading mode changes fundamentally
-    // For now we just update DB. In a real app we might want to restart the reader with new mode.
     unawaited(widget.repository.updateReadingProgress(widget.book.id, readingMode: selected));
     
     if (mounted) {
@@ -135,10 +132,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
           onListenFromHere: (text) {
             final trimmed = text.trim();
             if (trimmed.isEmpty) return;
-
-            // In our new architecture, ttsController handles this
-            _ttsController.toggleTts(); // Ensure it's showing
-            // Actually let's refine this to start speaking immediately
+            _ttsController.toggleTts(); 
             _ttsController.startSpeakingOverride(trimmed);
           },
         );

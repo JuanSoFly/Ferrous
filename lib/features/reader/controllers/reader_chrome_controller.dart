@@ -1,13 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-/// Controller for reader chrome (UI overlay) visibility and lock mode.
-/// 
-/// Centralizes the repeated logic from all reader implementations:
-/// - Chrome visibility toggle
-/// - Lock mode toggle (prevents accidental page turns)
-/// - System UI mode management
-/// - Center tap detection
+/// Controller for reader chrome visibility and lock mode.
 class ReaderChromeController extends ChangeNotifier {
   bool _showChrome = false;
   bool _isLocked = false;
@@ -15,7 +9,7 @@ class ReaderChromeController extends ChangeNotifier {
   bool get showChrome => _showChrome;
   bool get isLocked => _isLocked;
 
-  /// Toggle chrome visibility. Does nothing if locked.
+  /// Toggle chrome visibility.
   void toggleChrome() {
     if (_isLocked) return;
     _showChrome = !_showChrome;
@@ -31,8 +25,7 @@ class ReaderChromeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Toggle lock mode. When locked, chrome is hidden and tap/swipe is disabled.
-  /// Returns the new lock state for UI feedback (e.g., SnackBar).
+  /// Toggle lock mode.
   bool toggleLockMode() {
     _isLocked = !_isLocked;
     if (_isLocked) {
@@ -65,7 +58,6 @@ class ReaderChromeController extends ChangeNotifier {
   }
 
   /// Check if a global position is within the center tap zone.
-  /// The center zone is 45% width x 35% height, centered on screen.
   bool isCenterTap(Offset globalPosition, Size screenSize) {
     if (screenSize.isEmpty) return false;
     final centerWidth = screenSize.width * 0.45;
@@ -76,7 +68,7 @@ class ReaderChromeController extends ChangeNotifier {
     return rect.contains(globalPosition);
   }
 
-  /// Reset to default state (chrome hidden, not locked).
+  /// Reset to default state.
   void reset() {
     _showChrome = false;
     _isLocked = false;

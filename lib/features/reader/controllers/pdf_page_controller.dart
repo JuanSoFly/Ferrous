@@ -202,12 +202,17 @@ class PdfPageController extends ChangeNotifier {
           _renderedPageSize = Size(result.width.toDouble(), result.height.toDouble());
           _currentZoomScale = maxZoomQuality;
           
-          // Calculate logical size (stable UI size) from rendered size / zoom
-          // This ensures the image occupies the same space regardless of resolution
-          _logicalPageSize = Size(
-            result.width.toDouble() / (maxZoomQuality * _devicePixelRatio),
-            result.height.toDouble() / (maxZoomQuality * _devicePixelRatio),
-          );
+          // Calculate logical size to fit within viewer while preserving aspect ratio
+          // This is the size the page will occupy in the UI (high-res texture, proper layout)
+          final aspectRatio = result.width / result.height;
+          final viewerAspect = _viewerSize.width / _viewerSize.height;
+          if (aspectRatio > viewerAspect) {
+            // Page is wider than viewer - fit to width
+            _logicalPageSize = Size(_viewerSize.width, _viewerSize.width / aspectRatio);
+          } else {
+            // Page is taller than viewer - fit to height
+            _logicalPageSize = Size(_viewerSize.height * aspectRatio, _viewerSize.height);
+          }
           
           _isLoading = false;
           _error = null;

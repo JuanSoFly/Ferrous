@@ -6,10 +6,10 @@ class SentenceSpan {
 }
 
 bool _isSentencePunctuation(int codeUnit) {
-  return codeUnit == 46 || // .
-      codeUnit == 33 || // !
-      codeUnit == 63 || // ?
-      codeUnit == 8230; // ellipsis
+  return codeUnit == 46 || 
+      codeUnit == 33 || 
+      codeUnit == 63 || 
+      codeUnit == 8230;
 }
 
 bool _isWhitespace(int codeUnit) {
@@ -25,7 +25,7 @@ List<SentenceSpan> splitIntoSentences(String text) {
 
   while (i < text.length) {
     final code = text.codeUnitAt(i);
-    final isLineBreak = code == 10 || code == 13; // \n or \r
+    final isLineBreak = code == 10 || code == 13;
     final isBoundary = _isSentencePunctuation(code) || isLineBreak;
 
     if (isBoundary) {

@@ -35,7 +35,6 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // CRITICAL: Limit image cache size to prevent OOM
     PaintingBinding.instance.imageCache.maximumSize = 10;
     PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20;
 

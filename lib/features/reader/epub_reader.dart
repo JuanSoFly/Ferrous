@@ -6,16 +6,13 @@ import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
-
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
-
 import 'package:reader_app/features/reader/widgets/epub_continuous_viewer.dart';
 import 'package:reader_app/features/reader/widgets/epub_paged_viewer.dart';
 import 'package:reader_app/features/reader/widgets/epub_reader_top_bar.dart';
@@ -108,7 +105,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _onChapterControllerChanged() {
-    // Once loading completes and we haven't restored position yet, do it now
     if (!_chapterController.isLoading && !_hasRestoredPosition) {
       _hasRestoredPosition = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -170,8 +166,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     }
   }
 
-  /// Toggle all UI together: chrome + TTS controls.
-  /// This gives a true full-screen reading experience.
   /// TTS continues playing in background when hidden.
   void _toggleAllUi() {
     _chromeController.toggleChrome();
@@ -240,9 +234,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     );
   }
 
-  /// Handle tap-up for TTS: detect word and show confirmation overlay.
-  /// Only active when TTS controls are visible and tap-to-start is enabled.
-  /// Center taps are ignored to allow UI toggle via onTap.
   void _handleTapUpForTts(TapUpDetails details) {
     // Do nothing if TTS is not active - let onTap handle UI toggle
     if (!_ttsController.showTtsControls) {
@@ -456,10 +447,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                       right: 0,
                       child: TtsControlsSheet(
                         ttsService: _ttsController.ttsService,
-                        textToSpeak: '', // Let resolveTextToSpeak handle it
+                        textToSpeak: '', 
                         resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
                         onStart: () async {
-                          // resolveTtsText also sets the base offset internally
+
                           final text = _ttsController.resolveTtsText(modeController: _modeController);
                           if (text.trim().isNotEmpty) {
                             await _ttsController.ttsService.speak(text);

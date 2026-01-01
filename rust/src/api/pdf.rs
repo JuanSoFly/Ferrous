@@ -7,7 +7,7 @@ use std::sync::{OnceLock, Mutex};
 use std::num::NonZeroUsize;
 use lru::LruCache;
 
-// Global Pdfium instance for thread-safe reuse
+
 static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
 
 fn get_pdfium() -> &'static Pdfium {
@@ -81,7 +81,6 @@ pub(crate) fn load_pdf_document<'a>(pdfium: &'a Pdfium, path: &str) -> Result<Pd
 }
 
 // Global LRU cache for PDF documents (R3)
-// We keep 4 documents open at once - enough for split screen + preloading
 static DOCUMENT_POOL: OnceLock<Mutex<LruCache<String, PdfDocument<'static>>>> = OnceLock::new();
 
 fn get_pool() -> &'static Mutex<LruCache<String, PdfDocument<'static>>> {
@@ -102,7 +101,7 @@ where
         return f(doc);
     }
     
-    // Load and add to cache
+
     let doc = load_pdf_document(get_pdfium(), path)?;
     // We add to cache - this might evict an old one
     cache.put(path.to_string(), doc);
@@ -146,27 +145,24 @@ pub fn get_pdf_page_count(path: String) -> Result<u32> {
 }
 
 /// Render a specific page of a PDF to PNG bytes with actual dimensions.
-/// Returns PdfPageRenderResult containing the image data and actual rendered size.
 #[hotpath::measure]
 pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -> Result<PdfPageRenderResult> {
     timed!("render_pdf_page", {
         with_document(&path, |document| {
             let page = document.pages().get(page_index as u16)?;
             
-            // Render to bitmap with high-quality settings
             let bitmap = page
                 .render_with_config(&PdfRenderConfig::new()
                     .set_target_width(width as i32)
                     .set_maximum_height(height as i32)
-                    // Enable high-quality rendering options
-                    .use_lcd_text_rendering(true)    // Sharper text on LCD screens
-                    .use_print_quality(true)         // Higher quality output
-                    .set_text_smoothing(true)        // Enable text anti-aliasing
-                    .set_image_smoothing(true)       // Enable image anti-aliasing
-                    .set_path_smoothing(true)        // Enable path anti-aliasing
-                    .render_form_data(true))?;       // Render form elements
+                    .use_lcd_text_rendering(true)
+                    .use_print_quality(true)
+                    .set_text_smoothing(true)
+                    .set_image_smoothing(true)
+                    .set_path_smoothing(true)
+                    .render_form_data(true))?;
             
-            // Convert to PNG bytes and get actual dimensions
+
             let dynamic_image = bitmap.as_image();
             let actual_width = dynamic_image.width();
             let actual_height = dynamic_image.height();
@@ -370,8 +366,8 @@ pub fn extract_pdf_page_text_bounds(
 }
 
 /// Pre-compute ALL character bounds for a page.
+/// Pre-compute ALL character bounds for a page.
 /// Call this once when loading a page, then use the cached data for TTS highlighting.
-/// This eliminates per-word FFI calls during TTS playback.
 #[hotpath::measure]
 pub fn extract_all_page_character_bounds(
     path: String,
@@ -427,9 +423,8 @@ pub fn extract_all_page_character_bounds(
                     continue;
                 };
 
-                // PDF coordinates: origin at bottom-left, Y increases upward
-                // Flutter coordinates: origin at top-left, Y increases downward
-                // bounds.left/right/top/bottom are in page user space (points from page origin)
+                // PDF coordinates: origin at bottom-left, Y increases upward.
+                // Flutter coordinates: origin at top-left, Y increases downward.
                 
                 // Normalize X: (bounds.x - page_left) / width -> [0.0, 1.0]
                 let mut left = (bounds.left().value - page_left) / width;

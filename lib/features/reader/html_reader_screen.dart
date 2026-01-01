@@ -16,9 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 
 /// Shared base class for HTML-based text readers (DOCX, MOBI).
-/// 
-/// This consolidates the identical reader logic from docx_reader.dart and mobi_reader.dart,
-/// reducing ~740 lines of code to a single implementation.
+
 abstract class HtmlReaderScreen extends StatefulWidget {
   final Book book;
   final BookRepository repository;
@@ -364,20 +362,16 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         child: Consumer<ReaderThemeRepository>(
           builder: (context, themeRepo, _) {
             final themeConfig = themeRepo.config;
-            // Apply user paragraph spacing multiplier/value on top of base? 
-            // The user setting is 0-50 px. Let's use user setting if customized, or add it?
-            // "Paragraph Spacing from 0% to 100%".
-            // Let's assume the slider value is the pixel margin bottom.
             final spacing = themeConfig.paragraphSpacing; 
             
              // Margins
-              final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0; // Reduced margin logic
+              final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
 
              final displayContent = themeConfig.hyphenation
                  ? HyphenationHelper.processHtml(_htmlContent ?? '')
                  : (_htmlContent ?? '');
 
-             return Padding( // Apply margins here or in Html p style?
+             return Padding(
                 padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
                 child: Html(
                  data: displayContent,
@@ -457,7 +451,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     );
   }
 
-  /// Get font data for flutter_html Style
   ({String? fontFamily, List<String>? fontFamilyFallback}) _getGoogleFontData(String family) {
     try {
       final textStyle = GoogleFonts.getFont(family);
@@ -466,7 +459,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         fontFamilyFallback: textStyle.fontFamilyFallback,
       );
     } catch (_) {
-      // Fallback to the raw family name
       return (fontFamily: family, fontFamilyFallback: null);
     }
   }

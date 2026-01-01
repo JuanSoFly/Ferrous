@@ -3,10 +3,6 @@ import 'package:reader_app/features/reader/html_reader_screen.dart';
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:reader_app/core/utils/performance.dart';
 
-/// MOBI reader using the shared HTML reader infrastructure.
-/// 
-/// The only format-specific part is the Rust API call to extract MOBI content.
-/// Note: The Rust API is synchronous, so we wrap it in a Future.
 class MobiReaderScreen extends HtmlReaderScreen {
   const MobiReaderScreen({
     super.key,

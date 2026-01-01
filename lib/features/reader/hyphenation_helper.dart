@@ -53,27 +53,4 @@ class HyphenationHelper {
       }
     }
   }
-
-  /*
-  static void _processNode(dom.Node? node) {
-    if (node == null) return;
-
-    if (node.nodeType == dom.Node.TEXT_NODE) {
-      final text = node.text;
-      if (text != null && text.trim().isNotEmpty) {
-        // Only hyphenate words to avoid breaking HTML entities or causing issues
-        // But HyphenatorX usually handles text well. 
-        // We rely on it returning text with soft hyphens.
-        // Warning: Re-hyphenating already hyphenated text?
-        // Hyphenator usually ignores soft hyphens present?
-        // Let's assume input is clean from previous passes or we just overwrite.
-        node.text = _hyphenator!.hyphenate(text);
-      }
-    } else if (node.hasChildNodes()) {
-      for (final child in node.nodes) {
-        _processNode(child);
-      }
-    }
-  }
-  */
 }

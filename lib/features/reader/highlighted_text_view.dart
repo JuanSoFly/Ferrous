@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// A widget that displays text with a highlighted word/segment.
-///
 /// Used for TTS text highlighting to show the currently spoken word.
 class HighlightedTextView extends StatefulWidget {
   final String text;

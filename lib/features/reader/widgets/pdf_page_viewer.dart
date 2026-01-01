@@ -61,8 +61,8 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
               pageController.viewerSize = Size(constraints.maxWidth, constraints.maxHeight);
               return InteractiveViewer(
                 transformationController: widget.transformController,
+                minScale: 1.0,
                 maxScale: 5.0,
-                constrained: false,
                 panEnabled: true,
                 scaleEnabled: true,
                 child: Center(

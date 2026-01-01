@@ -1,16 +1,12 @@
 import 'package:reader_app/core/models/book.dart';
 
-/// Controller for reading mode behavior and swipe direction logic.
-/// 
-/// Centralizes the repeated reading mode checks from all reader implementations:
-/// - Determines if horizontal/vertical swipe navigation is active
-/// - Determines if paged or continuous scrolling mode is active
+/// Controller for reading mode logic.
 class ReaderModeController {
   ReadingMode mode;
 
   ReaderModeController(this.mode);
 
-  /// Whether to use horizontal swipe for page navigation (left-to-right or horizontal continuous).
+  /// Horizontal swipe enabled.
   bool get useHorizontalSwipe {
     switch (mode) {
       case ReadingMode.leftToRight:
@@ -23,10 +19,10 @@ class ReaderModeController {
     }
   }
 
-  /// Whether to use vertical swipe for page navigation.
+  /// Vertical swipe enabled.
   bool get useVerticalSwipe => !useHorizontalSwipe;
 
-  /// Whether the reader is in paged mode (discrete pages vs continuous scroll).
+  /// Discrete pages.
   bool get isPagedMode {
     switch (mode) {
       case ReadingMode.vertical:
@@ -39,7 +35,7 @@ class ReaderModeController {
     }
   }
 
-  /// Whether the reader is in continuous scrolling mode.
+  /// Continuous scroll.
   bool get isContinuousMode => !isPagedMode;
 
   /// Whether the mode is horizontal (either paged or continuous).
@@ -58,20 +54,17 @@ class ReaderModeController {
   /// Whether the mode is vertical (either paged or continuous).
   bool get isVertical => !isHorizontal;
 
-  /// Determine swipe delta threshold for page navigation.
-  /// Returns the minimum velocity for a swipe to trigger page turn.
+  /// Swipe velocity threshold.
   double get swipeVelocityThreshold => 200.0;
 
-  /// Determine page turn direction from horizontal drag end.
-  /// Returns -1 for previous, 1 for next, 0 for no action.
+  /// Page turn direction from horizontal drag.
   int getHorizontalSwipeDelta(double velocity) {
     if (!useHorizontalSwipe) return 0;
     if (velocity.abs() < swipeVelocityThreshold) return 0;
     return velocity > 0 ? -1 : 1;
   }
 
-  /// Determine page turn direction from vertical drag end.
-  /// Returns -1 for previous, 1 for next, 0 for no action.
+  /// Page turn direction from vertical drag.
   int getVerticalSwipeDelta(double velocity) {
     if (!useVerticalSwipe) return 0;
     if (velocity.abs() < swipeVelocityThreshold) return 0;

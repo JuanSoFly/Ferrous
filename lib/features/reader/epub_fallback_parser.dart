@@ -49,7 +49,7 @@ class EpubFallbackParser {
       }
       opfFile = tempOpfFile;
     } catch (e) {
-      // Enhanced error reporting for debugging
+
       throw Exception('EPUB fallback parsing failed: ${e.toString()}');
     }
 
@@ -227,22 +227,21 @@ class EpubFallbackParser {
   }
 
   static String _fallbackTitle(_ManifestItem item, int index) {
-    // Don't use item.id as it often contains internal identifiers like "adca-1"
-    // Try to extract a meaningful name from the href (filename without extension)
+
     final href = Uri.decodeFull(item.href);
     final parts = href.split('/');
     final fileName = parts.isEmpty ? '' : parts.last;
     
     if (fileName.isNotEmpty) {
-      // Remove extension and clean up
+      
       var cleanName = fileName.replaceAll(RegExp(r'\.(x?html?|htm)$', caseSensitive: false), '');
-      // Capitalize and replace underscores/dashes with spaces
+      
       cleanName = cleanName.replaceAll(RegExp(r'[-_]'), ' ').trim();
-      // Don't use if it's just a number or looks like an internal ID
+      
       if (cleanName.isNotEmpty && 
           !RegExp(r'^[\d\s]+$').hasMatch(cleanName) &&
           !RegExp(r'^[a-z]{3,5}-?\d+$', caseSensitive: false).hasMatch(cleanName)) {
-        // Capitalize first letter of each word
+        
         return cleanName.split(' ').map((w) => 
           w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : w
         ).join(' ');

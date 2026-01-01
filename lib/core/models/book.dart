@@ -49,7 +49,7 @@ class Book extends HiveObject {
   final String filePath;
 
   @HiveField(4)
-  final String format; // pdf, epub, cbz, docx
+  final String format;
 
   @HiveField(5)
   int currentPage;
@@ -64,10 +64,10 @@ class Book extends HiveObject {
   DateTime addedAt;
 
   @HiveField(9)
-  int sectionIndex; // For EPUB chapter/section index
+  int sectionIndex;
 
   @HiveField(10)
-  double scrollPosition; // For EPUB scroll offset
+  double scrollPosition;
 
   @HiveField(11)
   final String? coverPath;
@@ -126,7 +126,6 @@ class Book extends HiveObject {
 
   double get progress {
     if (format == 'epub' && totalPages > 0) {
-      // Rough estimate for EPUB based on chapter index
       return sectionIndex / totalPages;
     }
     return totalPages > 0 ? currentPage / totalPages : 0.0;

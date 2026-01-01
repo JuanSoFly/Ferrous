@@ -52,10 +52,7 @@ class PdfTtsController extends ChangeNotifier {
   late int _lastTtsSentenceEnd;
   late int _lastTtsPage;
 
-  // Animation controller set from UI to handle auto-panning
   TransformationController? pdfTransformController;
-
-  // Getters
   TtsService get ttsService => _ttsService;
   bool get showTtsControls => _showTtsControls;
   bool get ttsContinuous => _ttsContinuous;
@@ -117,7 +114,6 @@ class PdfTtsController extends ChangeNotifier {
     _updatePageTextState();
 
     // Only prepare TTS state, don't auto-play
-    // User must explicitly click play button to start
   }
 
   void _updatePageTextState() {
@@ -274,16 +270,34 @@ class PdfTtsController extends ChangeNotifier {
       final clampedRawEnd = rawEnd.clamp(0, cachedBounds.length);
       final clampedRawStart = rawStart.clamp(0, clampedRawEnd);
 
-      final rects = <PdfTextRect>[];
+      // Merge all character rects into a single word bounding box
+      double? left, top, right, bottom;
       for (var i = clampedRawStart; i < clampedRawEnd; i++) {
         final rect = cachedBounds[i];
-        if (rect.left != 0 || rect.top != 0 || rect.right != 0 || rect.bottom != 0) {
-          rects.add(rect);
+        // Skip empty/whitespace rects
+        if (rect.left == 0 && rect.top == 0 && rect.right == 0 && rect.bottom == 0) continue;
+        
+        if (left == null) {
+          left = rect.left;
+          top = rect.top;
+          right = rect.right;
+          bottom = rect.bottom;
+        } else {
+          if (rect.left < left) left = rect.left;
+          if (rect.top < top!) top = rect.top;
+          if (rect.right > right!) right = rect.right;
+          if (rect.bottom > bottom!) bottom = rect.bottom;
         }
       }
-      _ttsHighlightRects = rects;
+      
+      if (left != null) {
+        final wordRect = PdfTextRect(left: left, top: top!, right: right!, bottom: bottom!);
+        _ttsHighlightRects = [wordRect];
+      } else {
+        _ttsHighlightRects = const [];
+      }
       notifyListeners();
-      _maybeAutoPanToHighlight(rects);
+      _maybeAutoPanToHighlight(_ttsHighlightRects);
       return;
     }
 
@@ -308,7 +322,7 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   void _setNormalizedBaseOffset(String ttsText) {
-    _updatePageTextState(); // Ensure map is current
+    _updatePageTextState();
     final map = _pageTextMap;
     if (map == null || map.normalized.isEmpty) {
       _ttsNormalizedBaseOffset = 0;
@@ -378,47 +392,46 @@ class PdfTtsController extends ChangeNotifier {
   void _maybeAutoPanToHighlight(List<PdfTextRect> rects) {
     if (!_ttsFollowMode || rects.isEmpty || pdfTransformController == null) return;
     final viewerSize = pageController.viewerSize;
-    final renderedSize = pageController.renderedPageSize;
-    if (viewerSize.isEmpty || renderedSize.isEmpty) return;
+    // Use logicalPageSize for coordinate mapping
+    final layoutSize = pageController.logicalPageSize.isEmpty 
+        ? pageController.renderedPageSize 
+        : pageController.logicalPageSize;
+    if (viewerSize.isEmpty || layoutSize.isEmpty) return;
 
     final now = DateTime.now();
     if (now.difference(_lastAutoPanAt) < const Duration(milliseconds: 80)) return;
 
     final bounds = _unionHighlightRects(rects);
+    // Convert normalized rect (0-1) to layout coordinates
     final highlightRect = Rect.fromLTRB(
-      bounds.left * renderedSize.width,
-      bounds.top * renderedSize.height,
-      bounds.right * renderedSize.width,
-      bounds.bottom * renderedSize.height,
+      bounds.left * layoutSize.width,
+      bounds.top * layoutSize.height,
+      bounds.right * layoutSize.width,
+      bounds.bottom * layoutSize.height,
     );
 
-    final matrix = pdfTransformController!.value;
-    Matrix4 inverse;
-    try {
-      inverse = Matrix4.inverted(matrix);
-    } catch (_) { return; }
-
-    final visibleTopLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
-    final visibleBottomRight = MatrixUtils.transformPoint(inverse, Offset(viewerSize.width, viewerSize.height));
-    final visibleRect = Rect.fromPoints(visibleTopLeft, visibleBottomRight);
-
-    final scale = matrix.getMaxScaleOnAxis();
-    final padding = 32.0 / scale;
-    final paddedVisible = visibleRect.deflate(padding);
-
-    if (paddedVisible.contains(highlightRect.topLeft) && paddedVisible.contains(highlightRect.bottomRight)) return;
-
+    // Calculate a comfortable reading zoom
+    final wordWidth = highlightRect.width;
+    final desiredWordWidth = viewerSize.width * 0.35;
+    var targetScale = (desiredWordWidth / wordWidth).clamp(1.5, 3.0);
+    
     final center = highlightRect.center;
     final viewportCenter = Offset(viewerSize.width / 2, viewerSize.height / 2);
     final translation = Offset(
-      viewportCenter.dx - center.dx * scale,
-      viewportCenter.dy - center.dy * scale,
+      viewportCenter.dx - center.dx * targetScale,
+      viewportCenter.dy - center.dy * targetScale,
     );
+
+    // Ensure we don't pan outside the page bounds
+    final pageWidth = layoutSize.width * targetScale;
+    final pageHeight = layoutSize.height * targetScale;
+    final clampedTx = translation.dx.clamp(viewerSize.width - pageWidth, 0.0);
+    final clampedTy = translation.dy.clamp(viewerSize.height - pageHeight, 0.0);
 
     _lastAutoPanAt = now;
     pdfTransformController!.value = Matrix4.identity()
-      ..translateByDouble(translation.dx, translation.dy, 0.0, 1.0)
-      ..scaleByDouble(scale, scale, 1.0, 1.0);
+      ..translateByDouble(clampedTx, clampedTy, 0.0, 1.0)
+      ..scaleByDouble(targetScale, targetScale, 1.0, 1.0);
   }
 
   PdfTextRect _unionHighlightRects(List<PdfTextRect> rects) {
@@ -482,7 +495,7 @@ class PdfTtsController extends ChangeNotifier {
   void dispose() {
     _ttsService.setOnFinished(null);
     _ttsService.removeListener(_handleTtsProgress);
-    // CRITICAL: Stop TTS when leaving reader screen
+
     unawaited(_ttsService.stop());
     super.dispose();
   }

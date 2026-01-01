@@ -2,8 +2,7 @@ import 'package:hive/hive.dart';
 
 part 'reader_theme_config.g.dart';
 
-// IMPORTANT: Hive typeIds must be unique across the entire app.
-// `Collection` already uses typeId 2, so ReaderThemeConfig must use a different id.
+// Hive typeIds must be unique. Collection is 2.
 @HiveType(typeId: 3)
 class ReaderThemeConfig {
   @HiveField(0)
@@ -37,7 +36,7 @@ class ReaderThemeConfig {
   final bool hyphenation;
 
   @HiveField(10)
-  final int fontWeight; // 100-900, default 400 (normal)
+  final int fontWeight;
 
   const ReaderThemeConfig({
     this.fontSize = 20.0,
