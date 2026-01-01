@@ -29,8 +29,13 @@ class PdfPageController extends ChangeNotifier {
   bool _autoCrop = false;
   final Map<int, CropMargins> _marginsCache = {};
   Size _renderedPageSize = Size.zero;
+  Size _logicalPageSize = Size.zero;
   Size _viewerSize = Size.zero;
   double _devicePixelRatio = 2.0; // Default 2x, can be updated from widget
+  double _currentZoomScale = 1.0;
+  
+  // Maximum texture dimension to prevent OOM crashes
+  static const int _maxTextureDimension = 4096;
 
   // LRU cache for rendered pages (R5)
   final LinkedHashMap<int, Uint8List> _pageRenderCache = LinkedHashMap();
@@ -61,7 +66,9 @@ class PdfPageController extends ChangeNotifier {
   bool get autoCrop => _autoCrop;
   CropMargins? get currentMargins => _marginsCache[_pageIndex];
   Size get renderedPageSize => _renderedPageSize;
+  Size get logicalPageSize => _logicalPageSize;
   Size get viewerSize => _viewerSize;
+  double get currentZoomScale => _currentZoomScale;
   
   String get currentPageText => _currentPageText;
   bool get isTextLoading => _isTextLoading;
@@ -131,6 +138,7 @@ class PdfPageController extends ChangeNotifier {
         _error = null;
         notifyListeners();
         
+        
         // Save progress anyway
         repository.updateReadingProgress(
           book.id,
@@ -168,9 +176,17 @@ class PdfPageController extends ChangeNotifier {
           });
         }
 
-        // Render at high resolution using device pixel ratio for crisp display
-        final width = (_viewerSize.width * _devicePixelRatio).toInt().clamp(800, 6000);
-        final height = (_viewerSize.height * _devicePixelRatio).toInt().clamp(800, 6000);
+        // Always render at max zoom quality (5x) from the start
+        // This ensures crystal clear quality at any zoom level without "popping"
+        const double maxZoomQuality = 5.0;
+        final baseWidth = _viewerSize.width * _devicePixelRatio;
+        final baseHeight = _viewerSize.height * _devicePixelRatio;
+        final scaledWidth = (baseWidth * maxZoomQuality).toInt();
+        final scaledHeight = (baseHeight * maxZoomQuality).toInt();
+        
+        // Clamp to safe maximum to prevent OOM
+        final width = scaledWidth.clamp(800, _maxTextureDimension);
+        final height = scaledHeight.clamp(800, _maxTextureDimension);
 
         await _renderSemaphore.acquire();
         try {
@@ -179,16 +195,25 @@ class PdfPageController extends ChangeNotifier {
             pageIndex: index,
             width: width,
             height: height,
-          ), metadata: {'page': index, 'width': width, 'height': height});
+          ), metadata: {'page': index, 'width': width, 'height': height, 'zoom': maxZoomQuality});
 
           // Use ACTUAL dimensions from the rendered result, not requested dimensions
           _currentPageImage = result.data;
           _renderedPageSize = Size(result.width.toDouble(), result.height.toDouble());
+          _currentZoomScale = maxZoomQuality;
+          
+          // Calculate logical size (stable UI size) from rendered size / zoom
+          // This ensures the image occupies the same space regardless of resolution
+          _logicalPageSize = Size(
+            result.width.toDouble() / (maxZoomQuality * _devicePixelRatio),
+            result.height.toDouble() / (maxZoomQuality * _devicePixelRatio),
+          );
+          
           _isLoading = false;
           _error = null;
           notifyListeners();
           
-          // Add to cache using actual data
+          // Always cache since we're rendering at constant max quality
           _addToCache(index, result.data);
         } finally {
           _renderSemaphore.release();

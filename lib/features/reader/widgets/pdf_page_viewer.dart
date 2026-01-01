@@ -62,6 +62,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
               return InteractiveViewer(
                 transformationController: widget.transformController,
                 maxScale: 5.0,
+                constrained: false,
+                panEnabled: true,
+                scaleEnabled: true,
                 child: Center(
                   child: _buildPageLayer(context),
                 ),
@@ -83,12 +86,16 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     );
 
     Widget layer;
-    if (pageController.renderedPageSize.isEmpty) {
+    // Use logicalPageSize for stable UI layout (doesn't change with zoom resolution)
+    final layoutSize = pageController.logicalPageSize.isEmpty 
+        ? pageController.renderedPageSize 
+        : pageController.logicalPageSize;
+    if (layoutSize.isEmpty) {
       layer = imageWidget;
     } else {
       layer = SizedBox(
-        width: pageController.renderedPageSize.width,
-        height: pageController.renderedPageSize.height,
+        width: layoutSize.width,
+        height: layoutSize.height,
         child: Stack(
           children: [
             Positioned.fill(child: imageWidget),
@@ -243,7 +250,9 @@ class PdfHighlightPainter extends CustomPainter {
         (rect.bottom * size.height).clamp(0.0, size.height),
       );
       if (r.width <= 0 || r.height <= 0) continue;
-      final rr = RRect.fromRectAndRadius(r, const Radius.circular(3));
+      
+      final inflated = r.inflate(2.0);
+      final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
       canvas.drawRRect(rr, fillPaint);
       canvas.drawRRect(rr, borderPaint);
     }
