@@ -119,8 +119,6 @@ pub struct PdfTextRect {
     pub bottom: f32,
 }
 
-/// Result of rendering a PDF page, including actual dimensions.
-/// The dimensions may differ from requested due to aspect ratio preservation.
 #[derive(Debug, Clone)]
 pub struct PdfPageRenderResult {
     pub data: Vec<u8>,
@@ -195,10 +193,6 @@ pub fn extract_pdf_page_text(path: String, page_index: u32) -> Result<String> {
 }
 
 /// Extract page text starting near a normalized point on the rendered page.
-///
-/// - `x_norm` / `y_norm` are in the range `[0.0, 1.0]` relative to the full page, with origin
-///   at the top-left corner (as in Flutter coordinate space).
-/// - If no text is found near the given point (within a tolerance), this returns an empty string.
 pub fn extract_pdf_page_text_from_point(
     path: String,
     page_index: u32,
@@ -281,9 +275,6 @@ pub fn extract_pdf_page_text_from_point(
 }
 
 /// Extract normalized character bounding boxes for a text range on the page.
-///
-/// The returned rectangles are normalized to the page (0.0-1.0) and use
-/// a top-left origin, matching Flutter's coordinate space.
 pub fn extract_pdf_page_text_bounds(
     path: String,
     page_index: u32,
@@ -325,21 +316,16 @@ pub fn extract_pdf_page_text_bounds(
                     Err(_) => continue,
                 };
 
-                // Skip characters without unicode representation (invisible/control chars)
                 let Some(c) = ch.unicode_char() else {
                     continue;
                 };
 
-                // Skip whitespace characters
                 if c.is_whitespace() {
                     continue;
                 }
 
                 let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
                 let Ok(bounds) = bounds else { continue };
-
-                // PDF coordinates: origin at bottom-left, Y increases upward
-                // Flutter coordinates: origin at top-left, Y increases downward
                 let mut left = (bounds.left().value - page_left) / width;
                 let mut right = (bounds.right().value - page_left) / width;
                 let mut top = 1.0 - ((bounds.top().value - page_bottom) / height);
@@ -366,8 +352,6 @@ pub fn extract_pdf_page_text_bounds(
 }
 
 /// Pre-compute ALL character bounds for a page.
-/// Pre-compute ALL character bounds for a page.
-/// Call this once when loading a page, then use the cached data for TTS highlighting.
 #[hotpath::measure]
 pub fn extract_all_page_character_bounds(
     path: String,
@@ -405,13 +389,11 @@ pub fn extract_all_page_character_bounds(
                     }
                 };
 
-                // Skip characters without unicode representation (invisible/control chars)
                 let Some(c) = ch.unicode_char() else {
                     rects.push(PdfTextRect { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 });
                     continue;
                 };
 
-                // Skip whitespace characters
                 if c.is_whitespace() {
                     rects.push(PdfTextRect { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 });
                     continue;
@@ -423,16 +405,8 @@ pub fn extract_all_page_character_bounds(
                     continue;
                 };
 
-                // PDF coordinates: origin at bottom-left, Y increases upward.
-                // Flutter coordinates: origin at top-left, Y increases downward.
-                
-                // Normalize X: (bounds.x - page_left) / width -> [0.0, 1.0]
                 let mut left = (bounds.left().value - page_left) / width;
                 let mut right = (bounds.right().value - page_left) / width;
-                
-                // Normalize Y with flip: PDF top is higher Y value, Flutter top is lower Y value
-                // In PDF: bounds.top > bounds.bottom (top is higher Y)
-                // After flip: flutter_top < flutter_bottom
                 let mut top = 1.0 - ((bounds.top().value - page_bottom) / height);
                 let mut bottom = 1.0 - ((bounds.bottom().value - page_bottom) / height);
 
@@ -452,7 +426,6 @@ pub fn extract_all_page_character_bounds(
     })
 }
 
-/// Test function to verify PDF module is working
 pub fn test_pdf_module() -> String {
     "PDF module loaded successfully".to_string()
 }
