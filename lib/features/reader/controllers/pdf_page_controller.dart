@@ -318,8 +318,14 @@ class PdfPageController extends ChangeNotifier {
 
     _prefetchInFlight.add(index);
     try {
-      final width = (_viewerSize.width * _devicePixelRatio).toInt().clamp(800, 6000);
-      final height = (_viewerSize.height * _devicePixelRatio).toInt().clamp(800, 6000);
+      // Use same high-quality rendering as renderPage() for consistent quality
+      const double maxZoomQuality = 5.0;
+      final baseWidth = _viewerSize.width * _devicePixelRatio;
+      final baseHeight = _viewerSize.height * _devicePixelRatio;
+      final scaledWidth = (baseWidth * maxZoomQuality).toInt();
+      final scaledHeight = (baseHeight * maxZoomQuality).toInt();
+      final width = scaledWidth.clamp(800, _maxTextureDimension);
+      final height = scaledHeight.clamp(800, _maxTextureDimension);
 
       await _renderSemaphore.acquire();
       try {
