@@ -335,7 +335,14 @@ class PdfTtsController extends ChangeNotifier {
       return;
     }
 
-    final index = map.normalized.indexOf(normalized);
+    var index = map.normalized.indexOf(normalized);
+
+    if (index < 0 && normalized.length > 10) {
+      final prefixLen = normalized.length > 50 ? 50 : normalized.length;
+      final prefix = normalized.substring(0, prefixLen);
+      index = map.normalized.indexOf(prefix);
+    }
+
     _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
   }
 
