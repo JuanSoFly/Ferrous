@@ -559,7 +559,7 @@ class EpubTtsController extends ChangeNotifier {
       context,
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
-      alignment: 0.3,
+      alignment: 0.5,
     );
   }
 
