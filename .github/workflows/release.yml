@@ -6,7 +6,7 @@ on:
       - 'v*.*.*'
 
 env:
-  FLUTTER_VERSION: '3.29.0'
+  FLUTTER_VERSION: '3.38.7'
 
 jobs:
   build-android:
