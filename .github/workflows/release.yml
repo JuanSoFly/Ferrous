@@ -7,6 +7,8 @@ on:
 
 env:
   FLUTTER_VERSION: '3.38.7'
+  SCCACHE_GHA_ENABLED: 'true'
+  RUSTC_WRAPPER: 'sccache'
 
 jobs:
   build-android:
@@ -27,8 +29,14 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
+      # ===== sccache Setup (Rust Compilation Cache) =====
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: cargo-ndk
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
@@ -77,6 +85,9 @@ jobs:
         working-directory: rust
         run: |
           cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../android/app/src/main/jniLibs build --release
+
+      - name: Show sccache stats
+        run: sccache --show-stats
 
       # ===== Cache Gradle =====
       - name: Cache Gradle dependencies
