@@ -1,0 +1,131 @@
+name: Build and Release APKs
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  FLUTTER_VERSION: '3.24.0'
+
+jobs:
+  build-android:
+    name: Build Android APKs
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      # ===== Rust Setup =====
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: |
+            aarch64-linux-android
+            armv7-linux-androideabi
+            x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # ===== Java Setup =====
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ===== Flutter Setup =====
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      # ===== Android NDK Setup =====
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: true
+
+      - name: Set NDK environment variables
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      # ===== Build Rust for Android =====
+      - name: Build Rust library for Android
+        working-directory: rust
+        run: |
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../android/app/src/main/jniLibs build --release
+
+      # ===== Cache Gradle =====
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # ===== Build APKs =====
+      - name: Build APKs (split per ABI)
+        run: flutter build apk --split-per-abi --release
+
+      # ===== Rename APKs for clarity =====
+      - name: Rename APKs
+        run: |
+          cd build/app/outputs/flutter-apk
+          mv app-armeabi-v7a-release.apk ferrous-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
+          mv app-arm64-v8a-release.apk ferrous-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
+          mv app-x86_64-release.apk ferrous-v${{ steps.version.outputs.VERSION }}-x86_64.apk
+
+      # ===== Create GitHub Release =====
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ferrous v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Ferrous v${{ steps.version.outputs.VERSION }}
+            
+            ### Downloads
+            
+            | Architecture | Description |
+            |-------------|-------------|
+            | **arm64-v8a** | Modern 64-bit ARM devices (recommended for most phones) |
+            | **armeabi-v7a** | Older 32-bit ARM devices |
+            | **x86_64** | Intel-based devices & emulators |
+            
+            > 💡 **Not sure which to download?** Most modern Android phones use **arm64-v8a**.
+          files: |
+            build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
+            build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
+            build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-x86_64.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
