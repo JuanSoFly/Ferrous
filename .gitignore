@@ -6,6 +6,8 @@ logs/
 docs
 SS
 openspec
+CLAUDE.md
+
 # IntelliJ / Android Studio
 .idea/
 *.iml

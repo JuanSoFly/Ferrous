@@ -80,14 +80,11 @@ jobs:
           echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
-      # ===== Build Rust for Android =====
-      - name: Build Rust library for Android
-        working-directory: rust
+      # ===== Make cargokit scripts executable =====
+      - name: Make cargokit scripts executable
         run: |
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../android/app/src/main/jniLibs build --release
-
-      - name: Show sccache stats
-        run: sccache --show-stats
+          chmod +x rust_builder/cargokit/*.sh
+          chmod +x rust_builder/cargokit/build_tool/lib/*.dart || true
 
       # ===== Cache Gradle =====
       - name: Cache Gradle dependencies
@@ -101,8 +98,12 @@ jobs:
             ${{ runner.os }}-gradle-
 
       # ===== Build APKs =====
+      # Note: Cargokit (flutter_rust_bridge) handles Rust compilation automatically
       - name: Build APKs (split per ABI)
         run: flutter build apk --split-per-abi --release
+
+      - name: Show sccache stats
+        run: sccache --show-stats
 
       # ===== Rename APKs for clarity =====
       - name: Rename APKs
