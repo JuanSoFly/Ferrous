@@ -6,6 +6,8 @@
 
 > [> ] **High-Performance** | [Safe] **Memory Safe** | [Mobile] **Android 7.0+**
 
+> **[Download New Release](https://github.com/JuanSoFly/Ferrous/releases/latest)**
+
 Ferrous Reader is a modern mobile document reader that leverages a hybrid architecture to deliver the best of both worlds: the smooth, reactive UI of **Flutter** and the raw performance and safety of **Rust**.
 
 By delegating computationally intensive tasks like PDF rendering and filesystem scanning to a Rust backend, Ferrous ensures your reading experience remains buttery smooth (120Hz) while maintaining a lightweight memory footprint.
