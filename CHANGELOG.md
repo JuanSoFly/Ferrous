@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0-beta.4] - 2025-01-25
+
+### ✨ Highlights
+
+- **Custom Release Notes**: Releases now use curated notes from CHANGELOG.md
+
+### 📝 Documentation
+
+- Added CHANGELOG.md for tracking release notes
+- Workflow now extracts version-specific notes automatically
+
+---
+
 ## [0.2.0-beta.3] - 2025-01-25
 
 ### ✨ Highlights
