@@ -4,19 +4,6 @@
 
 ### ✨ Highlights
 
-- **Custom Release Notes**: Releases now use curated notes from CHANGELOG.md
-
-### 📝 Documentation
-
-- Added CHANGELOG.md for tracking release notes
-- Workflow now extracts version-specific notes automatically
-
----
-
-## [0.2.0-beta.3] - 2025-01-25
-
-### ✨ Highlights
-
 - **In-App Updates**: The app now checks for new versions automatically on startup
 - **Automated Releases**: GitHub Actions now builds and publishes per-ABI APKs
 
@@ -37,9 +24,3 @@
 - Fixed release creation permissions
 
 ---
-
-## [0.2.0-beta.2] - 2025-01-25
-
-### 🚀 New Features
-
-- Initial GitHub Actions release workflow
