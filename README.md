@@ -2,8 +2,6 @@
 
 **A Next-Generation Offline Reading Architecture: Flutter + Rust Hybrid**
 
-> [!] **Status: Active Development** | [WIP] **Alpha Release**
-> 
 > *This project is a work in progress. Features and APIs are subject to change.*
 
 > [> ] **High-Performance** | [Safe] **Memory Safe** | [Mobile] **Android 7.0+**
