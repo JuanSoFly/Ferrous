@@ -138,5 +138,6 @@ jobs:
             build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-x86_64.apk
           draft: false
           prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
