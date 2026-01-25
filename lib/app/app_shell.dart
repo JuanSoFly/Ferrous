@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:reader_app/features/library/library_screen.dart';
 import 'package:reader_app/features/settings/settings_screen.dart';
 import 'package:reader_app/features/annotations/annotations_hub_screen.dart';
+import 'package:reader_app/core/services/update_service.dart';
+import 'package:reader_app/core/widgets/update_dialog.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -20,6 +22,23 @@ class _AppShellState extends State<AppShell> {
   ];
 
   final List<bool> _activated = [true, false, false];
+
+  @override
+  void initState() {
+    super.initState();
+    // Check for updates after the first frame renders
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdates();
+    });
+  }
+
+  Future<void> _checkForUpdates() async {
+    final updateInfo = await UpdateService.checkForUpdate();
+    
+    if (updateInfo != null && updateInfo.isUpdateAvailable && mounted) {
+      showUpdateDialog(context, updateInfo);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -34,6 +34,8 @@ dependencies:
   flutter_tts: ^4.2.3
   html: ^0.15.4
   hyphenatorx: ^1.5.11
+  url_launcher: ^6.3.2
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:
