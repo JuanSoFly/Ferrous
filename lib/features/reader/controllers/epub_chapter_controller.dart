@@ -123,18 +123,19 @@ class EpubChapterController extends ChangeNotifier {
   static Future<List<EpubChapter>> _parseEpubIsolated(List<int> bytes) async {
     try {
       final book = await EpubReader.readBook(bytes);
-      return _flattenChaptersStatic(book.Chapters ?? []);
+      final chapters = _flattenChaptersStatic(book.Chapters ?? []);
+
+      if (chapters.isEmpty) {
+        final fallbackChapters = EpubFallbackParser.parseChapters(bytes);
+        if (fallbackChapters.isNotEmpty) return fallbackChapters;
+      }
+      return chapters;
     } catch (e) {
-      final message = e.toString().toLowerCase();
-      if (message.contains("navigation") || 
-          message.contains("ncx") ||
-          message.contains("toc") ||
-          message.contains("manifest") ||
-          message.contains("not found in epub")) {
-        try {
-          final chapters = EpubFallbackParser.parseChapters(bytes);
-          if (chapters.isNotEmpty) return chapters;
-        } catch (_) {}
+      try {
+        final chapters = EpubFallbackParser.parseChapters(bytes);
+        if (chapters.isNotEmpty) return chapters;
+      } catch (fallbackError) {
+        throw Exception('EPUB parsing failed: $e. Fallback also failed: $fallbackError');
       }
       rethrow;
     }
