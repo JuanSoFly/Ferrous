@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
@@ -43,7 +42,7 @@ class EpubContinuousViewer extends StatelessWidget {
         onTapUp: onTapUp,
         child: ListView.builder(
           controller: chapterController.scrollController,
-          scrollCacheExtent: const ScrollCacheExtent.pixels(1500.0),
+          cacheExtent: 1500.0,
           itemCount: chapterController.chapters!.length,
           itemBuilder: (context, index) {
             final isFirst = index == 0;

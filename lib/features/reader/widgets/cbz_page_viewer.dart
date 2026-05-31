@@ -201,7 +201,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.height), controller: widget.pageController.scrollController,
+        cacheExtent: size.height, controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -240,7 +240,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.width), controller: widget.pageController.scrollController,
+        cacheExtent: size.width, controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         scrollDirection: Axis.horizontal,
