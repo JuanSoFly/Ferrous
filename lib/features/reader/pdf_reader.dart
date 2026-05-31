@@ -32,6 +32,7 @@ class PdfReaderScreen extends StatefulWidget {
 class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingObserver {
   late final PdfPageController _pageController;
   late final PdfTtsController _ttsController;
+  late final TtsService _ttsService;
   late final ReaderChromeController _chromeController;
   late final ReaderModeController _modeController;
   
@@ -48,10 +49,11 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
       repository: widget.repository,
     );
 
+    _ttsService = TtsService();
     _ttsController = PdfTtsController(
       book: widget.book,
       repository: widget.repository,
-      ttsService: TtsService(),
+      ttsService: _ttsService,
       pageController: _pageController,
     );
     _ttsController.pdfTransformController = _pdfTransformController;
@@ -71,6 +73,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     _cleanupTempFile();
     _pageController.dispose();
     _ttsController.dispose();
+    _ttsService.dispose();
     _chromeController.exitToNormalMode();
     _chromeController.dispose();
     _pdfTransformController.dispose();

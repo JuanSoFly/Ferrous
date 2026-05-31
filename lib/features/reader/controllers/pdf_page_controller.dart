@@ -55,7 +55,7 @@ class PdfPageController extends ChangeNotifier {
   int _textRequestId = 0;
 
   // Concurrency control (F2)
-  static final Semaphore _renderSemaphore = Semaphore(1);
+  static final Semaphore _pdfSemaphore = Semaphore(1);
 
   // Getters
   ResolvedBookFile? get resolvedFile => _resolvedFile;
@@ -209,7 +209,7 @@ class PdfPageController extends ChangeNotifier {
 
         // Start margin detection in parallel if auto-crop is on
         if (_autoCrop && !_marginsCache.containsKey(index)) {
-          detectPdfWhitespace(path: _resolvedFile!.path, pageIndex: index).then((margins) {
+          _detectPdfWhitespaceSafe(_resolvedFile!.path, index).then((margins) {
             if (_disposed) return;
             _marginsCache[index] = margins;
             if (_pageIndex == index) notifyListeners();
@@ -230,9 +230,9 @@ class PdfPageController extends ChangeNotifier {
         final width = scaledWidth.clamp(800, _maxTextureDimension);
         final height = scaledHeight.clamp(800, _maxTextureDimension);
 
-        await _renderSemaphore.acquire();
+        await _pdfSemaphore.acquire();
         if (_disposed) {
-          _renderSemaphore.release();
+          _pdfSemaphore.release();
           return;
         }
         try {
@@ -269,7 +269,7 @@ class PdfPageController extends ChangeNotifier {
           // Always cache since we're rendering at constant max quality
           _addToCache(index, result.data);
         } finally {
-          _renderSemaphore.release();
+          _pdfSemaphore.release();
         }
         
         if (_disposed) return;
@@ -380,9 +380,9 @@ class PdfPageController extends ChangeNotifier {
       final width = scaledWidth.clamp(800, _maxTextureDimension);
       final height = scaledHeight.clamp(800, _maxTextureDimension);
 
-      await _renderSemaphore.acquire();
+      await _pdfSemaphore.acquire();
       if (_disposed) {
-        _renderSemaphore.release();
+        _pdfSemaphore.release();
         return;
       }
       try {
@@ -399,7 +399,7 @@ class PdfPageController extends ChangeNotifier {
         debugPrint("PDF: Prefetched page $index");
         notifyListeners();
       } finally {
-        _renderSemaphore.release();
+        _pdfSemaphore.release();
       }
     } catch (e) {
       if (_disposed) return;
@@ -433,10 +433,17 @@ class PdfPageController extends ChangeNotifier {
       try {
         if (_resolvedFile == null) return;
 
-        final future = _pageTextInFlight[index] ??= measureAsync('extract_pdf_page_text', () => pdf_api.extractPdfPageText(
-          path: _resolvedFile!.path,
-          pageIndex: index,
-        ), metadata: {'page': index});
+        final future = _pageTextInFlight[index] ??= () async {
+          await _pdfSemaphore.acquire();
+          try {
+            return await measureAsync('extract_pdf_page_text', () => pdf_api.extractPdfPageText(
+              path: _resolvedFile!.path,
+              pageIndex: index,
+            ), metadata: {'page': index});
+          } finally {
+            _pdfSemaphore.release();
+          }
+        }();
         final text = await future;
         _pageTextInFlight.remove(index);
 
@@ -470,6 +477,11 @@ class PdfPageController extends ChangeNotifier {
     if (_pageCharBoundsCache.containsKey(pageIndex)) return;
     if (_disposed) return;
     
+    await _pdfSemaphore.acquire();
+    if (_disposed) {
+      _pdfSemaphore.release();
+      return;
+    }
     try {
       final bounds = await measureAsync('extract_all_page_character_bounds', () => pdf_api.extractAllPageCharacterBounds(
         path: _resolvedFile!.path,
@@ -480,6 +492,8 @@ class PdfPageController extends ChangeNotifier {
     } catch (e) {
       if (_disposed) return;
       debugPrint('TTS: Failed to precompute bounds for page $pageIndex: $e');
+    } finally {
+      _pdfSemaphore.release();
     }
   }
 
@@ -488,6 +502,15 @@ class PdfPageController extends ChangeNotifier {
   Future<void> ensureCharacterBoundsLoaded(int pageIndex) async {
     if (_pageCharBoundsCache.containsKey(pageIndex)) return;
     await precomputeCharacterBounds(pageIndex);
+  }
+
+  Future<CropMargins> _detectPdfWhitespaceSafe(String path, int pageIndex) async {
+    await _pdfSemaphore.acquire();
+    try {
+      return await detectPdfWhitespace(path: path, pageIndex: pageIndex);
+    } finally {
+      _pdfSemaphore.release();
+    }
   }
 
   @override

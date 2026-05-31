@@ -50,6 +50,7 @@ class EpubTtsController extends ChangeNotifier {
   int? _lastEnsuredStart;
   int? _lastEnsuredEnd;
   String? _cachedHighlightedHtml;
+  String? _lastHighlightedSourceHtml;
 
   late int _lastTtsSentenceStart;
   late int _lastTtsSentenceEnd;
@@ -218,11 +219,12 @@ class EpubTtsController extends ChangeNotifier {
     final highlightEnd = _lastHighlightEnd;
     if (highlightStart == null || highlightEnd == null) return html;
 
-    if (_cachedHighlightedHtml != null) {
+    if (_cachedHighlightedHtml != null && _lastHighlightedSourceHtml == html) {
       return _cachedHighlightedHtml!;
     }
 
     final highlighted = _buildHighlightedHtmlAround(html, highlightStart, highlightEnd);
+    _lastHighlightedSourceHtml = html;
     _cachedHighlightedHtml = highlighted;
     return highlighted;
   }
@@ -243,8 +245,28 @@ class EpubTtsController extends ChangeNotifier {
     var offset = 0;
     for (final node in textNodes) {
       final nodeText = node.data;
+
+      // Build mapping from clean index to processed index
+      final cleanToProcessed = <int>[];
+      int processedIdx = 0;
+
+      // Skip leading paragraph indent U+00A0 non-breaking spaces if present
+      if (nodeText.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
+        processedIdx = 4;
+      }
+
+      while (processedIdx < nodeText.length) {
+        final codeUnit = nodeText.codeUnitAt(processedIdx);
+        if (codeUnit == 0x00AD) { // Soft hyphen
+          processedIdx++;
+          continue;
+        }
+        cleanToProcessed.add(processedIdx);
+        processedIdx++;
+      }
+
       final nodeStart = offset;
-      final nodeEnd = offset + nodeText.length;
+      final nodeEnd = offset + cleanToProcessed.length;
       offset = nodeEnd;
 
       // Skip nodes that don't overlap with highlight range
@@ -253,9 +275,19 @@ class EpubTtsController extends ChangeNotifier {
       // Skip synthetic nodes (block separators) - they can't be modified in DOM
       if (node.parent == null) continue;
 
-      // Calculate local positions within this node
-      final localStart = (rawStart - nodeStart).clamp(0, nodeText.length);
-      final localEnd = (rawEnd - nodeStart).clamp(0, nodeText.length);
+      // Calculate local positions in clean text space
+      final localCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
+      final localCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
+
+      if (localCleanStart >= localCleanEnd) continue;
+
+      // Map clean indices back to processed indices in nodeText
+      final localStart = localCleanStart < cleanToProcessed.length
+          ? cleanToProcessed[localCleanStart]
+          : nodeText.length;
+      final localEnd = localCleanEnd < cleanToProcessed.length
+          ? cleanToProcessed[localCleanEnd]
+          : nodeText.length;
 
       if (localStart >= localEnd) continue;
 
@@ -280,7 +312,7 @@ class EpubTtsController extends ChangeNotifier {
 
       parent.nodes.removeAt(index);
       parent.nodes.insertAll(index, newNodes);
-      
+
       // Break after first match for simplicity
       break;
     }

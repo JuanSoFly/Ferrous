@@ -29,6 +29,7 @@ class PdfTtsController extends ChangeNotifier {
     _lastTtsPage = book.lastTtsPage;
   }
 
+  bool _disposed = false;
   bool _showTtsControls = false;
   bool _ttsContinuous = true;
   bool _ttsFollowMode = true;
@@ -125,8 +126,10 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   Future<void> startTtsFromTap(Offset localOffset, Size imageSize) async {
+    if (_disposed) return;
     if (!_showTtsControls || !_tapToStartEnabled) return;
-    if (pageController.resolvedFile == null) return;
+    final resolvedPath = pageController.resolvedFile?.path;
+    if (resolvedPath == null) return;
 
     final xNormVisible = localOffset.dx / imageSize.width;
     final yNormVisible = localOffset.dy / imageSize.height;
@@ -157,13 +160,13 @@ class PdfTtsController extends ChangeNotifier {
 
     try {
       final text = await extractPdfPageTextFromPoint(
-        path: pageController.resolvedFile!.path,
+        path: resolvedPath,
         pageIndex: pageController.pageIndex,
         xNorm: xNorm,
         yNorm: yNorm,
       );
 
-      if (requestId != _tapToStartRequestId) return;
+      if (_disposed || requestId != _tapToStartRequestId) return;
 
       final trimmed = text.trim();
       _ttsStartOverrideText = trimmed.isEmpty ? null : trimmed;
@@ -171,14 +174,14 @@ class PdfTtsController extends ChangeNotifier {
       if (trimmed.isNotEmpty) {
         // Ensure character bounds are loaded for highlighting
         await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);
-        if (requestId != _tapToStartRequestId) return;
+        if (_disposed || requestId != _tapToStartRequestId) return;
         
         _setNormalizedBaseOffset(trimmed);
         unawaited(_ttsService.speak(trimmed));
       }
       notifyListeners();
     } catch (e) {
-      if (requestId != _tapToStartRequestId) return;
+      if (_disposed || requestId != _tapToStartRequestId) return;
       _ttsStartOverrideText = null;
       _ttsHighlightRects = const [];
       notifyListeners();
@@ -191,6 +194,7 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   void _handleTtsProgress() {
+    if (_disposed) return;
     if (_ttsService.state == TtsState.stopped) {
       if (_ttsHighlightRects.isNotEmpty) {
         _ttsHighlightRects = const [];
@@ -260,6 +264,7 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   Future<void> _updateHighlightForNormalizedRange(int start, int end) async {
+    if (_disposed) return;
     final map = _pageTextMap;
     if (map == null || map.normalizedToRaw.isEmpty) return;
     if (start < 0 || end <= start) return;
@@ -309,19 +314,21 @@ class PdfTtsController extends ChangeNotifier {
 
     final requestId = ++_highlightRequestId;
     try {
+      final resolvedPath = pageController.resolvedFile?.path;
+      if (resolvedPath == null) return;
       final rects = await extractPdfPageTextBounds(
-        path: pageController.resolvedFile!.path,
+        path: resolvedPath,
         pageIndex: pageController.pageIndex,
         startIndex: rawStart,
         endIndex: rawEnd,
       );
 
-      if (requestId != _highlightRequestId) return;
+      if (_disposed || requestId != _highlightRequestId) return;
       _ttsHighlightRects = rects;
       notifyListeners();
       _maybeAutoPanToHighlight(rects);
     } catch (_) {
-      if (requestId != _highlightRequestId) return;
+      if (_disposed || requestId != _highlightRequestId) return;
       _ttsHighlightRects = const [];
       notifyListeners();
     }
@@ -349,14 +356,16 @@ class PdfTtsController extends ChangeNotifier {
       index = map.normalized.indexOf(prefix);
     }
 
-    _ttsNormalizedBaseOffset = index >= 0 ? index : 0;
+    final codeUnitIndex = index >= 0 ? index : 0;
+    _ttsNormalizedBaseOffset = map.codeUnitToRune(codeUnitIndex);
   }
 
   void saveCurrentTtsSentence() {
     final start = _ttsService.currentWordStart;
     if (start == null || _pageTextMap == null) return;
 
-    final absoluteOffset = _ttsNormalizedBaseOffset + start;
+    final absoluteOffsetRunes = _ttsNormalizedBaseOffset + start;
+    final absoluteOffset = _pageTextMap!.runeToCodeUnit(absoluteOffsetRunes);
     final span = sentenceForOffset(_pageSentenceSpans, absoluteOffset);
     if (span == null) return;
 
@@ -374,7 +383,7 @@ class PdfTtsController extends ChangeNotifier {
     ));
   }
 
-  String resolveTtsText() {
+   String resolveTtsText() {
     _updatePageTextState();
     final map = _pageTextMap;
     final text = pageController.currentPageText;
@@ -387,7 +396,7 @@ class PdfTtsController extends ChangeNotifier {
       final normalized = map.normalized;
       if (normalized.isNotEmpty) {
         final start = _lastTtsSentenceStart.clamp(0, normalized.length);
-        _ttsNormalizedBaseOffset = start;
+        _ttsNormalizedBaseOffset = map.codeUnitToRune(start);
         return normalized.substring(start);
       }
     }
@@ -462,8 +471,10 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   Future<void> primeTtsFromViewport() async {
+    if (_disposed) return;
     if (pageController.viewerSize.isEmpty || pageController.renderedPageSize.isEmpty || pdfTransformController == null) return;
-    if (pageController.resolvedFile == null) return;
+    final resolvedPath = pageController.resolvedFile?.path;
+    if (resolvedPath == null) return;
 
     final inverse = Matrix4.inverted(pdfTransformController!.value);
     final viewportCenter = Offset(pageController.viewerSize.width / 2, pageController.viewerSize.height / 2);
@@ -482,11 +493,12 @@ class PdfTtsController extends ChangeNotifier {
 
     try {
       final text = await extractPdfPageTextFromPoint(
-        path: pageController.resolvedFile!.path,
+        path: resolvedPath,
         pageIndex: pageController.pageIndex,
         xNorm: xNorm,
         yNorm: yNorm,
       );
+      if (_disposed) return;
       final trimmed = text.trim();
       if (trimmed.isNotEmpty) {
         _ttsStartOverrideText = trimmed;
@@ -506,6 +518,7 @@ class PdfTtsController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _ttsService.setOnFinished(null);
     _ttsService.removeListener(_handleTtsProgress);
 

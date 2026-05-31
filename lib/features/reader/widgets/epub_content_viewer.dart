@@ -200,15 +200,15 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         listenable: widget.ttsController,
         builder: (context, _) {
           widget.ttsController.highlightKeyAssigned = false;
+          final key = _cacheKey(themeConfig.hyphenation, themeConfig.paragraphIndent);
+          final processedHtml = _processedHtmlCache[key] ?? widget.htmlContent;
           final content = widget.ttsController
-              .buildTtsHighlightedHtml(widget.htmlContent);
+              .buildTtsHighlightedHtml(processedHtml);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             widget.ttsController.maybeEnsureHighlightVisible();
           });
-          return _buildHtmlContent(
+          return _buildHtmlWidget(
             content,
-            hyphenation: themeConfig.hyphenation,
-            paragraphIndent: themeConfig.paragraphIndent,
             extensions: extensions,
             horizontalMargin: horizontalMargin,
             themeConfig: themeConfig,

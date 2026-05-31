@@ -37,6 +37,7 @@ class EpubReaderScreen extends StatefulWidget {
 class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBindingObserver {
   late EpubChapterController _chapterController;
   late EpubTtsController _ttsController;
+  late final TtsService _ttsService;
   late ReaderChromeController _chromeController;
   late ReaderModeController _modeController;
   late PageController _pageController;
@@ -67,10 +68,11 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     // Listen for loading completion to restore reading position
     _chapterController.addListener(_onChapterControllerChanged);
 
+    _ttsService = TtsService();
     _ttsController = EpubTtsController(
       book: widget.book,
       repository: widget.repository,
-      ttsService: TtsService(),
+      ttsService: _ttsService,
       chapterController: _chapterController,
     );
 
@@ -98,6 +100,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     _chapterController.removeListener(_onChapterControllerChanged);
     _chapterController.dispose();
     _ttsController.dispose();
+    _ttsService.dispose();
     _chromeController.dispose();
     _pageController.dispose();
     WidgetsBinding.instance.removeObserver(this);

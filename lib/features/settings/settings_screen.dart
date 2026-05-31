@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -50,15 +51,21 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
           _buildSectionHeader(theme, 'Application Info'),
           const SizedBox(height: 8),
-          Card(
-            child: _buildSettingsTile(
-              context: context,
-              theme: theme,
-              icon: Icons.info_outline,
-              title: 'About Ferrous',
-              subtitle: 'Version 1.1.0',
-              showChevron: false,
-            ),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.data?.version ?? '1.1.0';
+              return Card(
+                child: _buildSettingsTile(
+                  context: context,
+                  theme: theme,
+                  icon: Icons.info_outline,
+                  title: 'About Ferrous',
+                  subtitle: 'Version $version',
+                  showChevron: false,
+                ),
+              );
+            },
           ),
         ],
       ),
