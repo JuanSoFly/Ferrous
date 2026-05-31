@@ -99,6 +99,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      # ===== Install PDFium binaries =====
+      - name: Install PDFium Android binaries
+        run: |
+          chmod +x scripts/setup-pdfium-android.sh
+          PDFIUM_ABIS="arm64-v8a,armeabi-v7a,x86_64" bash scripts/setup-pdfium-android.sh
+
       # ===== Build APKs =====
       # Note: Cargokit (flutter_rust_bridge) handles Rust compilation automatically
       - name: Build APKs (split per ABI)
