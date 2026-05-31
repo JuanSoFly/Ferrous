@@ -115,17 +115,51 @@ class Rustup {
   }
 
   static String? executablePath() {
+    final cargoHome = Platform.environment['CARGO_HOME'];
     final envPath = Platform.environment['PATH'];
     final envPathSeparator = Platform.isWindows ? ';' : ':';
     final home = Platform.isWindows
         ? Platform.environment['USERPROFILE']
         : Platform.environment['HOME'];
+
+    final rustup = Platform.isWindows ? 'rustup.exe' : 'rustup';
+
+    if (cargoHome != null) {
+      final localRustupPath = path.join(cargoHome, 'bin', rustup);
+      if (File(localRustupPath).existsSync()) {
+        return localRustupPath;
+      }
+
+      // Local rustup doesn't exist under CARGO_HOME. Let's look for system rustup to copy/bootstrap it.
+      final fallbackPaths = [
+        if (home != null) path.join(home, '.cargo', 'bin'),
+        if (envPath != null) ...envPath.split(envPathSeparator),
+      ];
+      for (final p in fallbackPaths) {
+        final systemRustupPath = path.join(p, rustup);
+        if (File(systemRustupPath).existsSync() && systemRustupPath != localRustupPath) {
+          try {
+            final localBinDir = Directory(path.join(cargoHome, 'bin'));
+            if (!localBinDir.existsSync()) {
+              localBinDir.createSync(recursive: true);
+            }
+            File(systemRustupPath).copySync(localRustupPath);
+            if (!Platform.isWindows) {
+              Process.runSync('chmod', ['+x', localRustupPath]);
+            }
+            return localRustupPath;
+          } catch (e) {
+            // If copy/chmod fails, fallback to normal search
+          }
+        }
+      }
+    }
+
     final paths = [
       if (home != null) path.join(home, '.cargo', 'bin'),
       if (envPath != null) ...envPath.split(envPathSeparator),
     ];
     for (final p in paths) {
-      final rustup = Platform.isWindows ? 'rustup.exe' : 'rustup';
       final rustupPath = path.join(p, rustup);
       if (File(rustupPath).existsSync()) {
         return rustupPath;

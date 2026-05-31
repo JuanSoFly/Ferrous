@@ -117,16 +117,20 @@ class EpubTtsController extends ChangeNotifier {
   }
 
   void _handleTtsFinished() {
-    if (!_showTtsControls || !_ttsContinuous) return;
+    if (!_ttsContinuous) return;
     unawaited(advanceToNextReadableChapterAndSpeak());
   }
 
   void _handleTtsProgress() {
-    if (!_showTtsControls || _ttsService.state != TtsState.playing) {
+    if (_ttsService.state == TtsState.stopped) {
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
       notifyListeners();
+      return;
+    }
+
+    if (_ttsService.state != TtsState.playing) {
       return;
     }
 
@@ -146,7 +150,9 @@ class EpubTtsController extends ChangeNotifier {
 
     // Convert to raw positions and add base offset
     final rawWordStart = map.normalizedToRaw[clampedStart];
-    final rawWordEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+    final rawWordEnd = clampedEnd < map.normalizedToRaw.length
+        ? map.normalizedToRaw[clampedEnd]
+        : map.normalizedToRaw[clampedEnd - 1] + 1;
     
     final highlightStart = _ttsRawBaseOffset + rawWordStart;
     final highlightEnd = _ttsRawBaseOffset + rawWordEnd;

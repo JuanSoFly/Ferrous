@@ -184,9 +184,18 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     if (!mounted) return;
     
     _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+
+    final switchingToPaged = selected == ReadingMode.vertical || selected == ReadingMode.leftToRight;
+
     setState(() {
       _readingMode = selected;
       _modeController = ReaderModeController(selected);
+      if (switchingToPaged) {
+        _pageController.dispose();
+        _pageController = PageController(
+          initialPage: _chapterController.currentChapterIndex,
+        );
+      }
     });
 
     unawaited(widget.repository.updateReadingProgress(
@@ -383,6 +392,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                         chapterController: _chapterController,
                         ttsController: _ttsController,
                         pageController: _pageController,
+                        readingMode: _readingMode,
                         onToggleChrome: _toggleAllUi,
                         onTapUp: _handleTapUpForTts,
                       )

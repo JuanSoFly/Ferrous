@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1958760212;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 946004666;
 
 // Section: executor
 
@@ -639,6 +639,41 @@ fn wire__crate__api__hello_world_impl(
         },
     )
 }
+fn wire__crate__api__pdf__init_pdfium_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "init_pdfium",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::pdf::init_pdfium(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__tts_text__insert_html_highlight_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1219,23 +1254,24 @@ fn pde_ffi_dispatcher_primary_impl(
         14 => wire__crate__api__mobi__get_mobi_title_impl(port, ptr, rust_vec_len, data_len),
         15 => wire__crate__api__pdf__get_pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
         16 => wire__crate__api__hello_world_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__tts_text__insert_html_highlight_impl(
+        17 => wire__crate__api__pdf__init_pdfium_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__tts_text__insert_html_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__crate__api__tts_text__precompute_text_highlights_impl(
+        19 => wire__crate__api__tts_text__precompute_text_highlights_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
-        23 => {
+        20 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
+        24 => {
             wire__crate__api__tts_text__test_tts_text_module_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:reader_app/core/utils/performance.dart';
+import 'package:reader_app/src/rust/api/tts_text.dart';
 
 enum TtsState { stopped, playing, paused }
 
@@ -19,13 +20,13 @@ class WordPosition {
   });
 }
 
-/// Simplified TTS Service with clean offset tracking.
+/// Optimized TTS Service with clean offset tracking.
 ///
-/// Key simplifications:
-/// - Single offset system: progress offsets are relative to current chunk only
-/// - Readers track their own base offset for absolute positioning
-/// - Word-level highlighting (not sentence-level)
-/// - 50ms debounced UI updates
+/// Key improvements:
+/// - Integrates Rust FFI precomputeTextHighlights for perfect multilingual word segmenting
+/// - Chunking splits at natural sentence boundaries
+/// - Dynamic-duration fallback word highlighting based on word character length
+/// - 500ms startup delay for fallback to avoid double-highlighting jank
 class TtsService extends ChangeNotifier {
   final FlutterTts _flutterTts = FlutterTts();
   late final Future<void> _ready;
@@ -44,10 +45,14 @@ class TtsService extends ChangeNotifier {
   int _chunkOffset = 0; // Where current chunk starts in full text
   String _fullText = '';
   List<String> _chunks = const [];
+  List<int> _chunkOffsets = const [];
   int _chunkIndex = 0;
 
   bool _disposed = false;
   bool _stopRequested = false;
+
+  // Precomputed Rust highlight data
+  TextHighlightData? _highlightData;
 
   // Getters for current word (absolute offsets)
   int? get currentWordStart =>
@@ -60,15 +65,15 @@ class TtsService extends ChangeNotifier {
   bool get canResume => _state == TtsState.paused && _chunks.isNotEmpty;
 
   // Rate control
-  double _rate = 1.0;
+  double _rate = 0.8;
   double get rate => _rate;
 
   // Fallback timer for devices where onRangeStart doesn't work
   bool _nativeProgressReceived = false;
+  Timer? _fallbackStartTimeout;
   Timer? _fallbackTimer;
   List<WordPosition> _wordPositions = const [];
   int _currentWordIndex = 0;
-  static const double _baseWpm = 120.0;
 
   // UI debouncing
   Timer? _uiBatchTimer;
@@ -151,6 +156,7 @@ class TtsService extends ChangeNotifier {
 
   void _clear() {
     _chunks = const [];
+    _chunkOffsets = const [];
     _chunkIndex = 0;
     _chunkOffset = 0;
     _fullText = '';
@@ -159,6 +165,7 @@ class TtsService extends ChangeNotifier {
     _word = null;
     _wordPositions = const [];
     _currentWordIndex = 0;
+    _highlightData = null;
     _cancelBatchTimer();
   }
 
@@ -180,30 +187,44 @@ class TtsService extends ChangeNotifier {
 
   // --- Fallback Timer ---
 
-  int _msPerWord() => (60000 / (_baseWpm * _rate)).round();
-
   void _startFallbackIfNeeded() {
     if (_nativeProgressReceived || _wordPositions.isEmpty || _disposed) return;
 
-    _fallbackTimer?.cancel();
-    _fallbackTimer = Timer.periodic(Duration(milliseconds: _msPerWord()), (_) {
-      if (_disposed ||
-          _stopRequested ||
-          _currentWordIndex >= _wordPositions.length) {
-        _stopFallback();
-        return;
-      }
+    _stopFallback();
 
-      final pos = _wordPositions[_currentWordIndex];
-      _wordStart = pos.start;
-      _wordEnd = pos.end;
-      _word = pos.word;
-      _currentWordIndex++;
-      _scheduleNotify();
+    // Startup timeout of 500ms to allow native progress to trigger
+    _fallbackStartTimeout = Timer(const Duration(milliseconds: 500), () {
+      if (_nativeProgressReceived || _disposed || _stopRequested) return;
+      debugPrint('TTS: Native progress not received, starting dynamic fallback loop');
+      _runFallbackLoop();
     });
   }
 
+  void _runFallbackLoop() {
+    if (_disposed || _stopRequested || _currentWordIndex >= _wordPositions.length) {
+      _stopFallback();
+      return;
+    }
+
+    final pos = _wordPositions[_currentWordIndex];
+    _wordStart = pos.start;
+    _wordEnd = pos.end;
+    _word = pos.word;
+    _currentWordIndex++;
+    _scheduleNotify();
+
+    // Dynamic timing calculation: duration = (baseMs + (charCount * msPerChar)) / rate
+    const baseMs = 150.0;
+    const msPerChar = 70.0;
+    final scale = 1.0 / _rate;
+    final wordDurationMs = ((baseMs + (pos.word.length * msPerChar)) * scale).round().clamp(100, 3000);
+
+    _fallbackTimer = Timer(Duration(milliseconds: wordDurationMs), _runFallbackLoop);
+  }
+
   void _stopFallback() {
+    _fallbackStartTimeout?.cancel();
+    _fallbackStartTimeout = null;
     _fallbackTimer?.cancel();
     _fallbackTimer = null;
   }
@@ -243,29 +264,116 @@ class TtsService extends ChangeNotifier {
     return 3500;
   }
 
-  List<String> _splitText(String text, int maxChars) {
-    if (text.length <= maxChars) return [text];
+  void _splitTextAndOffsets(String normalized, int maxChars) {
+    if (_highlightData == null) {
+      _chunks = [normalized];
+      _chunkOffsets = [0];
+      return;
+    }
+
+    final data = _highlightData!;
+    if (normalized.length <= maxChars) {
+      _chunks = [normalized];
+      _chunkOffsets = [0];
+      return;
+    }
 
     final chunks = <String>[];
-    final buf = StringBuffer();
+    final offsets = <int>[];
+    var currentChunkStart = 0;
+    var currentSentenceIndex = 0;
 
-    for (final word in text.split(RegExp(r'\s+'))) {
-      if (word.isEmpty) continue;
+    while (currentSentenceIndex < data.sentences.length) {
+      final sentence = data.sentences[currentSentenceIndex];
+      final sentenceLength = sentence.end - sentence.start;
 
-      if (buf.isEmpty) {
-        buf.write(word);
-      } else if (buf.length + 1 + word.length <= maxChars) {
-        buf.write(' ');
-        buf.write(word);
-      } else {
-        chunks.add(buf.toString());
-        buf.clear();
-        buf.write(word);
+      if (sentenceLength > maxChars) {
+        // Yield any accumulated text before this sentence
+        if (sentence.start > currentChunkStart) {
+          final text = normalized.substring(currentChunkStart, sentence.start).trim();
+          if (text.isNotEmpty) {
+            chunks.add(text);
+            offsets.add(currentChunkStart);
+          }
+        }
+        
+        // Split the long sentence by words
+        final sentenceWords = data.words.where((w) => w.start >= sentence.start && w.end <= sentence.end).toList();
+        currentChunkStart = sentence.start;
+        
+        for (var i = 0; i < sentenceWords.length; i++) {
+          final word = sentenceWords[i];
+          if (word.end - currentChunkStart > maxChars) {
+            final yieldEnd = i > 0 ? sentenceWords[i - 1].end : word.start;
+            if (yieldEnd > currentChunkStart) {
+              chunks.add(normalized.substring(currentChunkStart, yieldEnd).trim());
+              offsets.add(currentChunkStart);
+              currentChunkStart = yieldEnd;
+            }
+          }
+        }
+        
+        // Yield the rest of the sentence
+        if (sentence.end > currentChunkStart) {
+          chunks.add(normalized.substring(currentChunkStart, sentence.end).trim());
+          offsets.add(currentChunkStart);
+        }
+        
+        currentChunkStart = sentence.end;
+        currentSentenceIndex++;
+        continue;
+      }
+
+      // Group sentences together
+      var nextSentenceIndex = currentSentenceIndex + 1;
+      while (nextSentenceIndex < data.sentences.length &&
+             data.sentences[nextSentenceIndex].end - currentChunkStart <= maxChars) {
+        nextSentenceIndex = nextSentenceIndex + 1;
+      }
+
+      final chunkEnd = data.sentences[nextSentenceIndex - 1].end;
+      final text = normalized.substring(currentChunkStart, chunkEnd).trim();
+      if (text.isNotEmpty) {
+        chunks.add(text);
+        offsets.add(currentChunkStart);
+      }
+      currentChunkStart = chunkEnd;
+      currentSentenceIndex = nextSentenceIndex;
+    }
+
+    // Add any remaining text
+    if (currentChunkStart < normalized.length) {
+      final remaining = normalized.substring(currentChunkStart).trim();
+      if (remaining.isNotEmpty) {
+        chunks.add(remaining);
+        offsets.add(currentChunkStart);
       }
     }
 
-    if (buf.isNotEmpty) chunks.add(buf.toString());
-    return chunks;
+    _chunks = chunks;
+    _chunkOffsets = offsets;
+  }
+
+  void _updateWordPositionsForCurrentChunk() {
+    final chunkText = _chunks[_chunkIndex];
+    final chunkStart = _chunkOffset;
+    
+    if (_highlightData != null) {
+      final chunkEnd = chunkStart + chunkText.length;
+      final spans = _highlightData!.words
+          .where((w) => w.start >= chunkStart && w.end <= chunkEnd)
+          .toList();
+          
+      _wordPositions = spans.map((w) => WordPosition(
+        start: w.start - chunkStart,
+        end: w.end - chunkStart,
+        word: w.text,
+      )).toList();
+    } else {
+      _wordPositions = _parseWords(chunkText);
+    }
+    
+    _currentWordIndex = 0;
   }
 
   List<WordPosition> _parseWords(String text) {
@@ -303,17 +411,25 @@ class TtsService extends ChangeNotifier {
       _clear();
       _stopRequested = false;
       _nativeProgressReceived = false;
-      _fullText = normalized;
+
+      // Compute word highlights using Rust FFI
+      try {
+        _highlightData = await precomputeTextHighlights(text: normalized);
+        _fullText = _highlightData!.normalizedText;
+      } catch (e) {
+        debugPrint("TTS: Rust precompute failed: $e");
+        _highlightData = null;
+        _fullText = normalized;
+      }
 
       final maxChars = await _maxChunkSize();
-      _chunks = _splitText(normalized, maxChars);
+      _splitTextAndOffsets(_fullText, maxChars);
       _chunkIndex = 0;
-      _chunkOffset = 0;
+      _chunkOffset = _chunkOffsets.isNotEmpty ? _chunkOffsets[0] : 0;
 
-      _wordPositions = _parseWords(_chunks[0]);
-      _currentWordIndex = 0;
+      _updateWordPositionsForCurrentChunk();
 
-      if (!await _speakChunk(_chunks[0])) {
+      if (_chunks.isEmpty || !await _speakChunk(_chunks[0])) {
         _clear();
         _setState(TtsState.stopped);
         return;
@@ -347,11 +463,9 @@ class TtsService extends ChangeNotifier {
     }
 
     // Update chunk offset for next chunk
-    _chunkOffset += _chunks[_chunkIndex - 1].length + 1;
+    _chunkOffset = _chunkOffsets[_chunkIndex];
 
-    // Parse words for fallback
-    _wordPositions = _parseWords(_chunks[_chunkIndex]);
-    _currentWordIndex = 0;
+    _updateWordPositionsForCurrentChunk();
     _nativeProgressReceived = false;
 
     await _speakChunk(_chunks[_chunkIndex]);
@@ -378,9 +492,33 @@ class TtsService extends ChangeNotifier {
     await _ensureReady();
     if (_state != TtsState.paused) return;
     _stopRequested = false;
-    unawaited(
-        _flutterTts.speak('')); // Resume via empty speak triggers continue
+
+    // Slice current chunk at paused word index
+    if (_chunkIndex >= 0 && _chunkIndex < _chunks.length) {
+      final currentChunk = _chunks[_chunkIndex];
+      final pauseOffset = _wordStart ?? 0;
+      
+      if (pauseOffset > 0 && pauseOffset < currentChunk.length) {
+        final remainingText = currentChunk.substring(pauseOffset);
+        _chunkOffset += pauseOffset;
+        
+        final updatedChunks = List<String>.from(_chunks);
+        updatedChunks[_chunkIndex] = remainingText;
+        _chunks = updatedChunks;
+        
+        _updateWordPositionsForCurrentChunk();
+      }
+    }
+
+    _nativeProgressReceived = false;
     _setState(TtsState.playing);
+    
+    // Speak remaining chunk
+    if (_chunks.isNotEmpty && _chunkIndex < _chunks.length) {
+      await _speakChunk(_chunks[_chunkIndex]);
+    } else {
+      _setState(TtsState.stopped);
+    }
   }
 
   @override

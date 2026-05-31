@@ -3,18 +3,30 @@ use pdfium_render::prelude::*;
 use crate::timed;
 use std::fs::File;
 use std::io::Read;
-use std::sync::{OnceLock, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::num::NonZeroUsize;
 use lru::LruCache;
 
 
 static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
+static PDFIUM_PATH: OnceLock<String> = OnceLock::new();
+
+pub fn init_pdfium(path: String) -> Result<()> {
+    let _ = PDFIUM_PATH.set(path);
+    Ok(())
+}
 
 fn get_pdfium() -> &'static Pdfium {
     PDFIUM.get_or_init(|| {
-        let bindings = Pdfium::bind_to_library("libpdfium.so")
-            .or_else(|_| Pdfium::bind_to_system_library())
-            .expect("Failed to bind to pdfium library. Make sure libpdfium.so is in jniLibs.");
+        let bindings = if let Some(custom_path) = PDFIUM_PATH.get() {
+            let full_path = format!("{}/libpdfium.so", custom_path);
+            Pdfium::bind_to_library(&full_path)
+                .or_else(|_| Pdfium::bind_to_library("libpdfium.so"))
+        } else {
+            Pdfium::bind_to_library("libpdfium.so")
+        }
+        .or_else(|_| Pdfium::bind_to_system_library())
+        .expect("Failed to bind to pdfium library. Make sure libpdfium.so is in jniLibs.");
         Pdfium::new(bindings)
     })
 }
@@ -81,9 +93,9 @@ pub(crate) fn load_pdf_document<'a>(pdfium: &'a Pdfium, path: &str) -> Result<Pd
 }
 
 // Global LRU cache for PDF documents (R3)
-static DOCUMENT_POOL: OnceLock<Mutex<LruCache<String, PdfDocument<'static>>>> = OnceLock::new();
+static DOCUMENT_POOL: OnceLock<Mutex<LruCache<String, Arc<PdfDocument<'static>>>>> = OnceLock::new();
 
-fn get_pool() -> &'static Mutex<LruCache<String, PdfDocument<'static>>> {
+fn get_pool() -> &'static Mutex<LruCache<String, Arc<PdfDocument<'static>>>> {
     DOCUMENT_POOL.get_or_init(|| {
         Mutex::new(LruCache::new(NonZeroUsize::new(4).unwrap()))
     })
@@ -95,20 +107,36 @@ where
     F: FnOnce(&PdfDocument) -> Result<R>,
 {
     let pool = get_pool();
-    let mut cache = pool.lock().map_err(|_| anyhow!("Failed to lock document pool"))?;
     
-    if let Some(doc) = cache.get(path) {
-        return f(doc);
-    }
+    // 1. Try to get from cache first (holding lock briefly)
+    let doc = {
+        let mut cache = match pool.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("⚠️ Warning: PDF document pool lock poisoned. Recovering...");
+                poisoned.into_inner()
+            }
+        };
+        cache.get(path).cloned()
+    };
     
-
-    let doc = load_pdf_document(get_pdfium(), path)?;
-    // We add to cache - this might evict an old one
-    cache.put(path.to_string(), doc);
+    // 2. If not in cache, load it outside the lock
+    let doc = match doc {
+        Some(doc) => doc,
+        None => {
+            let loaded_doc = Arc::new(load_pdf_document(get_pdfium(), path)?);
+            // Lock again to insert into cache (holding lock briefly)
+            let mut cache = match pool.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            cache.put(path.to_string(), loaded_doc.clone());
+            loaded_doc
+        }
+    };
     
-    // Get it back as it's now in the cache
-    let doc = cache.get(path).ok_or_else(|| anyhow!("Failed to retrieve document after caching"))?;
-    f(doc)
+    // 3. Call f with the document completely outside the lock!
+    f(&doc)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -165,14 +193,16 @@ pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -
             let actual_width = dynamic_image.width();
             let actual_height = dynamic_image.height();
             
-            let mut png_bytes = Vec::new();
-            dynamic_image.write_to(
-                &mut std::io::Cursor::new(&mut png_bytes),
-                image::ImageFormat::Png,
+            // Convert RGBA to RGB for JPEG compatibility (as JPEG doesn't support alpha channel)
+            let rgb_image = dynamic_image.into_rgb8();
+            let mut jpeg_bytes = Vec::new();
+            rgb_image.write_to(
+                &mut std::io::Cursor::new(&mut jpeg_bytes),
+                image::ImageFormat::Jpeg,
             )?;
             
             Ok(PdfPageRenderResult {
-                data: png_bytes,
+                data: jpeg_bytes,
                 width: actual_width,
                 height: actual_height,
             })

@@ -17,8 +17,8 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return ReaderThemeConfig(
-      fontSize: fields[0] as double? ?? 20.0,
-      fontFamily: fields[1] as String? ?? 'Roboto',
+      fontSize: fields[0] as double? ?? 14.0,
+      fontFamily: fields[1] as String? ?? 'Merriweather',
       lineHeight: fields[2] as double? ?? 1.5,
       paragraphSpacing: fields[3] as double? ?? 10.0,
       textAlign: fields[4] as String? ?? 'justify',

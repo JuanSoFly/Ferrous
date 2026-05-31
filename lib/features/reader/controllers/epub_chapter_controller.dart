@@ -12,6 +12,27 @@ import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 
+class EpubChapterInfo {
+  final String? title;
+  EpubChapterInfo({this.title});
+  // ignore: non_constant_identifier_names
+  String? get Title => title;
+}
+
+class ParsedEpubBook {
+  final List<EpubChapterInfo> chapters;
+  final List<String> contents;
+  final List<String> plainTexts;
+  final List<List<SentenceSpan>> sentenceSpans;
+
+  ParsedEpubBook({
+    required this.chapters,
+    required this.contents,
+    required this.plainTexts,
+    required this.sentenceSpans,
+  });
+}
+
 class EpubChapterController extends ChangeNotifier {
   final Book book;
   final BookRepository repository;
@@ -21,9 +42,10 @@ class EpubChapterController extends ChangeNotifier {
     required this.repository,
   });
 
-  List<EpubChapter>? _chapters;
+  List<EpubChapterInfo>? _chapters;
   List<String> _allChapterContents = const [];
   List<String> _allChapterPlainTexts = const [];
+  List<List<SentenceSpan>> _allChapterSentenceSpans = const [];
   List<GlobalKey> _chapterKeys = const [];
   int _currentChapterIndex = 0;
   String? _currentContent;
@@ -38,6 +60,7 @@ class EpubChapterController extends ChangeNotifier {
 
   bool _isRestoringPosition = false;
   int _restoreGeneration = 0;
+  bool _isProgrammaticScroll = false;
 
   // Trackers from book model
   late int _lastReadingSentenceStart;
@@ -45,7 +68,7 @@ class EpubChapterController extends ChangeNotifier {
   late double _lastScrollPosition;
 
   // Getters
-  List<EpubChapter>? get chapters => _chapters;
+  List<EpubChapterInfo>? get chapters => _chapters;
   List<String> get allChapterContents => _allChapterContents;
   List<String> get allChapterPlainTexts => _allChapterPlainTexts;
   List<GlobalKey> get chapterKeys => _chapterKeys;
@@ -73,37 +96,29 @@ class EpubChapterController extends ChangeNotifier {
         final resolved = await resolver.resolve(book);
         _resolvedFile = resolved;
         final bytes = await File(resolved.path).readAsBytes();
-        final chapters = await _readChaptersWithFallback(bytes);
+        final parsedBook = await _readChaptersWithFallback(bytes);
 
-        if (chapters.isEmpty) {
+        if (parsedBook.chapters.isEmpty) {
           _error = "No chapters found in EPUB";
           _isLoading = false;
           notifyListeners();
           return;
         }
 
-        final allContents = <String>[];
-        final allPlainTexts = <String>[];
-        final allKeys = <GlobalKey>[];
+        final allKeys = List.generate(parsedBook.chapters.length, (_) => GlobalKey());
 
-        for (final chapter in chapters) {
-          final content = chapter.HtmlContent ?? '';
-          allContents.add(content);
-          allPlainTexts.add(_htmlToPlainText(content));
-          allKeys.add(GlobalKey());
-        }
-
-        if (_currentChapterIndex >= chapters.length) {
+        if (_currentChapterIndex >= parsedBook.chapters.length) {
           _currentChapterIndex = 0;
         }
 
-        _chapters = chapters;
-        _allChapterContents = allContents;
-        _allChapterPlainTexts = allPlainTexts;
+        _chapters = parsedBook.chapters;
+        _allChapterContents = parsedBook.contents;
+        _allChapterPlainTexts = parsedBook.plainTexts;
+        _allChapterSentenceSpans = parsedBook.sentenceSpans;
         _chapterKeys = allKeys;
-        _currentContent = allContents[_currentChapterIndex];
-        _currentPlainText = allPlainTexts[_currentChapterIndex];
-        _sentenceSpans = splitIntoSentences(_currentPlainText);
+        _currentContent = parsedBook.contents[_currentChapterIndex];
+        _currentPlainText = parsedBook.plainTexts[_currentChapterIndex];
+        _sentenceSpans = parsedBook.sentenceSpans[_currentChapterIndex];
         _isLoading = false;
         notifyListeners();
       } catch (e) {
@@ -114,31 +129,48 @@ class EpubChapterController extends ChangeNotifier {
     }, metadata: {'book_id': book.id});
   }
 
-  String _htmlToPlainText(String html) {
-    if (html.isEmpty) return '';
-    final document = html_parser.parse(html);
-    return DomTextUtils.extractPlainText(document.body ?? document.documentElement);
-  }
-
-  static Future<List<EpubChapter>> _parseEpubIsolated(List<int> bytes) async {
+  static Future<ParsedEpubBook> _parseEpubIsolated(List<int> bytes) async {
+    List<EpubChapter> rawChapters;
     try {
       final book = await EpubReader.readBook(bytes);
-      final chapters = _flattenChaptersStatic(book.Chapters ?? []);
+      rawChapters = _flattenChaptersStatic(book.Chapters ?? []);
 
-      if (chapters.isEmpty) {
-        final fallbackChapters = EpubFallbackParser.parseChapters(bytes);
-        if (fallbackChapters.isNotEmpty) return fallbackChapters;
+      if (rawChapters.isEmpty) {
+        rawChapters = EpubFallbackParser.parseChapters(bytes);
       }
-      return chapters;
     } catch (e) {
       try {
-        final chapters = EpubFallbackParser.parseChapters(bytes);
-        if (chapters.isNotEmpty) return chapters;
+        rawChapters = EpubFallbackParser.parseChapters(bytes);
       } catch (fallbackError) {
         throw Exception('EPUB parsing failed: $e. Fallback also failed: $fallbackError');
       }
-      rethrow;
     }
+
+    final chapters = <EpubChapterInfo>[];
+    final contents = <String>[];
+    final plainTexts = <String>[];
+    final sentenceSpans = <List<SentenceSpan>>[];
+
+    for (final rawChapter in rawChapters) {
+      final title = rawChapter.Title;
+      final content = rawChapter.HtmlContent ?? '';
+      
+      final doc = html_parser.parse(content);
+      final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
+      final spans = splitIntoSentences(plainText);
+
+      chapters.add(EpubChapterInfo(title: title));
+      contents.add(content);
+      plainTexts.add(plainText);
+      sentenceSpans.add(spans);
+    }
+
+    return ParsedEpubBook(
+      chapters: chapters,
+      contents: contents,
+      plainTexts: plainTexts,
+      sentenceSpans: sentenceSpans,
+    );
   }
 
   static List<EpubChapter> _flattenChaptersStatic(List<EpubChapter> chapters) {
@@ -152,7 +184,7 @@ class EpubChapterController extends ChangeNotifier {
     return result;
   }
 
-  Future<List<EpubChapter>> _readChaptersWithFallback(List<int> bytes) async {
+  Future<ParsedEpubBook> _readChaptersWithFallback(List<int> bytes) async {
     return await compute(_parseEpubIsolated, bytes);
   }
 
@@ -165,7 +197,7 @@ class EpubChapterController extends ChangeNotifier {
     _currentChapterIndex = index;
     _currentContent = _allChapterContents[index];
     _currentPlainText = _allChapterPlainTexts[index];
-    _sentenceSpans = splitIntoSentences(_currentPlainText);
+    _sentenceSpans = _allChapterSentenceSpans[index];
     notifyListeners();
 
     SentenceSpan? resetSpan;
@@ -192,22 +224,88 @@ class EpubChapterController extends ChangeNotifier {
     ));
 
     if (userInitiated && _chapterKeys.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final key = _chapterKeys[index];
-        final context = key.currentContext;
-        if (context != null) {
-          Scrollable.ensureVisible(
-            context,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            alignment: 0.0,
-          );
-        }
-      });
+      _scrollToChapter(index);
     }
   }
 
+  double _getCharacterBasedEstimate(int index) {
+    if (_allChapterPlainTexts.isEmpty) return 0.0;
+    if (index <= 0) return 0.0;
+    if (index >= _allChapterPlainTexts.length) {
+      if (_scrollController.hasClients) {
+        return _scrollController.position.maxScrollExtent;
+      }
+      return 0.0;
+    }
+
+    double totalChars = 0;
+    for (final text in _allChapterPlainTexts) {
+      totalChars += text.length;
+    }
+    if (totalChars == 0) return 0.0;
+
+    double charsBefore = 0;
+    for (int i = 0; i < index; i++) {
+      charsBefore += _allChapterPlainTexts[i].length;
+    }
+
+    final maxExtent = _scrollController.hasClients ? _scrollController.position.maxScrollExtent : 0.0;
+    return (charsBefore / totalChars) * maxExtent;
+  }
+
+  void _scrollToChapter(int index, {int attempt = 0}) {
+    if (!_scrollController.hasClients) return;
+    if (attempt == 0) {
+      _isProgrammaticScroll = true;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) {
+        _isProgrammaticScroll = false;
+        return;
+      }
+      final key = _chapterKeys[index];
+      final context = key.currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: 0.0,
+        ).then((_) {
+          _isProgrammaticScroll = false;
+          if (_scrollController.hasClients) {
+            final currentContext = key.currentContext;
+            if (currentContext != null && currentContext.mounted) {
+              updateCurrentChapterFromScroll(currentContext);
+            }
+          }
+        });
+      } else if (attempt < 5) {
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final estimated = _getCharacterBasedEstimate(index);
+        _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
+        _scrollToChapter(index, attempt: attempt + 1);
+      } else {
+        _isProgrammaticScroll = false;
+        // Fallback: update state to target index directly
+        _currentChapterIndex = index;
+        if (index < _allChapterContents.length) {
+          _currentContent = _allChapterContents[index];
+          _currentPlainText = _allChapterPlainTexts[index];
+          _sentenceSpans = _allChapterSentenceSpans[index];
+        }
+        notifyListeners();
+        unawaited(repository.updateReadingProgress(
+          book.id,
+          sectionIndex: index,
+          totalPages: _chapters?.length ?? 0,
+        ));
+      }
+    });
+  }
+
   void updateCurrentChapterFromScroll(BuildContext context) {
+    if (_isProgrammaticScroll || _isRestoringPosition) return;
     if (_chapterKeys.isEmpty || !_scrollController.hasClients) return;
 
     final viewportTop = _scrollController.offset;
@@ -238,7 +336,7 @@ class EpubChapterController extends ChangeNotifier {
       _currentChapterIndex = visibleChapter;
       _currentContent = _allChapterContents[visibleChapter];
       _currentPlainText = _allChapterPlainTexts[visibleChapter];
-      _sentenceSpans = splitIntoSentences(_currentPlainText);
+      _sentenceSpans = _allChapterSentenceSpans[visibleChapter];
       notifyListeners();
 
       unawaited(repository.updateReadingProgress(
@@ -269,7 +367,7 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   void _saveReadingPositionFromScroll() {
-    if (_isRestoringPosition) return;
+    if (_isRestoringPosition || _isProgrammaticScroll) return;
     if (!_scrollController.hasClients) return;
     if (_currentChapterIndex < 0 || _currentChapterIndex >= _allChapterPlainTexts.length) return;
     
@@ -347,7 +445,7 @@ class EpubChapterController extends ChangeNotifier {
     if (text.trim().isEmpty) return SentenceSpan(0, text.length);
     final maxIndex = text.length - 1;
     final approxIndex = maxIndex <= 0 ? 0 : (fraction * maxIndex).round().clamp(0, maxIndex);
-    final spans = chapterIndex == _currentChapterIndex ? _sentenceSpans : splitIntoSentences(text);
+    final spans = _allChapterSentenceSpans[chapterIndex];
     return sentenceForOffset(spans, approxIndex) ?? SentenceSpan(0, text.length);
   }
 
@@ -379,7 +477,7 @@ class EpubChapterController extends ChangeNotifier {
       final maxExtent = _scrollController.position.maxScrollExtent;
       if (maxExtent > 0) {
         if (fraction != null && attempt < 2) {
-          final estimated = _chapterKeys.length <= 1 ? 0.0 : (chapterIndex / (_chapterKeys.length - 1)) * maxExtent;
+          final estimated = _getCharacterBasedEstimate(chapterIndex);
           _markRestoringPosition();
           _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
           _restoreContinuousPosition(attempt: attempt + 1);
@@ -387,7 +485,7 @@ class EpubChapterController extends ChangeNotifier {
           _markRestoringPosition();
           _scrollController.jumpTo(_lastScrollPosition.clamp(0.0, maxExtent));
         } else if (attempt < 2) {
-          final estimated = _chapterKeys.length <= 1 ? 0.0 : (chapterIndex / (_chapterKeys.length - 1)) * maxExtent;
+          final estimated = _getCharacterBasedEstimate(chapterIndex);
           _markRestoringPosition();
           _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
           _restoreContinuousPosition(attempt: attempt + 1);
@@ -461,7 +559,7 @@ class EpubChapterController extends ChangeNotifier {
   void cleanup() {
     if (_resolvedFile?.isTemp == true) {
       try {
-        File(_resolvedFile!.path).deleteSync();
+        unawaited(File(_resolvedFile!.path).delete());
       } catch (_) {}
     }
     _scrollController.dispose();

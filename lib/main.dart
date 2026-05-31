@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:reader_app/src/rust/frb_generated.dart';
+import 'package:reader_app/src/rust/api/pdf.dart';
 import 'package:reader_app/app/app_shell.dart';
 import 'package:reader_app/data/models/book_adapter.dart';
 import 'package:reader_app/data/models/annotation_adapter.dart';
@@ -9,6 +10,7 @@ import 'package:reader_app/data/models/collection_adapter.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/data/services/saf_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
@@ -57,6 +59,19 @@ Future<void> main() async {
   String? initError;
   try {
     await RustLib.init();
+    
+    // Initialize PDFium path on Android
+    if (Platform.isAndroid) {
+      try {
+        final safService = SafService();
+        final nativeLibDir = await safService.getNativeLibraryDir();
+        if (nativeLibDir != null) {
+          await initPdfium(path: nativeLibDir);
+        }
+      } catch (e) {
+        debugPrint('Failed to initialize PDFium path: $e');
+      }
+    }
   } catch (e) {
     initError = e.toString();
   }
@@ -74,8 +89,7 @@ Future<void> _cleanupLinkedCacheFiles() async {
   try {
     final dir = await getTemporaryDirectory();
     if (!await dir.exists()) return;
-    final entries = dir.listSync();
-    for (final entry in entries) {
+    await for (final entry in dir.list()) {
       if (entry is! File) continue;
       final name = entry.path.split(Platform.pathSeparator).last;
       if (name.startsWith('linked_')) {

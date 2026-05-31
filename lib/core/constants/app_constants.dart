@@ -11,7 +11,7 @@ class DefaultConfig {
   DefaultConfig._();
 
   static const String defaultReadingMode = 'verticalContinuous';
-  static const double defaultTtsRate = 1.0;
+  static const double defaultTtsRate = 0.8;
   static const double defaultTtsPitch = 1.0;
 }
 

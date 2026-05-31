@@ -23,8 +23,29 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 export RUSTUP_HOME="$PROJECT_ROOT/tools/rustup"
 export CARGO_HOME="$PROJECT_ROOT/tools/cargo"
 
+# Bootstrap local cargo bin directory if using local cargo/rustup
+if [[ ! -f "$CARGO_HOME/bin/rustup" ]]; then
+  if command -v rustup >/dev/null 2>&1; then
+    SYSTEM_RUSTUP="$(command -v rustup)"
+    if [[ "$SYSTEM_RUSTUP" != "$CARGO_HOME/bin/rustup" ]]; then
+      echo "Bootstrapping local rustup at $CARGO_HOME/bin/rustup..."
+      mkdir -p "$CARGO_HOME/bin"
+      cp "$SYSTEM_RUSTUP" "$CARGO_HOME/bin/rustup"
+      chmod +x "$CARGO_HOME/bin/rustup"
+      if [[ -x "$CARGO_HOME/bin/rustup" ]]; then
+        # Run a silent install/update to ensure shims are created in CARGO_HOME/bin
+        CARGO_HOME="$CARGO_HOME" RUSTUP_HOME="$RUSTUP_HOME" "$CARGO_HOME/bin/rustup" toolchain install stable >/dev/null 2>&1
+      fi
+    fi
+  fi
+fi
+
 path_prepend "$CARGO_HOME/bin"
-path_prepend "$PROJECT_ROOT/tools/flutter/bin"
+if [[ -d "$PROJECT_ROOT/tools/flutter/bin" ]]; then
+  path_prepend "$PROJECT_ROOT/tools/flutter/bin"
+elif [[ -d "$HOME/flutter/bin" ]]; then
+  path_prepend "$HOME/flutter/bin"
+fi
 
 # Android SDK (standard location).
 if [[ -z "${ANDROID_HOME-}" && -d "$HOME/Android/Sdk" ]]; then

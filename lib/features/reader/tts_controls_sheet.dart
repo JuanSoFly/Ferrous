@@ -44,135 +44,211 @@ class TtsControlsSheet extends StatelessWidget {
       builder: (context, _) {
         final isPlaying = ttsService.state == TtsState.playing;
         final isPaused = ttsService.state == TtsState.paused;
+        final theme = Theme.of(context);
+        final colorScheme = theme.colorScheme;
 
-        return Material(
-          elevation: 8,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                      tooltip: isPlaying ? 'Pause' : 'Play',
-                      onPressed: () async {
-                        if (isTextLoading) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Preparing text for TTS...'),
-                            ),
-                          );
-                          return;
-                        }
-
-                        if (isPlaying) {
-                          onPause?.call();
-                          await ttsService.pause();
-                          return;
-                        }
-
-                        if (isPaused && ttsService.canResume) {
-                          await ttsService.resume();
-                          return;
-                        }
-
-                        final speakText =
-                            (resolveTextToSpeak?.call() ?? textToSpeak).trim();
-                        if (speakText.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(emptyTextMessage)),
-                          );
-                          return;
-                        }
-
-                        // Call onStart callback if provided to let controller initialize state
-                        if (onStart != null) {
-                          onStart!();
-                        } else {
-                          await ttsService.speak(speakText);
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.stop),
-                      tooltip: 'Stop',
-                      onPressed: () async {
-                        onStop?.call();
-                        await ttsService.stop();
-                      },
-                    ),
-                    if (isTextLoading)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 4.0),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+        return Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, -3),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Status & Close Row
+                  Row(
+                    children: [
+                      Icon(
+                        isPlaying ? Icons.volume_up : (isPaused ? Icons.volume_mute : Icons.volume_off),
+                        size: 16,
+                        color: isPlaying ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isPlaying ? 'Reading Aloud' : (isPaused ? 'Reading Paused' : 'Text to Speech'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isPlaying ? colorScheme.primary : colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    const Spacer(),
-                    Text('${ttsService.rate.toStringAsFixed(1)}x'),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 120,
-                      child: Slider(
-                        value: ttsService.rate,
-                        min: 0.5,
-                        max: 2.0,
-                        divisions: 6,
-                        onChanged: (value) {
-                          ttsService.setRate(value);
+                      if (isTextLoading) ...[
+                        const SizedBox(width: 8),
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 1.5),
+                        ),
+                      ],
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () async {
+                          onStop?.call();
+                          await ttsService.stop();
+                          onClose();
                         },
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Close',
-                      onPressed: () async {
-                        onStop?.call();
-                        await ttsService.stop();
-                        onClose();
-                      },
-                    ),
-                  ],
-                ),
-                if (onContinuousChanged != null ||
-                    onTapToStartChanged != null ||
-                    onFollowModeChanged != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Playback and Speed Row
+                  Row(
+                    children: [
+                      // Play/Pause
+                      IconButton.filled(
+                        icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 22),
+                        onPressed: () async {
+                          if (isTextLoading) return;
+                          if (isPlaying) {
+                            onPause?.call();
+                            await ttsService.pause();
+                            return;
+                          }
+                          if (isPaused && ttsService.canResume) {
+                            await ttsService.resume();
+                            return;
+                          }
+                          final speakText = (resolveTextToSpeak?.call() ?? textToSpeak).trim();
+                          if (speakText.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(emptyTextMessage)),
+                            );
+                            return;
+                          }
+                          if (onStart != null) {
+                            onStart!();
+                          } else {
+                            await ttsService.speak(speakText);
+                          }
+                        },
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(44, 44),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Stop
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.stop, size: 20),
+                        onPressed: () async {
+                          onStop?.call();
+                          await ttsService.stop();
+                        },
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(44, 44),
+                          padding: EdgeInsets.zero,
+                          backgroundColor: colorScheme.surfaceContainerHigh,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 1,
+                        height: 24,
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(width: 12),
+                      // Speed Label
+                      Text(
+                        '${ttsService.rate.toStringAsFixed(1)}x',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      // Speed Slider
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3,
+                            activeTrackColor: colorScheme.primary,
+                            inactiveTrackColor: colorScheme.primary.withValues(alpha: 0.12),
+                            thumbColor: colorScheme.primary,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          ),
+                          child: Slider(
+                            value: ttsService.rate,
+                            min: 0.5,
+                            max: 2.0,
+                            divisions: 15,
+                            onChanged: (value) {
+                              ttsService.setRate(value);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // Toggle Options Row
+                  if (onContinuousChanged != null ||
+                      onTapToStartChanged != null ||
+                      onFollowModeChanged != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         if (onContinuousChanged != null)
-                          _buildToggleChip(
-                            icon: Icons.repeat,
-                            label: 'Continuous',
-                            value: isContinuous,
-                            onChanged: onContinuousChanged!,
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 4.0),
+                              child: _buildCompactToggle(
+                                context,
+                                icon: Icons.repeat,
+                                label: 'Auto-Advance',
+                                value: isContinuous,
+                                onChanged: onContinuousChanged!,
+                              ),
+                            ),
                           ),
                         if (onFollowModeChanged != null)
-                          _buildToggleChip(
-                            icon: Icons.center_focus_strong,
-                            label: 'Follow',
-                            value: isFollowMode,
-                            onChanged: onFollowModeChanged!,
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                              child: _buildCompactToggle(
+                                context,
+                                icon: Icons.center_focus_strong,
+                                label: 'Auto-Scroll',
+                                value: isFollowMode,
+                                onChanged: onFollowModeChanged!,
+                              ),
+                            ),
                           ),
                         if (onTapToStartChanged != null)
-                          _buildToggleChip(
-                            icon: Icons.touch_app,
-                            label: 'Tap to start',
-                            value: isTapToStart,
-                            onChanged: onTapToStartChanged!,
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 4.0),
+                              child: _buildCompactToggle(
+                                context,
+                                icon: Icons.touch_app,
+                                label: 'Tap to Speak',
+                                value: isTapToStart,
+                                onChanged: onTapToStartChanged!,
+                              ),
+                            ),
                           ),
                       ],
                     ),
-                  ),
-              ],
+                  ],
+                ],
+              ),
             ),
           ),
         );
@@ -180,17 +256,57 @@ class TtsControlsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildToggleChip({
+  Widget _buildCompactToggle(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return FilterChip(
-      avatar: Icon(icon, size: 16),
-      label: Text(label),
-      selected: value,
-      onSelected: onChanged,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        decoration: BoxDecoration(
+          color: value 
+              ? colorScheme.primaryContainer.withValues(alpha: 0.3) 
+              : colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: value 
+                ? colorScheme.primary 
+                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: value ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: value ? FontWeight.bold : FontWeight.w600,
+                  color: value ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

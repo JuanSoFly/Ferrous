@@ -29,36 +29,108 @@ class PdfPageViewer extends StatefulWidget {
 }
 
 class _PdfPageViewerState extends State<PdfPageViewer> {
-  Offset? _lastDoubleTapDown;
+  late final PageController _viewPageController;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewPageController = PageController(
+      initialPage: widget.pageController.pageIndex,
+    );
+    widget.pageController.addListener(_onPageControllerChanged);
+    widget.transformController.addListener(_onTransformChanged);
+  }
+
+  @override
+  void didUpdateWidget(PdfPageViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pageController != widget.pageController) {
+      oldWidget.pageController.removeListener(_onPageControllerChanged);
+      widget.pageController.addListener(_onPageControllerChanged);
+    }
+    if (oldWidget.transformController != widget.transformController) {
+      oldWidget.transformController.removeListener(_onTransformChanged);
+      widget.transformController.addListener(_onTransformChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.pageController.removeListener(_onPageControllerChanged);
+    widget.transformController.removeListener(_onTransformChanged);
+    _viewPageController.dispose();
+    super.dispose();
+  }
+
+  void _onPageControllerChanged() {
+    if (_syncing) return;
+    if (_viewPageController.hasClients) {
+      final target = widget.pageController.pageIndex;
+      if (_viewPageController.page?.round() != target) {
+        _syncing = true;
+        _viewPageController.jumpToPage(target);
+        _syncing = false;
+      }
+    }
+    // Trigger rebuild for loading/image state changes
+    setState(() {});
+  }
+
+  void _onTransformChanged() {
+    setState(() {});
+  }
+
+  void _onPageViewChanged(int index) {
+    if (_syncing) return;
+    _syncing = true;
+    widget.pageController.renderPage(index, userInitiated: true);
+    widget.transformController.value = Matrix4.identity();
+    _syncing = false;
+  }
+
+  bool _canSwipe() {
+    final scale = widget.transformController.value.getMaxScaleOnAxis();
+    return (scale - 1.0).abs() < 0.01;
+  }
 
   @override
   Widget build(BuildContext context) {
     final pageController = widget.pageController;
-    return ListenableBuilder(
-      listenable: pageController,
-      builder: (context, _) {
-        if (pageController.error != null) {
-          return _buildErrorState(pageController.error!);
-        }
 
-        if (pageController.isLoading && pageController.currentPageImage == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (pageController.error != null) {
+      return _buildErrorState(pageController.error!);
+    }
 
-        if (pageController.currentPageImage == null) {
-          return const Center(child: Text("Initializing..."));
-        }
+    if (pageController.isLoading && pageController.currentPageImage == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapUp: (details) => _handleTapUp(context, details),
-          onDoubleTapDown: (details) => _lastDoubleTapDown = details.globalPosition,
-          onDoubleTap: _handleDoubleTap,
-          onHorizontalDragEnd: _handleHorizontalDragEnd,
-          onVerticalDragEnd: _handleVerticalDragEnd,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              pageController.viewerSize = Size(constraints.maxWidth, constraints.maxHeight);
+    if (pageController.currentPageImage == null) {
+      return const Center(child: Text("Initializing..."));
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (details) => _handleTapUp(context, details),
+      onDoubleTapDown: (details) {},
+      onDoubleTap: _handleDoubleTap,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          widget.pageController.viewerSize =
+              Size(constraints.maxWidth, constraints.maxHeight);
+
+          return PageView.builder(
+            controller: _viewPageController,
+            scrollDirection: widget.modeController.useVerticalSwipe
+                ? Axis.vertical
+                : Axis.horizontal,
+            physics: _canSwipe()
+                ? const AlwaysScrollableScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            itemCount: pageController.pageCount,
+            onPageChanged: _onPageViewChanged,
+            itemBuilder: (context, index) {
               return InteractiveViewer(
                 transformationController: widget.transformController,
                 minScale: 1.0,
@@ -66,30 +138,40 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
                 panEnabled: true,
                 scaleEnabled: true,
                 child: Center(
-                  child: _buildPageLayer(context),
+                  child: _buildPageLayer(context, index),
                 ),
               );
             },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildPageLayer(BuildContext context) {
+  Widget _buildPageLayer(BuildContext context, int index) {
     final pageController = widget.pageController;
     final ttsController = widget.ttsController;
+    final pageImage = pageController.getPageImage(index);
 
-    Widget imageWidget = Image.memory(
-      pageController.currentPageImage!,
-      fit: BoxFit.contain,
-    );
+    if (pageImage == null) {
+      // Page not yet rendered — safely trigger background prefetch and show placeholder.
+      // Using preloadPage() avoids mutating the active page index or loading state,
+      // which would cause re-entrant notifyListeners() during the build phase.
+      pageController.preloadPage(index);
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final isActive = index == pageController.pageIndex;
+    final margins = pageController.getPageMargins(index);
+
+    Widget imageWidget = Image.memory(pageImage, fit: BoxFit.contain);
 
     Widget layer;
-    // Use logicalPageSize for stable UI layout (doesn't change with zoom resolution)
-    final layoutSize = pageController.logicalPageSize.isEmpty 
-        ? pageController.renderedPageSize 
+    // Use logicalPageSize for stable UI layout
+    final layoutSize = pageController.logicalPageSize.isEmpty
+        ? pageController.renderedPageSize
         : pageController.logicalPageSize;
+
     if (layoutSize.isEmpty) {
       layer = imageWidget;
     } else {
@@ -99,46 +181,62 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         child: Stack(
           children: [
             Positioned.fill(child: imageWidget),
-            ListenableBuilder(
-              listenable: ttsController,
-              builder: (context, _) {
-                if (!ttsController.showTtsControls || ttsController.ttsHighlightRects.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: PdfHighlightPainter(
-                        rects: ttsController.ttsHighlightRects,
-                        fillColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.65),
-                        borderColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
+            if (isActive)
+              ListenableBuilder(
+                listenable: ttsController,
+                builder: (context, _) {
+                  if (!ttsController.showTtsControls ||
+                      ttsController.ttsHighlightRects.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: PdfHighlightPainter(
+                          rects: ttsController.ttsHighlightRects,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withValues(alpha: 0.65),
+                          borderColor: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.9),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
           ],
         ),
       );
     }
 
-    if (pageController.autoCrop && pageController.currentMargins != null) {
+    if (pageController.autoCrop && margins != null) {
       layer = FittedBox(
         fit: BoxFit.contain,
         child: ClipRect(
-          clipper: MarginClipper(pageController.currentMargins!),
+          clipper: MarginClipper(margins),
+          child: layer,
+        ),
+      );
+    }
+
+    // Only attach pageImageKey to the active page for TTS tap detection
+    if (isActive) {
+      return KeyedSubtree(
+        key: ValueKey(index),
+        child: RepaintBoundary(
+          key: widget.pageImageKey,
           child: layer,
         ),
       );
     }
 
     return KeyedSubtree(
-      key: ValueKey(pageController.pageIndex),
-      child: RepaintBoundary(
-        key: widget.pageImageKey,
-        child: layer,
-      ),
+      key: ValueKey(index),
+      child: RepaintBoundary(child: layer),
     );
   }
 
@@ -161,12 +259,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   void _handleTapUp(BuildContext context, TapUpDetails details) {
     final chromeController = widget.chromeController;
     final screenSize = MediaQuery.of(context).size;
-    
+
     if (chromeController.isCenterTap(details.globalPosition, screenSize)) {
       chromeController.toggleChrome();
       return;
     }
-    
+
     if (chromeController.isLocked) return;
 
     // Start TTS from tap
@@ -183,36 +281,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   void _handleDoubleTap() {
     final chromeController = widget.chromeController;
     if (!chromeController.isLocked) return;
-    
-    final pos = _lastDoubleTapDown;
-    final screenSize = MediaQuery.of(context).size;
-    
-    if (pos != null && chromeController.isCenterTap(pos, screenSize)) {
-       chromeController.toggleLockMode();
-    }
+
+    // Double-tap lock toggle is handled by the parent GestureDetector
   }
-
-  void _handleHorizontalDragEnd(DragEndDetails details) {
-    final chromeController = widget.chromeController;
-    final modeController = widget.modeController;
-    final pageController = widget.pageController;
-    
-    if (chromeController.isLocked || !modeController.useHorizontalSwipe || !_canSwipe()) return;
-    final delta = modeController.getHorizontalSwipeDelta(details.primaryVelocity ?? 0);
-    if (delta != 0) pageController.renderPage(pageController.pageIndex + delta, userInitiated: true);
-  }
-
-  void _handleVerticalDragEnd(DragEndDetails details) {
-    final chromeController = widget.chromeController;
-    final modeController = widget.modeController;
-    final pageController = widget.pageController;
-
-    if (chromeController.isLocked || !modeController.useVerticalSwipe || !_canSwipe()) return;
-    final delta = modeController.getVerticalSwipeDelta(details.primaryVelocity ?? 0);
-    if (delta != 0) pageController.renderPage(pageController.pageIndex + delta, userInitiated: true);
-  }
-
-  bool _canSwipe() => (widget.transformController.value.getMaxScaleOnAxis() - 1.0).abs() < 0.01;
 }
 
 class MarginClipper extends CustomClipper<Rect> {
@@ -220,13 +291,14 @@ class MarginClipper extends CustomClipper<Rect> {
   MarginClipper(this.margins);
   @override
   Rect getClip(Size size) => Rect.fromLTWH(
-    size.width * margins.left,
-    size.height * margins.top,
-    size.width * (1.0 - margins.left - margins.right),
-    size.height * (1.0 - margins.top - margins.bottom),
-  );
+        size.width * margins.left,
+        size.height * margins.top,
+        size.width * (1.0 - margins.left - margins.right),
+        size.height * (1.0 - margins.top - margins.bottom),
+      );
   @override
-  bool shouldReclip(covariant MarginClipper oldClipper) => margins != oldClipper.margins;
+  bool shouldReclip(covariant MarginClipper oldClipper) =>
+      margins != oldClipper.margins;
 }
 
 class PdfHighlightPainter extends CustomPainter {
@@ -234,13 +306,19 @@ class PdfHighlightPainter extends CustomPainter {
   final Color fillColor;
   final Color borderColor;
 
-  PdfHighlightPainter({required this.rects, required this.fillColor, required this.borderColor});
+  PdfHighlightPainter(
+      {required this.rects, required this.fillColor, required this.borderColor});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (rects.isEmpty || size.isEmpty) return;
-    final fillPaint = Paint()..color = fillColor..style = PaintingStyle.fill;
-    final borderPaint = Paint()..color = borderColor..style = PaintingStyle.stroke..strokeWidth = 2.0;
+    final fillPaint = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
 
     for (final rect in rects) {
       final r = Rect.fromLTRB(
@@ -250,7 +328,7 @@ class PdfHighlightPainter extends CustomPainter {
         (rect.bottom * size.height).clamp(0.0, size.height),
       );
       if (r.width <= 0 || r.height <= 0) continue;
-      
+
       final inflated = r.inflate(2.0);
       final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
       canvas.drawRRect(rr, fillPaint);
@@ -259,5 +337,6 @@ class PdfHighlightPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant PdfHighlightPainter oldDelegate) => oldDelegate.rects != rects;
+  bool shouldRepaint(covariant PdfHighlightPainter oldDelegate) =>
+      oldDelegate.rects != rects;
 }

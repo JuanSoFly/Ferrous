@@ -8,20 +8,37 @@ class ReaderSettingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: BoxDecoration(
-        color: Theme.of(context).canvasColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: DefaultTabController(
         length: 2,
         child: Column(
           children: [
-            const TabBar(
-              tabs: [
-                Tab(text: 'Text'),
-                Tab(text: 'Layout'),
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TabBar(
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.symmetric(horizontal: 16),
+              indicator: UnderlineTabIndicator(
+                borderSide: BorderSide(color: theme.colorScheme.primary, width: 3),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+              ),
+              tabs: const [
+                Tab(text: 'Text Options'),
+                Tab(text: 'Page Layout'),
               ],
             ),
             Expanded(
@@ -44,38 +61,48 @@ class _TextSettingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = context.watch<ReaderThemeRepository>();
     final config = repo.config;
+    final theme = Theme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        _buildSectionTitle('Font Size', config.fontSize.toStringAsFixed(0)),
+        _buildSectionTitle(theme, 'Font Size', '${config.fontSize.toStringAsFixed(0)} px'),
         Row(
           children: [
-            IconButton(
+            IconButton.filledTonal(
               onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 160.0)),
               icon: const Icon(Icons.remove),
             ),
             Expanded(
-              child: Slider(
-                value: config.fontSize,
-                min: 12.0,
-                max: 160.0,
-                divisions: ((160 - 12) / 2).round(),
-                label: config.fontSize.round().toString(),
-                onChanged: (val) => repo.setFontSize(val),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  activeTrackColor: theme.colorScheme.primary,
+                  inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  thumbColor: theme.colorScheme.primary,
+                ),
+                child: Slider(
+                  value: config.fontSize,
+                  min: 12.0,
+                  max: 160.0,
+                  divisions: ((160 - 12) / 2).round(),
+                  onChanged: (val) => repo.setFontSize(val),
+                ),
               ),
             ),
-            IconButton(
+            IconButton.filledTonal(
               onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 160.0)),
               icon: const Icon(Icons.add),
             ),
           ],
         ),
 
-        const SizedBox(height: 16),
-        _buildSectionTitle('Font Family', config.fontFamily),
+        const SizedBox(height: 24),
+        _buildSectionTitle(theme, 'Font Family', config.fontFamily),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             'Roboto',
             'Roboto Slab',
@@ -87,8 +114,24 @@ class _TextSettingsTab extends StatelessWidget {
           ].map((font) {
             final isSelected = config.fontFamily == font;
             return ChoiceChip(
-              label: Text(font, style: _getFontStyle(font)),
+              label: Text(font, style: _getFontStyle(font)?.copyWith(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              )),
               selected: isSelected,
+              backgroundColor: theme.colorScheme.surfaceContainerLow,
+              selectedColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+              showCheckmark: false,
+              labelStyle: TextStyle(
+                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+              ),
               onSelected: (selected) {
                 if (selected) repo.setFontFamily(font);
               },
@@ -96,15 +139,22 @@ class _TextSettingsTab extends StatelessWidget {
           }).toList(),
         ),
 
-        const SizedBox(height: 16),
-        _buildSectionTitle('Font Thickness', _fontWeightLabel(config.fontWeight)),
-        Slider(
-          value: config.fontWeight.toDouble(),
-          min: 100,
-          max: 900,
-          divisions: 8,
-          label: _fontWeightLabel(config.fontWeight),
-          onChanged: (val) => repo.setFontWeight(val.round()),
+        const SizedBox(height: 24),
+        _buildSectionTitle(theme, 'Font Weight / Thickness', _fontWeightLabel(config.fontWeight)),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: theme.colorScheme.primary,
+            inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+            thumbColor: theme.colorScheme.primary,
+          ),
+          child: Slider(
+            value: config.fontWeight.toDouble(),
+            min: 100,
+            max: 900,
+            divisions: 8,
+            onChanged: (val) => repo.setFontWeight(val.round()),
+          ),
         ),
       ],
     );
@@ -133,14 +183,24 @@ class _TextSettingsTab extends StatelessWidget {
     }
   }
 
-  Widget _buildSectionTitle(String title, String value) {
+  Widget _buildSectionTitle(ThemeData theme, String title, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(value, style: const TextStyle(color: Colors.grey)),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );
@@ -152,84 +212,111 @@ class _LayoutSettingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = context.watch<ReaderThemeRepository>();
     final config = repo.config;
+    final theme = Theme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        _buildSectionTitle('Line Spacing', '${(config.lineHeight * 100).round()}%'),
-        Slider(
-          value: config.lineHeight,
-          min: 0.0, // Requested 0%
-          max: 2.0, // Requested 200%
-          divisions: 20,
-          label: '${(config.lineHeight * 100).round()}%',
-          onChanged: (val) => repo.setLineHeight(val),
+        _buildSectionTitle(theme, 'Line Spacing', '${(config.lineHeight * 100).round()}%'),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: theme.colorScheme.primary,
+            inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+            thumbColor: theme.colorScheme.primary,
+          ),
+          child: Slider(
+            value: config.lineHeight,
+            min: 0.0,
+            max: 2.0,
+            divisions: 20,
+            onChanged: (val) => repo.setLineHeight(val),
+          ),
         ),
 
-        _buildSectionTitle('Paragraph Spacing', '${config.paragraphSpacing.round()}'), // Using logical pixels roughly mapped
-        Slider(
-          value: config.paragraphSpacing,
-          min: 0.0,
-          max: 50.0, // Arbitrary max for "100%" feel? Requested 0-100%. User said 0% to 100% "with toggled Paragraph indentation". 
-          // Let's assume 0.0 to 2.0 multiplier or just pixels. 0-100 px is a lot.
-          // Let's stick to pixels for now, 0 to 40.
-          divisions: 20,
-           label: config.paragraphSpacing.toStringAsFixed(1),
-          onChanged: (val) => repo.setParagraphSpacing(val),
+        const SizedBox(height: 12),
+        _buildSectionTitle(theme, 'Paragraph Spacing', '${config.paragraphSpacing.round()} px'),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: theme.colorScheme.primary,
+            inactiveTrackColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+            thumbColor: theme.colorScheme.primary,
+          ),
+          child: Slider(
+            value: config.paragraphSpacing,
+            min: 0.0,
+            max: 50.0,
+            divisions: 20,
+            onChanged: (val) => repo.setParagraphSpacing(val),
+          ),
         ),
 
         SwitchListTile(
-          title: const Text('Paragraph Indentation'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Paragraph Indentation', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           value: config.paragraphIndent,
+          activeThumbColor: theme.colorScheme.primary,
           onChanged: (_) => repo.toggleParagraphIndent(),
         ),
 
-        const Divider(),
+        const Divider(height: 24),
 
-        _buildSectionTitle('Text Align', config.textAlign.toUpperCase()),
-        Wrap(
-          spacing: 8,
-          children: [
-            _AlignButton(icon: Icons.format_align_left, value: 'left', groupValue: config.textAlign, onChanged: repo.setTextAlign),
-            _AlignButton(icon: Icons.format_align_center, value: 'center', groupValue: config.textAlign, onChanged: repo.setTextAlign),
-            _AlignButton(icon: Icons.format_align_right, value: 'right', groupValue: config.textAlign, onChanged: repo.setTextAlign),
-            _AlignButton(icon: Icons.format_align_justify, value: 'justify', groupValue: config.textAlign, onChanged: repo.setTextAlign),
-          ],
+        _buildSectionTitle(theme, 'Text Alignment', config.textAlign.toUpperCase()),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _AlignButton(icon: Icons.format_align_left, value: 'left', groupValue: config.textAlign, onChanged: repo.setTextAlign),
+              _AlignButton(icon: Icons.format_align_center, value: 'center', groupValue: config.textAlign, onChanged: repo.setTextAlign),
+              _AlignButton(icon: Icons.format_align_right, value: 'right', groupValue: config.textAlign, onChanged: repo.setTextAlign),
+              _AlignButton(icon: Icons.format_align_justify, value: 'justify', groupValue: config.textAlign, onChanged: repo.setTextAlign),
+            ],
+          ),
         ),
 
+        const Divider(height: 32),
+
         SwitchListTile(
-          title: const Text('Hyphenation'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Hyphenation', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           value: config.hyphenation,
+          activeThumbColor: theme.colorScheme.primary,
           onChanged: (_) => repo.toggleHyphenation(),
         ),
 
-        const Divider(),
-
         SwitchListTile(
-          title: const Text('Page Margins'),
-          subtitle: const Text('Toggle standard margins'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Page Margins', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          subtitle: const Text('Show standard margins around text', style: TextStyle(fontSize: 11)),
           value: config.pageMargins,
+          activeThumbColor: theme.colorScheme.primary,
           onChanged: (_) => repo.togglePageMargins(),
-        ),
-
-        SwitchListTile(
-          title: const Text('Page Flipping'),
-          subtitle: const Text('Animate page turns'),
-          value: config.pageFlip,
-          onChanged: (_) => repo.togglePageFlip(),
         ),
       ],
     );
   }
 
-  Widget _buildSectionTitle(String title, String value) {
+  Widget _buildSectionTitle(ThemeData theme, String title, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, top: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(value, style: const TextStyle(color: Colors.grey)),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );
@@ -252,13 +339,28 @@ class _AlignButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSelected = value == groupValue;
-    return IconButton.filledTonal(
-      onPressed: () => onChanged(value),
-      isSelected: isSelected,
-      icon: Icon(icon), 
-      // style: IconButton.styleFrom(
-      //   backgroundColor: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
-      // ), // isSelected handles tonal style usually
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => onChanged(value),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 64,
+        height: 42,
+        decoration: BoxDecoration(
+          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+          size: 20,
+        ),
+      ),
     );
   }
 }

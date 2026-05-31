@@ -94,7 +94,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     final resolved = _pageController.resolvedFile;
     if (resolved == null || !resolved.isTemp) return;
     try {
-      File(resolved.path).deleteSync();
+      unawaited(File(resolved.path).delete());
     } catch (_) {}
   }
 

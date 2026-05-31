@@ -33,6 +33,7 @@ class PdfPageController extends ChangeNotifier {
   Size _viewerSize = Size.zero;
   double _devicePixelRatio = 2.0; // Default 2x, can be updated from widget
   double _currentZoomScale = 1.0;
+  bool _disposed = false;
   
   // Maximum texture dimension to prevent OOM crashes
   static const int _maxTextureDimension = 4096;
@@ -54,7 +55,7 @@ class PdfPageController extends ChangeNotifier {
   int _textRequestId = 0;
 
   // Concurrency control (F2)
-  static final Semaphore _renderSemaphore = Semaphore(2);
+  static final Semaphore _renderSemaphore = Semaphore(1);
 
   // Getters
   ResolvedBookFile? get resolvedFile => _resolvedFile;
@@ -78,14 +79,43 @@ class PdfPageController extends ChangeNotifier {
 
   set viewerSize(Size size) {
     if (_viewerSize == size) return;
+    final wasEmpty = _viewerSize.isEmpty;
+    final sizeChanged = !wasEmpty && !size.isEmpty;
     _viewerSize = size;
+    
     // When viewer size changes (e.g. rotation), we might need to invalidate cache
-    // but for now let's just keep it to avoid excessive re-renders.
-    notifyListeners();
+    // and re-render the current page to fit the new dimensions. Defer the notification
+    // or re-render to a post-frame callback to avoid calling setState() during build.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (hasListeners) {
+        if ((wasEmpty || sizeChanged) && _resolvedFile != null && !_isLoading) {
+          renderPage(_pageIndex);
+        } else {
+          notifyListeners();
+        }
+      }
+    });
   }
+
+  /// Returns the rendered page image for [index] if available in cache.
+  Uint8List? getPageImage(int index) {
+    if (index == _pageIndex) return _currentPageImage;
+    return _pageRenderCache[index];
+  }
+
+  /// Returns the crop margins for [index] if available in cache.
+  CropMargins? getPageMargins(int index) => _marginsCache[index];
 
   set devicePixelRatio(double ratio) {
     _devicePixelRatio = ratio.clamp(2.0, 3.0); // Clamp between 2x and 3x for quality/memory balance
+  }
+
+  /// Safely triggers background prefetching for a page without affecting
+  /// the active page index or loading state. Use from widget build methods
+  /// to pre-warm the cache for adjacent pages without causing re-entrant
+  /// state mutations.
+  void preloadPage(int index) {
+    _prefetchPage(index);
   }
 
   void setAutoCrop(bool value) {
@@ -107,16 +137,20 @@ class PdfPageController extends ChangeNotifier {
       Object? failure;
       try {
         await _loadDocumentInternal();
+        if (_disposed) return;
         return;
       } catch (e) {
+        if (_disposed) return;
         failure = e;
       }
 
       if (_shouldRetryPdfOpen(failure)) {
         try {
           await _loadDocumentInternal(forceRefresh: true);
+          if (_disposed) return;
           return;
         } catch (e) {
+          if (_disposed) return;
           failure = e;
         }
       }
@@ -129,6 +163,13 @@ class PdfPageController extends ChangeNotifier {
   }
 
   Future<void> renderPage(int index, {bool userInitiated = false}) async {
+    if (_disposed) return;
+    if (_pageCount <= 0 || index < 0 || index >= _pageCount) {
+      _isLoading = false;
+      _error = _pageCount <= 0 ? 'This PDF document is empty.' : 'Page index out of bounds.';
+      notifyListeners();
+      return;
+    }
     await measureAsync('pdf_page_render', () async {
       // Check cache first (R5)
       if (_pageRenderCache.containsKey(index)) {
@@ -169,6 +210,7 @@ class PdfPageController extends ChangeNotifier {
         // Start margin detection in parallel if auto-crop is on
         if (_autoCrop && !_marginsCache.containsKey(index)) {
           detectPdfWhitespace(path: _resolvedFile!.path, pageIndex: index).then((margins) {
+            if (_disposed) return;
             _marginsCache[index] = margins;
             if (_pageIndex == index) notifyListeners();
           }).catchError((e) {
@@ -176,9 +218,9 @@ class PdfPageController extends ChangeNotifier {
           });
         }
 
-        // Always render at max zoom quality (5x) from the start
+        // Always render at max zoom quality (2x) from the start
         // This ensures crystal clear quality at any zoom level without "popping"
-        const double maxZoomQuality = 5.0;
+        const double maxZoomQuality = 2.0;
         final baseWidth = _viewerSize.width * _devicePixelRatio;
         final baseHeight = _viewerSize.height * _devicePixelRatio;
         final scaledWidth = (baseWidth * maxZoomQuality).toInt();
@@ -189,6 +231,10 @@ class PdfPageController extends ChangeNotifier {
         final height = scaledHeight.clamp(800, _maxTextureDimension);
 
         await _renderSemaphore.acquire();
+        if (_disposed) {
+          _renderSemaphore.release();
+          return;
+        }
         try {
           final result = await measureAsync('render_pdf_page', () => pdf_api.renderPdfPage(
             path: _resolvedFile!.path,
@@ -196,6 +242,8 @@ class PdfPageController extends ChangeNotifier {
             width: width,
             height: height,
           ), metadata: {'page': index, 'width': width, 'height': height, 'zoom': maxZoomQuality});
+
+          if (_disposed) return;
 
           // Use ACTUAL dimensions from the rendered result, not requested dimensions
           _currentPageImage = result.data;
@@ -224,9 +272,11 @@ class PdfPageController extends ChangeNotifier {
           _renderSemaphore.release();
         }
         
+        if (_disposed) return;
         _schedulePrefetch(index);
         
       } catch (e) {
+        if (_disposed) return;
         debugPrint('PDF render error: $e');
         _error = _formatPdfError(e, context: 'Render');
         _isLoading = false;
@@ -238,8 +288,10 @@ class PdfPageController extends ChangeNotifier {
   Future<void> _loadDocumentInternal({bool forceRefresh = false}) async {
     final resolver = BookFileResolver();
     final resolved = await resolver.resolve(book, forceRefresh: forceRefresh);
+    if (_disposed) return;
     _resolvedFile = resolved;
     final count = await pdf_api.getPdfPageCount(path: resolved.path);
+    if (_disposed) return;
     _pageCount = count;
     _pageIndex = count <= 0 ? 0 : book.currentPage.clamp(0, count - 1);
 
@@ -315,11 +367,12 @@ class PdfPageController extends ChangeNotifier {
     if (_pageRenderCache.containsKey(index)) return;
     if (_prefetchInFlight.contains(index)) return;
     if (_resolvedFile == null) return;
+    if (_disposed) return;
 
     _prefetchInFlight.add(index);
     try {
       // Use same high-quality rendering as renderPage() for consistent quality
-      const double maxZoomQuality = 5.0;
+      const double maxZoomQuality = 2.0;
       final baseWidth = _viewerSize.width * _devicePixelRatio;
       final baseHeight = _viewerSize.height * _devicePixelRatio;
       final scaledWidth = (baseWidth * maxZoomQuality).toInt();
@@ -328,6 +381,10 @@ class PdfPageController extends ChangeNotifier {
       final height = scaledHeight.clamp(800, _maxTextureDimension);
 
       await _renderSemaphore.acquire();
+      if (_disposed) {
+        _renderSemaphore.release();
+        return;
+      }
       try {
         final result = await measureAsync('render_pdf_page_prefetch', () => pdf_api.renderPdfPage(
           path: _resolvedFile!.path,
@@ -336,12 +393,16 @@ class PdfPageController extends ChangeNotifier {
           height: height,
         ), metadata: {'page': index, 'width': width, 'height': height});
         
+        if (_disposed) return;
+
         _addToCache(index, result.data);
         debugPrint("PDF: Prefetched page $index");
+        notifyListeners();
       } finally {
         _renderSemaphore.release();
       }
     } catch (e) {
+      if (_disposed) return;
       debugPrint("PDF: Prefetch error for page $index: $e");
     } finally {
       if (_prefetchInFlight.contains(index)) {
@@ -351,6 +412,8 @@ class PdfPageController extends ChangeNotifier {
   }
 
   Future<void> loadPageText(int index) async {
+    if (_disposed) return;
+    if (_pageCount <= 0 || index < 0 || index >= _pageCount) return;
     await measureAsync('pdf_load_text', () async {
       final cached = _pageTextCache[index];
       if (cached != null) {
@@ -377,6 +440,7 @@ class PdfPageController extends ChangeNotifier {
         final text = await future;
         _pageTextInFlight.remove(index);
 
+        if (_disposed) return;
         if (requestId != _textRequestId) return;
 
         _pageTextCache[index] = text;
@@ -391,6 +455,7 @@ class PdfPageController extends ChangeNotifier {
         }
       } catch (e) {
         _pageTextInFlight.remove(index);
+        if (_disposed) return;
         if (requestId != _textRequestId) return;
         _isTextLoading = false;
         _textError = e.toString();
@@ -403,14 +468,17 @@ class PdfPageController extends ChangeNotifier {
   Future<void> precomputeCharacterBounds(int pageIndex) async {
     if (_resolvedFile == null) return;
     if (_pageCharBoundsCache.containsKey(pageIndex)) return;
+    if (_disposed) return;
     
     try {
       final bounds = await measureAsync('extract_all_page_character_bounds', () => pdf_api.extractAllPageCharacterBounds(
         path: _resolvedFile!.path,
         pageIndex: pageIndex,
       ), metadata: {'page': pageIndex});
+      if (_disposed) return;
       _pageCharBoundsCache[pageIndex] = bounds;
     } catch (e) {
+      if (_disposed) return;
       debugPrint('TTS: Failed to precompute bounds for page $pageIndex: $e');
     }
   }
@@ -420,6 +488,19 @@ class PdfPageController extends ChangeNotifier {
   Future<void> ensureCharacterBoundsLoaded(int pageIndex) async {
     if (_pageCharBoundsCache.containsKey(pageIndex)) return;
     await precomputeCharacterBounds(pageIndex);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    cleanup();
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
   }
 
   void cleanup() {

@@ -46,3 +46,6 @@ integration_test
 test_driver
 AGENTS.md
 test
+
+.agents
+skills-lock.json

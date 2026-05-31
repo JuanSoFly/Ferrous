@@ -128,8 +128,12 @@ int _compareVersions(String v1, String v2) {
   final parts2 = clean2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
 
   // Pad to same length
-  while (parts1.length < 3) parts1.add(0);
-  while (parts2.length < 3) parts2.add(0);
+  while (parts1.length < 3) {
+    parts1.add(0);
+  }
+  while (parts2.length < 3) {
+    parts2.add(0);
+  }
 
   for (var i = 0; i < 3; i++) {
     if (parts1[i] > parts2[i]) return 1;

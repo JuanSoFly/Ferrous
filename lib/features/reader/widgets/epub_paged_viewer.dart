@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'epub_content_viewer.dart';
@@ -7,6 +8,7 @@ class EpubPagedViewer extends StatefulWidget {
   final EpubChapterController chapterController;
   final EpubTtsController ttsController;
   final PageController pageController;
+  final ReadingMode readingMode;
   final VoidCallback onToggleChrome;
   final Function(TapUpDetails) onTapUp;
 
@@ -15,6 +17,7 @@ class EpubPagedViewer extends StatefulWidget {
     required this.chapterController,
     required this.ttsController,
     required this.pageController,
+    required this.readingMode,
     required this.onToggleChrome,
     required this.onTapUp,
   });
@@ -30,6 +33,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
 
     return PageView.builder(
       controller: widget.pageController,
+      scrollDirection: widget.readingMode == ReadingMode.vertical
+          ? Axis.vertical
+          : Axis.horizontal,
       itemCount: widget.chapterController.chapters!.length,
       onPageChanged: (index) {
         widget.chapterController.loadChapter(index, userInitiated: false);
@@ -43,7 +49,12 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
           onTapUp: widget.onTapUp,
           child: SingleChildScrollView(
             controller: scrollController,
-            padding: const EdgeInsets.only(top: 16.0, bottom: 100.0),
+            padding: const EdgeInsets.only(
+              left: 16.0,
+              right: 16.0,
+              top: 16.0,
+              bottom: 100.0,
+            ),
             child: EpubContentViewer(
               chapterIndex: index,
               htmlContent: htmlContent,

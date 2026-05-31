@@ -12,6 +12,16 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private lateinit var safHandler: SafHandler
 
+    companion object {
+        init {
+            try {
+                System.loadLibrary("pdfium")
+            } catch (e: UnsatisfiedLinkError) {
+                android.util.Log.e("MainActivity", "Failed to load pdfium: ${e.message}")
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         

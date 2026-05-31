@@ -79,41 +79,35 @@ class _ThemeOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSelected = theme == currentTheme;
     final themeData = AppThemes.themeData[theme]!;
+    final baseTheme = Theme.of(context);
 
     return Card(
-      elevation: isSelected ? 4 : 1,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isSelected
-            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
-            : BorderSide.none,
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isSelected
+              ? baseTheme.colorScheme.primary
+              : baseTheme.brightness == Brightness.dark
+                  ? const Color(0xFF2B2824)
+                  : const Color(0xFFE2E7ED),
+          width: isSelected ? 2 : 1,
+        ),
       ),
+      color: isSelected
+          ? baseTheme.colorScheme.primary.withValues(alpha: 0.04)
+          : themeData.brightness == Brightness.dark
+              ? const Color(0xFF1E1C19)
+              : Colors.white,
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(14.0),
           child: Row(
             children: [
-              // Preview Circle
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: themeData.scaffoldBackgroundColor,
-                  border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-                ),
-                child: Center(
-                  child: Text(
-                    "Ag",
-                    style: themeData.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+              _buildConcentricPreview(themeData),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -122,26 +116,82 @@ class _ThemeOption extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       description,
                       style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.color
-                              ?.withValues(alpha: 0.7)),
+                        fontSize: 12,
+                        color: baseTheme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 12),
               if (isSelected)
-                Icon(Icons.check_circle,
-                    color: Theme.of(context).colorScheme.primary),
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: baseTheme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConcentricPreview(ThemeData themeData) {
+    final bg = themeData.scaffoldBackgroundColor;
+    final primary = themeData.colorScheme.primary;
+    final surface = themeData.colorScheme.surface;
+
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: bg,
+        border: Border.all(
+          color: Colors.grey.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primary,
+              ),
+            ),
           ),
         ),
       ),

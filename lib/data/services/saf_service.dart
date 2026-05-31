@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/core/errors/exceptions.dart';
@@ -142,6 +143,16 @@ class SafService {
       return result;
     } on PlatformException catch (e) {
       throw SafException('Failed to copy linked file: ${e.message}');
+    }
+  }
+
+  /// Gets the absolute native library directory path for this app context.
+  Future<String?> getNativeLibraryDir() async {
+    try {
+      return await _channel.invokeMethod<String>('getNativeLibraryDir');
+    } on PlatformException catch (e) {
+      debugPrint('Failed to get native library directory: ${e.message}');
+      return null;
     }
   }
   /// Validates if a URI still has valid persisted permission.

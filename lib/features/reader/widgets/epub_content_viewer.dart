@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,7 +9,6 @@ import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
-import 'package:reader_app/core/utils/performance.dart';
 
 class EpubContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -30,41 +29,138 @@ class EpubContentViewer extends StatefulWidget {
 }
 
 class _EpubContentViewerState extends State<EpubContentViewer> {
-  final Map<String, String> _hyphenatedHtmlCache = {};
+  // Static cache keyed by bookId:chapterIndex:hyphenation:paragraphIndent
+  // Theme changes like font size, font family, etc. do NOT invalidate this cache.
+  static final Map<String, String> _processedHtmlCache = {};
 
-  Future<String> _getHyphenatedHtml(int index, String rawHtml, ReaderThemeConfig theme) async {
-    if (!theme.hyphenation) return rawHtml;
-    
-    final key = '$index:${theme.hashCode}';
-    if (_hyphenatedHtmlCache.containsKey(key)) {
-      return _hyphenatedHtmlCache[key]!;
+  String _cacheKey(bool hyphenation, bool paragraphIndent) {
+    final bookId = widget.chapterController.book.id;
+    return '$bookId:${widget.chapterIndex}:$hyphenation:$paragraphIndent';
+  }
+
+  Widget _buildHtmlContent(
+    String content, {
+    required bool hyphenation,
+    required bool paragraphIndent,
+    required List<TagExtension> extensions,
+    required double horizontalMargin,
+    required ReaderThemeConfig themeConfig,
+  }) {
+    final key = _cacheKey(hyphenation, paragraphIndent);
+
+    // Cache hit: render synchronously, no FutureBuilder
+    if (_processedHtmlCache.containsKey(key)) {
+      return _buildHtmlWidget(
+        _processedHtmlCache[key]!,
+        extensions: extensions,
+        horizontalMargin: horizontalMargin,
+        themeConfig: themeConfig,
+      );
     }
-    
-    final processed = await measureAsync('epub_hyphenation', () => compute(HyphenationHelper.processHtmlIsolated, rawHtml));
-    _hyphenatedHtmlCache[key] = processed;
+
+    // Cache miss: process in background isolate, show raw content immediately
+    return FutureBuilder<String>(
+      future: _getProcessedHtml(key, content, hyphenation, paragraphIndent),
+      initialData: content,
+      builder: (context, snapshot) {
+        return _buildHtmlWidget(
+          snapshot.data ?? content,
+          extensions: extensions,
+          horizontalMargin: horizontalMargin,
+          themeConfig: themeConfig,
+        );
+      },
+    );
+  }
+
+  Future<String> _getProcessedHtml(
+    String key,
+    String rawHtml,
+    bool hyphenation,
+    bool paragraphIndent,
+  ) async {
+    if (!hyphenation && !paragraphIndent) return rawHtml;
+
+    await HyphenationHelper.init();
+    final processed = await compute(
+      HyphenationHelper.processHtmlAndIndentIsolated,
+      {
+        'html': rawHtml,
+        'hyphenation': hyphenation,
+        'paragraphIndent': paragraphIndent,
+      },
+    );
+    _processedHtmlCache[key] = processed;
     return processed;
   }
 
-  TextAlign _parseTextAlign(String align) {
-    switch (align) {
-      case 'left': return TextAlign.left;
-      case 'right': return TextAlign.right;
-      case 'center': return TextAlign.center;
-      case 'justify': return TextAlign.justify;
-      default: return TextAlign.justify;
-    }
-  }
-
-  ({String? fontFamily, List<String>? fontFamilyFallback}) _getGoogleFontData(String family) {
+  Widget _buildHtmlWidget(
+    String content, {
+    required List<TagExtension> extensions,
+    required double horizontalMargin,
+    required ReaderThemeConfig themeConfig,
+  }) {
+    late final ({String? fontFamily, List<String>? fontFamilyFallback}) fontData;
     try {
-      final textStyle = GoogleFonts.getFont(family);
-      return (
+      final textStyle = GoogleFonts.getFont(themeConfig.fontFamily);
+      fontData = (
         fontFamily: textStyle.fontFamily,
         fontFamilyFallback: textStyle.fontFamilyFallback,
       );
     } catch (_) {
-      return (fontFamily: family, fontFamilyFallback: null);
+      fontData = (fontFamily: themeConfig.fontFamily, fontFamilyFallback: null);
     }
+
+    TextAlign parseTextAlign(String align) {
+      switch (align) {
+        case 'left':
+          return TextAlign.left;
+        case 'right':
+          return TextAlign.right;
+        case 'center':
+          return TextAlign.center;
+        case 'justify':
+          return TextAlign.justify;
+        default:
+          return TextAlign.justify;
+      }
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
+      child: Html(
+        data: content,
+        extensions: extensions,
+        style: {
+          "body": Style(
+            fontSize: FontSize(themeConfig.fontSize),
+            lineHeight: LineHeight(themeConfig.lineHeight),
+            fontFamily: fontData.fontFamily,
+            fontFamilyFallback: fontData.fontFamilyFallback,
+            fontWeight: FontWeight.values[
+                (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+            textAlign: parseTextAlign(themeConfig.textAlign),
+            letterSpacing: themeConfig.wordSpacing,
+            padding: HtmlPaddings.zero,
+            margin: Margins.zero,
+          ),
+          "tts-highlight": Style(
+            backgroundColor: Theme.of(context)
+                .colorScheme
+                .primary
+                .withValues(alpha: 0.3),
+          ),
+          "p": Style(
+            margin: Margins.only(bottom: themeConfig.paragraphSpacing),
+            textAlign: parseTextAlign(themeConfig.textAlign),
+          ),
+          "img": Style(
+            width: Width(100, Unit.percent),
+            margin: Margins.only(bottom: 24.0),
+          ),
+        },
+      ),
+    );
   }
 
   @override
@@ -72,22 +168,25 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final themeRepo = context.watch<ReaderThemeRepository>();
     final themeConfig = themeRepo.config;
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
-    // Show highlights when TTS is playing OR controls are visible (paused state)
-    final isTtsActive = widget.ttsController.showTtsControls || 
-                        widget.ttsController.ttsService.state == TtsState.playing;
-    final isCurrentChapter = widget.chapterIndex == widget.chapterController.currentChapterIndex;
+    final isTtsActive = widget.ttsController.showTtsControls ||
+        widget.ttsController.ttsService.state != TtsState.stopped;
+    final isCurrentChapter =
+        widget.chapterIndex == widget.chapterController.currentChapterIndex;
 
-    const ttsHighlightTag = 'tts-highlight';
-    final highlightColor = Theme.of(context).colorScheme.primary.withValues(alpha: 0.3);
+    final highlightColor =
+        Theme.of(context).colorScheme.primary.withValues(alpha: 0.3);
 
     final extensions = [
       TagExtension(
-        tagsToExtend: {ttsHighlightTag},
+        tagsToExtend: {'tts-highlight'},
         builder: (context) {
           final text = context.node.text ?? '';
-          final style = context.style?.generateTextStyle() ?? const TextStyle();
+          final style =
+              context.style?.generateTextStyle() ?? const TextStyle();
           return _TtsHighlightSpan(
-            key: isCurrentChapter ? widget.ttsController.ttsHighlightKey : null,
+            key: isCurrentChapter
+                ? widget.ttsController.ttsHighlightKey
+                : null,
             text: text,
             textStyle: style,
             highlightColor: highlightColor,
@@ -96,61 +195,35 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       ),
     ];
 
-    Widget buildHtml(String content) {
-      return FutureBuilder<String>(
-        future: _getHyphenatedHtml(widget.chapterIndex, content, themeConfig),
-        initialData: _hyphenatedHtmlCache['${widget.chapterIndex}:${themeConfig.hashCode}'],
-        builder: (context, snapshot) {
-          final displayContent = snapshot.data ?? content;
-          return Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
-            child: Html(
-              data: displayContent,
-              extensions: extensions,
-              style: {
-                "body": Style(
-                  fontSize: FontSize(themeConfig.fontSize),
-                  lineHeight: LineHeight(themeConfig.lineHeight),
-                  fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
-                  fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                  fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
-                  textAlign: _parseTextAlign(themeConfig.textAlign),
-                  letterSpacing: themeConfig.wordSpacing,
-                  padding: HtmlPaddings.zero,
-                  margin: Margins.zero,
-                ),
-                ttsHighlightTag: Style(
-                  backgroundColor: highlightColor,
-                ),
-                "p": Style(
-                  margin: Margins.only(bottom: themeConfig.paragraphSpacing),
-                  textAlign: _parseTextAlign(themeConfig.textAlign),
-                ),
-                "img": Style(
-                  width: Width(100, Unit.percent),
-                  margin: Margins.only(bottom: 24.0), // Fixed image spacing
-                ),
-              },
-            ),
-          );
-        },
-      );
-    }
-
     if (isTtsActive && isCurrentChapter) {
       return ListenableBuilder(
         listenable: widget.ttsController,
         builder: (context, _) {
           widget.ttsController.highlightKeyAssigned = false;
-          final content = widget.ttsController.buildTtsHighlightedHtml(widget.htmlContent);
+          final content = widget.ttsController
+              .buildTtsHighlightedHtml(widget.htmlContent);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             widget.ttsController.maybeEnsureHighlightVisible();
           });
-          return buildHtml(content);
+          return _buildHtmlContent(
+            content,
+            hyphenation: themeConfig.hyphenation,
+            paragraphIndent: themeConfig.paragraphIndent,
+            extensions: extensions,
+            horizontalMargin: horizontalMargin,
+            themeConfig: themeConfig,
+          );
         },
       );
     } else {
-      return buildHtml(widget.htmlContent);
+      return _buildHtmlContent(
+        widget.htmlContent,
+        hyphenation: themeConfig.hyphenation,
+        paragraphIndent: themeConfig.paragraphIndent,
+        extensions: extensions,
+        horizontalMargin: horizontalMargin,
+        themeConfig: themeConfig,
+      );
     }
   }
 }
@@ -172,7 +245,8 @@ class _TtsHighlightSpan extends StatelessWidget {
     if (text.isEmpty) return const SizedBox.shrink();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? Colors.yellow.shade600 : Colors.orange.shade700;
+    final borderColor =
+        isDark ? Colors.yellow.shade600 : Colors.orange.shade700;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),

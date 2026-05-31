@@ -112,7 +112,7 @@ class BookRepository extends ChangeNotifier {
     });
   }
 
-  static final Semaphore _coverSemaphore = Semaphore(2);
+  static final Semaphore _coverSemaphore = Semaphore(1);
 
   Future<int> generateCovers(String coversDir) async {
     final books = getAllBooks();
@@ -125,7 +125,7 @@ class BookRepository extends ChangeNotifier {
         final existingCoverPath = book.coverPath;
         final hasExistingCoverFile = existingCoverPath != null &&
             existingCoverPath.isNotEmpty &&
-            File(existingCoverPath).existsSync();
+            await File(existingCoverPath).exists();
 
         final expectedCoverPath = '$coversDir/${book.id}.png';
 
@@ -133,7 +133,7 @@ class BookRepository extends ChangeNotifier {
           return false;
         }
 
-        if (File(expectedCoverPath).existsSync()) {
+        if (await File(expectedCoverPath).exists()) {
           final updated = book.copyWith(coverPath: expectedCoverPath);
           await box.put(book.id, updated);
           return true;

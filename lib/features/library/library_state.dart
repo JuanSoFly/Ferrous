@@ -14,6 +14,8 @@ class LibraryState {
   final String? statusMessage;
   final String searchQuery;
   final Book? splitPendingBook;
+  final bool isGeneratingCovers;
+  final int totalCoversToGenerate;
 
   // Memoization cache
   final List<Book>? _cachedFilteredBooks;
@@ -27,6 +29,8 @@ class LibraryState {
     this.statusMessage,
     this.searchQuery = '',
     this.splitPendingBook,
+    this.isGeneratingCovers = false,
+    this.totalCoversToGenerate = 0,
     List<Book>? cachedFilteredBooks,
     String? cachedQuery,
     List<Book>? cachedSourceBooks,
@@ -42,6 +46,8 @@ class LibraryState {
     String? searchQuery,
     Book? splitPendingBook,
     bool clearSplitPending = false,
+    bool? isGeneratingCovers,
+    int? totalCoversToGenerate,
   }) {
     final newBooks = books ?? this.books;
     final newQuery = searchQuery ?? this.searchQuery;
@@ -57,6 +63,8 @@ class LibraryState {
       statusMessage: statusMessage,
       searchQuery: newQuery,
       splitPendingBook: clearSplitPending ? null : (splitPendingBook ?? this.splitPendingBook),
+      isGeneratingCovers: isGeneratingCovers ?? this.isGeneratingCovers,
+      totalCoversToGenerate: totalCoversToGenerate ?? this.totalCoversToGenerate,
       cachedFilteredBooks: (booksChanged || queryChanged) ? null : _cachedFilteredBooks,
       cachedQuery: (booksChanged || queryChanged) ? null : _cachedQuery,
       cachedSourceBooks: (booksChanged || queryChanged) ? null : _cachedSourceBooks,
@@ -91,7 +99,7 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   LibraryController(this._bookRepository) : super(const LibraryState()) {
     loadBooks();
-    _maybeGenerateMissingCovers();
+    unawaited(_maybeGenerateMissingCovers());
   }
 
   @override
@@ -106,18 +114,30 @@ class LibraryController extends StateNotifier<LibraryState> {
     state = state.copyWith(books: books);
   }
 
-  void _maybeGenerateMissingCovers() {
+  Future<void> _maybeGenerateMissingCovers() async {
     if (_coverGenerationStarted) return;
     final books = _bookRepository.getAllBooks();
-    final needsCovers = books.any((book) {
+
+    int booksNeedingCovers = 0;
+    for (final book in books) {
       final coverPath = book.coverPath;
-      if (coverPath == null || coverPath.isEmpty) return true;
-      return !File(coverPath).existsSync();
-    });
-    if (!needsCovers) return;
+      if (coverPath == null || coverPath.isEmpty) {
+        booksNeedingCovers++;
+        continue;
+      }
+      if (!await File(coverPath).exists()) {
+        booksNeedingCovers++;
+      }
+    }
+
+    if (booksNeedingCovers == 0) return;
 
     _coverGenerationStarted = true;
-    unawaited(_generateCoversInBackground());
+    state = state.copyWith(
+      isGeneratingCovers: true,
+      totalCoversToGenerate: booksNeedingCovers,
+    );
+    await _generateCoversInBackground();
   }
   void setSearchQuery(String query) {
     _searchDebounce?.cancel();
@@ -284,8 +304,10 @@ class LibraryController extends StateNotifier<LibraryState> {
 
       await _bookRepository.generateCovers(coversDir);
 
+      state = state.copyWith(isGeneratingCovers: false);
       loadBooks();
     } catch (e) {
+      state = state.copyWith(isGeneratingCovers: false);
     }
   }
 

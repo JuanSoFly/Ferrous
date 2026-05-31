@@ -246,7 +246,7 @@ class CbzPageController extends ChangeNotifier {
   void cleanupTempFile() {
     if (_resolvedFile == null || !_resolvedFile!.isTemp) return;
     try {
-      File(_resolvedFile!.path).deleteSync();
+      unawaited(File(_resolvedFile!.path).delete());
     } catch (_) {}
   }
 }

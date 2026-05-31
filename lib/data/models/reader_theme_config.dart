@@ -39,8 +39,8 @@ class ReaderThemeConfig {
   final int fontWeight;
 
   const ReaderThemeConfig({
-    this.fontSize = 20.0,
-    this.fontFamily = 'Roboto',
+    this.fontSize = 14.0,
+    this.fontFamily = 'Merriweather',
     this.lineHeight = 1.5,
     this.paragraphSpacing = 10.0,
     this.textAlign = 'justify',

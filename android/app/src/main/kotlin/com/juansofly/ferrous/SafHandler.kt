@@ -92,6 +92,9 @@ class SafHandler(private val activity: MainActivity) {
                     }
                 }
             }
+            "getNativeLibraryDir" -> {
+                result.success(activity.applicationInfo.nativeLibraryDir)
+            }
             "validateUriPermission" -> {
                 val uriString = call.argument<String>("uri")
                 if (uriString == null) {

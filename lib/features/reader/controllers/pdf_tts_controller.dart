@@ -186,16 +186,20 @@ class PdfTtsController extends ChangeNotifier {
   }
 
   void _handleTtsFinished() {
-    if (!_showTtsControls || !_ttsContinuous) return;
+    if (!_ttsContinuous) return;
     unawaited(advanceToNextReadablePageAndSpeak());
   }
 
   void _handleTtsProgress() {
-    if (!_showTtsControls || _ttsService.state != TtsState.playing) {
+    if (_ttsService.state == TtsState.stopped) {
       if (_ttsHighlightRects.isNotEmpty) {
         _ttsHighlightRects = const [];
         notifyListeners();
       }
+      return;
+    }
+
+    if (_ttsService.state != TtsState.playing) {
       return;
     }
 
@@ -263,7 +267,9 @@ class PdfTtsController extends ChangeNotifier {
 
     final clampedEnd = end.clamp(0, map.normalizedToRaw.length);
     final rawStart = map.normalizedToRaw[start];
-    final rawEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+    final rawEnd = clampedEnd < map.normalizedToRaw.length
+        ? map.normalizedToRaw[clampedEnd]
+        : map.normalizedToRaw[clampedEnd - 1] + 1;
 
     final cachedBounds = pageController.pageCharBoundsCache[pageController.pageIndex];
     if (cachedBounds != null && cachedBounds.isNotEmpty) {

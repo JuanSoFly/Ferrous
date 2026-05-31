@@ -27,9 +27,14 @@ class PerfLogger {
       
       final files = await perfDir.list().where((e) => e is File).toList();
       if (files.length > 10) {
-        files.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
-        for (var i = 0; i < files.length - 10; i++) {
-          await files[i].delete();
+        final fileStats = <MapEntry<FileSystemEntity, DateTime>>[];
+        for (final file in files) {
+          final stat = await file.stat();
+          fileStats.add(MapEntry(file, stat.modified));
+        }
+        fileStats.sort((a, b) => a.value.compareTo(b.value));
+        for (var i = 0; i < fileStats.length - 10; i++) {
+          await fileStats[i].key.delete();
         }
       }
     } catch (e) {

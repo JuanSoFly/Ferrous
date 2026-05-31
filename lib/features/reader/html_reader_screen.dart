@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:html/parser.dart' as html_parser;
@@ -127,7 +129,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final resolved = await resolver.resolve(widget.book);
       _resolvedFile = resolved;
       final html = await loadContent(resolved.path);
-      final plainText = _htmlToPlainText(html);
+      final plainText = await compute(_htmlToPlainTextStatic, html);
 
       // Preload the current font family before rendering
       final fontFamily = themeRepo.config.fontFamily;
@@ -177,7 +179,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     final resolved = _resolvedFile;
     if (resolved == null || !resolved.isTemp) return;
     try {
-      File(resolved.path).deleteSync();
+      unawaited(File(resolved.path).delete());
     } catch (_) {
       // Ignore cleanup failures
     }
@@ -293,7 +295,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     );
   }
 
-  String _htmlToPlainText(String html) {
+  static String _htmlToPlainTextStatic(String html) {
     if (html.trim().isEmpty) return '';
     final document = html_parser.parse(html);
     document.querySelectorAll('script,style,noscript').forEach((e) => e.remove());
