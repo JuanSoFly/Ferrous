@@ -8,6 +8,7 @@ import 'package:reader_app/features/reader/epub_reader.dart';
 import 'package:reader_app/features/reader/cbz_reader.dart';
 import 'package:reader_app/features/reader/docx_reader.dart';
 import 'package:reader_app/features/reader/mobi_reader.dart';
+import 'package:reader_app/features/reader/txt_reader.dart';
 
 /// Reader builder function type.
 typedef ReaderBuilder = Widget Function(Book book, BookRepository repository);
@@ -22,6 +23,7 @@ final Map<BookFormat, ReaderBuilder> _readerBuilders = {
   BookFormat.mobi: (book, repo) => MobiReaderScreen(book: book, repository: repo),
   BookFormat.azw: (book, repo) => MobiReaderScreen(book: book, repository: repo),
   BookFormat.azw3: (book, repo) => MobiReaderScreen(book: book, repository: repo),
+  BookFormat.txt: (book, repo) => TxtReaderScreen(book: book, repository: repo),
 };
 
 class ReaderScreen extends StatelessWidget {

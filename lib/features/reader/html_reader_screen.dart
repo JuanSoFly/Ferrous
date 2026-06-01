@@ -10,12 +10,16 @@ import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
-import 'package:reader_app/core/utils/text_normalization.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/data/services/tts_service.dart';
+import 'package:reader_app/features/reader/controllers/html_tts_controller.dart';
+import 'package:reader_app/features/reader/tts_controls_sheet.dart';
+import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:reader_app/data/models/tts_highlight_style.dart';
 
 /// Shared base class for HTML-based text readers (DOCX, MOBI).
 
@@ -66,6 +70,7 @@ class HtmlReaderConfig {
 abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T>
     with WidgetsBindingObserver {
   String? _htmlContent;
+  String? _hyphenatedHtml;
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
@@ -83,6 +88,10 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
 
+  // TTS implementation
+  late final TtsService _ttsService;
+  late final HtmlTtsController _ttsController;
+
   /// Override to provide reader-specific configuration.
   HtmlReaderConfig get config;
 
@@ -96,6 +105,16 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     _readingMode = widget.book.readingMode;
     _lastScrollPosition = widget.book.scrollPosition;
     _chromeController.addListener(_onChromeChanged);
+
+    _ttsService = TtsService();
+    _ttsController = HtmlTtsController(
+      book: widget.book,
+      repository: widget.repository,
+      ttsService: _ttsService,
+      scrollController: _scrollController,
+      getPlainText: () => _plainText,
+    );
+
     _loadDocument();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeController.enterImmersiveMode();
@@ -112,6 +131,8 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     _scrollController.dispose();
     _chromeController.removeListener(_onChromeChanged);
     _chromeController.exitToNormalMode();
+    _ttsController.dispose();
+    _ttsService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -123,23 +144,44 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   Future<void> _loadDocument() async {
     // Capture theme repository before async operations
     final themeRepo = context.read<ReaderThemeRepository>();
-    
+
     try {
       final resolver = BookFileResolver();
       final resolved = await resolver.resolve(widget.book);
       _resolvedFile = resolved;
       final html = await loadContent(resolved.path);
-      final plainText = await compute(_htmlToPlainTextStatic, html);
+
+      // Run expensive text processing in background isolates
+      final plainTextFuture = compute(_htmlToPlainTextStatic, html);
+      final sentenceSpansFuture = plainTextFuture.then(
+        (plainText) => compute(splitIntoSentences, plainText),
+      );
+
+      // Precompute hyphenation in background if enabled.
+      // Uses processHtmlIsolated which calls init() inside the isolate
+      // so the hyphenator is available in the background isolate's static field.
+      final shouldHyphenate = themeRepo.config.hyphenation;
+      Future<String?> hyphenationFuture;
+      if (shouldHyphenate) {
+        hyphenationFuture = compute(HyphenationHelper.processHtmlIsolated, html);
+      } else {
+        hyphenationFuture = Future.value(null);
+      }
 
       // Preload the current font family before rendering
       final fontFamily = themeRepo.config.fontFamily;
       await _preloadFont(fontFamily);
       _lastLoadedFontFamily = fontFamily;
 
+      final plainText = await plainTextFuture;
+      final sentenceSpans = await sentenceSpansFuture;
+      final hyphenatedHtml = await hyphenationFuture;
+
       setState(() {
         _htmlContent = html;
         _plainText = plainText;
-        _sentenceSpans = splitIntoSentences(plainText);
+        _sentenceSpans = sentenceSpans;
+        _hyphenatedHtml = hyphenatedHtml;
         _isLoading = false;
       });
 
@@ -154,14 +196,32 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     }
   }
 
-  /// Called when theme settings change - preload font if it changed
+  /// Called when theme settings change - preload font if it changed,
+  /// recompute hyphenation if the setting was toggled.
   void _onThemeChanged() {
-    final newFontFamily = _themeRepository?.config.fontFamily ?? '';
+    final themeConfig = _themeRepository?.config;
+    if (themeConfig == null) return;
+
+    // Handle font family changes
+    final newFontFamily = themeConfig.fontFamily;
     if (newFontFamily.isNotEmpty && newFontFamily != _lastLoadedFontFamily) {
       _lastLoadedFontFamily = newFontFamily;
       _preloadFont(newFontFamily).then((_) {
         if (mounted) setState(() {});
       });
+    }
+
+    // Handle hyphenation toggle at runtime
+    if (_htmlContent != null) {
+      if (themeConfig.hyphenation && _hyphenatedHtml == null) {
+        // Hyphenation was just enabled — compute in background
+        compute(HyphenationHelper.processHtmlIsolated, _htmlContent!).then((result) {
+          if (mounted) setState(() => _hyphenatedHtml = result);
+        });
+      } else if (!themeConfig.hyphenation && _hyphenatedHtml != null) {
+        // Hyphenation was just disabled — clear cache
+        setState(() => _hyphenatedHtml = null);
+      }
     }
   }
 
@@ -191,6 +251,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       _saveScrollProgress();
+      _ttsController.saveCurrentTtsSentence();
     }
   }
 
@@ -198,6 +259,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
       _chromeController.toggleChrome();
+      _ttsController.setTtsControlsVisible(_chromeController.showChrome);
     }
   }
 
@@ -230,8 +292,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       );
     }
   }
-
-
 
   Future<void> _showReadingModePicker() async {
     final selected = await showReadingModeSheet(
@@ -299,32 +359,72 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     if (html.trim().isEmpty) return '';
     final document = html_parser.parse(html);
     document.querySelectorAll('script,style,noscript').forEach((e) => e.remove());
-    final rawText = document.body?.text ??
-        document.documentElement?.text ??
-        document.text ??
-        '';
-    return normalizePlainText(rawText);
+    return DomTextUtils.extractPlainText(document.body ?? document.documentElement);
   }
 
   @override
   Widget build(BuildContext context) {
-    final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        _chromeController,
+        _ttsController,
+      ]),
+      builder: (context, _) {
+        final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTapUp: _handleTapUp,
-              onDoubleTapDown: _handleDoubleTapDown,
-              onDoubleTap: _handleDoubleTap,
-              child: _buildBody(),
+        return Scaffold(
+          body: PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) {
+                _saveScrollProgress();
+                _ttsController.saveCurrentTtsSentence();
+              }
+            },
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTapUp: _handleTapUp,
+                    onDoubleTapDown: _handleDoubleTapDown,
+                    onDoubleTap: _handleDoubleTap,
+                    child: _buildBody(),
+                  ),
+                ),
+                if (showChrome) _buildTopBar(),
+                if (_ttsController.showTtsControls)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: TtsControlsSheet(
+                      ttsService: _ttsController.ttsService,
+                      textToSpeak: '',
+                      resolveTextToSpeak: () => _ttsController.resolveTtsText(),
+                      onStart: () async {
+                        final text = _ttsController.resolveTtsText();
+                        if (text.trim().isNotEmpty) {
+                          await _ttsController.ttsService.speak(text);
+                        }
+                      },
+                      isContinuous: _ttsController.ttsContinuous,
+                      isFollowMode: _ttsController.ttsFollowMode,
+                      isTapToStart: _ttsController.tapToStartEnabled,
+                      onContinuousChanged: _ttsController.setTtsContinuous,
+                      onFollowModeChanged: _ttsController.setTtsFollowMode,
+                      onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                      onClose: _ttsController.closeTtsControls,
+                      highlightStyle: themeRepo.highlightStyle,
+                      onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (showChrome) _buildTopBar(),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -349,7 +449,8 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       );
     }
 
-
+    final isTtsActive = _ttsController.showTtsControls ||
+        _ttsController.ttsService.state != TtsState.stopped;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
@@ -366,38 +467,186 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
             final themeConfig = themeRepo.config;
             final spacing = themeConfig.paragraphSpacing; 
             
-             // Margins
-              final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
+            // Margins
+            final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
 
-             final displayContent = themeConfig.hyphenation
-                 ? HyphenationHelper.processHtml(_htmlContent ?? '')
-                 : (_htmlContent ?? '');
+            final baseHtml = themeConfig.hyphenation
+                ? (_hyphenatedHtml ?? _htmlContent ?? '')
+                : (_htmlContent ?? '');
 
-             return Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
-                child: Html(
-                 data: displayContent,
-                style: {
-                  "body": Style(
-                    fontSize: FontSize(themeConfig.fontSize),
-                    lineHeight: LineHeight(themeConfig.lineHeight),
-                    fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
-                    fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                    fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                    textAlign: _parseTextAlign(themeConfig.textAlign),
-                    letterSpacing: themeConfig.wordSpacing,
-                  ),
-                  "p": Style(
-                    margin: Margins.only(
-                      bottom: spacing,
-                      top: 0,
-                    ),
-                    textAlign: _parseTextAlign(themeConfig.textAlign),
-                  ),
+            final extensions = [
+              TagExtension(
+                tagsToExtend: {'tts-highlight'},
+                builder: (ctx) {
+                  final text = ctx.node.text ?? '';
+                  final style =
+                      ctx.style?.generateTextStyle() ?? const TextStyle();
+                  return _TtsHighlightSpan(
+                    key: _ttsController.ttsHighlightKey,
+                    text: text,
+                    textStyle: style,
+                    highlightStyle: themeRepo.highlightStyle,
+                  );
                 },
               ),
-            );
+            ];
+
+            Widget buildHtmlWidget(String displayContent) {
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
+                child: Html(
+                  data: displayContent,
+                  extensions: extensions,
+                  style: {
+                    "body": Style(
+                      fontSize: FontSize(themeConfig.fontSize),
+                      lineHeight: LineHeight(themeConfig.lineHeight),
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      textAlign: _parseTextAlign(themeConfig.textAlign),
+                      letterSpacing: themeConfig.wordSpacing,
+                      padding: HtmlPaddings.zero,
+                      margin: Margins.zero,
+                    ),
+                    "tts-highlight": Style(
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.3),
+                    ),
+                    "p": Style(
+                      margin: Margins.only(
+                        bottom: spacing,
+                        top: 0,
+                      ),
+                      textAlign: _parseTextAlign(themeConfig.textAlign),
+                    ),
+                    "img": Style(
+                      width: Width(100, Unit.percent),
+                      margin: Margins.only(bottom: 24.0),
+                    ),
+                    "h1": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 1.5),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(top: 24, bottom: 12),
+                    ),
+                    "h2": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 1.35),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(top: 20, bottom: 10),
+                    ),
+                    "h3": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 1.2),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(top: 18, bottom: 8),
+                    ),
+                    "h4": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 1.1),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(top: 16, bottom: 8),
+                    ),
+                    "ul": Style(
+                      padding: HtmlPaddings.only(left: 20),
+                      margin: Margins.only(bottom: spacing, top: 0),
+                    ),
+                    "ol": Style(
+                      padding: HtmlPaddings.only(left: 20),
+                      margin: Margins.only(bottom: spacing, top: 0),
+                    ),
+                    "li": Style(
+                      fontSize: FontSize(themeConfig.fontSize),
+                      lineHeight: LineHeight(themeConfig.lineHeight),
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(bottom: 6),
+                    ),
+                    "table": Style(
+                      width: Width(100, Unit.percent),
+                      margin: Margins.symmetric(vertical: 16.0),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 1.0),
+                    ),
+                    "th": Style(
+                      padding: HtmlPaddings.all(10.0),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      fontWeight: FontWeight.bold,
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
+                    ),
+                    "td": Style(
+                      padding: HtmlPaddings.all(8.0),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
+                    ),
+                    "blockquote": Style(
+                      margin: Margins.symmetric(horizontal: 16, vertical: 8),
+                      padding: HtmlPaddings.all(12),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                      border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 4)),
+                    ),
+                    "hr": Style(
+                      margin: Margins.symmetric(vertical: 24),
+                      height: Height(1),
+                      backgroundColor: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                    "pre": Style(
+                      fontFamily: 'JetBrains Mono',
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                      padding: HtmlPaddings.all(8),
+                    ),
+                    "code": Style(
+                      fontFamily: 'JetBrains Mono',
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                      padding: HtmlPaddings.all(4),
+                    ),
+                    ".list-item": Style(
+                      fontSize: FontSize(themeConfig.fontSize),
+                      lineHeight: LineHeight(themeConfig.lineHeight),
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(bottom: 8),
+                    ),
+                    ".choice-item": Style(
+                      fontSize: FontSize(themeConfig.fontSize),
+                      lineHeight: LineHeight(themeConfig.lineHeight),
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(bottom: 6),
+                    ),
+                  },
+                ),
+              );
+            }
+
+            if (isTtsActive) {
+              return ListenableBuilder(
+                listenable: _ttsController,
+                builder: (context, _) {
+                  _ttsController.highlightKeyAssigned = false;
+                  final content = _ttsController.buildTtsHighlightedHtml(baseHtml);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _ttsController.maybeEnsureHighlightVisible();
+                  });
+                  return buildHtmlWidget(content);
+                },
+              );
+            } else {
+              return buildHtmlWidget(baseHtml);
+            }
           },
         ),
       ),
@@ -434,6 +683,11 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   icon: Icon(_chromeController.isLocked ? Icons.lock : Icons.lock_open),
                   tooltip: _chromeController.isLocked ? 'Unlock' : 'Lock',
                   onPressed: _toggleLockModeWithFeedback,
+                ),
+                IconButton(
+                  icon: Icon(_ttsController.showTtsControls ? Icons.volume_up : Icons.volume_mute),
+                  tooltip: 'Read Aloud',
+                  onPressed: () => _ttsController.toggleTts(),
                 ),
                 IconButton(
                   icon: const Icon(Icons.settings),
@@ -475,3 +729,83 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     }
   }
 }
+
+class _TtsHighlightSpan extends StatelessWidget {
+  final String text;
+  final TextStyle textStyle;
+  final TtsHighlightStyle highlightStyle;
+
+  const _TtsHighlightSpan({
+    super.key,
+    required this.text,
+    required this.textStyle,
+    required this.highlightStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+
+    BoxDecoration decoration;
+    TextStyle highlightedTextStyle;
+    EdgeInsets padding;
+
+    switch (highlightStyle) {
+      case TtsHighlightStyle.softPill:
+        decoration = BoxDecoration(
+          color: primaryColor.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(4),
+        );
+        highlightedTextStyle = textStyle.copyWith(
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+        );
+        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+        break;
+
+      case TtsHighlightStyle.underline:
+        decoration = BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: primaryColor,
+              width: 2.5,
+            ),
+          ),
+        );
+        highlightedTextStyle = textStyle.copyWith(
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+        );
+        padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
+        break;
+
+      case TtsHighlightStyle.classicClean:
+        decoration = BoxDecoration(
+          color: primaryColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: primaryColor.withValues(alpha: 0.4),
+            width: 1.0,
+          ),
+        );
+        highlightedTextStyle = textStyle.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+        break;
+    }
+
+    return Container(
+      padding: padding,
+      decoration: decoration,
+      child: Text(
+        text,
+        style: highlightedTextStyle,
+      ),
+    );
+  }
+}
+

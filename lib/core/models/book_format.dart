@@ -8,6 +8,7 @@ enum BookFormat {
   mobi,
   azw,
   azw3,
+  txt,
   unknown;
 
   /// Parse a format string (case-insensitive) to BookFormat.
@@ -29,6 +30,8 @@ enum BookFormat {
         return BookFormat.azw;
       case 'azw3':
         return BookFormat.azw3;
+      case 'txt':
+        return BookFormat.txt;
       default:
         return BookFormat.unknown;
     }
@@ -60,6 +63,8 @@ enum BookFormat {
         return 'azw';
       case BookFormat.azw3:
         return 'azw3';
+      case BookFormat.txt:
+        return 'txt';
       case BookFormat.unknown:
         return 'unknown';
     }
@@ -84,6 +89,8 @@ enum BookFormat {
         return ['.azw'];
       case BookFormat.azw3:
         return ['.azw3'];
+      case BookFormat.txt:
+        return ['.txt'];
       case BookFormat.unknown:
         return [];
     }
@@ -98,6 +105,7 @@ enum BookFormat {
       case BookFormat.mobi:
       case BookFormat.azw:
       case BookFormat.azw3:
+      case BookFormat.txt:
         return true;
       case BookFormat.cbz:
       case BookFormat.cbr:
@@ -132,6 +140,7 @@ enum BookFormat {
       case BookFormat.mobi:
       case BookFormat.azw:
       case BookFormat.azw3:
+      case BookFormat.txt:
         return BookReaderType.html;
       case BookFormat.unknown:
         return BookReaderType.unsupported;

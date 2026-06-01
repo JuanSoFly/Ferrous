@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:reader_app/data/services/tts_service.dart';
+import 'package:reader_app/data/models/tts_highlight_style.dart';
 
 class TtsControlsSheet extends StatelessWidget {
   final TtsService ttsService;
@@ -17,6 +18,8 @@ class TtsControlsSheet extends StatelessWidget {
   final VoidCallback? onStop;
   final VoidCallback? onPause;
   final VoidCallback onClose;
+  final TtsHighlightStyle highlightStyle;
+  final ValueChanged<TtsHighlightStyle>? onHighlightStyleChanged;
 
   const TtsControlsSheet({
     super.key,
@@ -35,6 +38,8 @@ class TtsControlsSheet extends StatelessWidget {
     this.onStop,
     this.onPause,
     required this.onClose,
+    this.highlightStyle = TtsHighlightStyle.softPill,
+    this.onHighlightStyleChanged,
   });
 
   @override
@@ -197,6 +202,57 @@ class TtsControlsSheet extends StatelessWidget {
                     ],
                   ),
                   
+                  // Highlight Style Selector Row
+                  if (onHighlightStyleChanged != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.brush,
+                          size: 13,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Style:',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Row(
+                          children: [
+                            _buildStyleChip(
+                              context,
+                              label: 'Pill',
+                              style: TtsHighlightStyle.softPill,
+                              currentStyle: highlightStyle,
+                              onChanged: onHighlightStyleChanged!,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildStyleChip(
+                              context,
+                              label: 'Line',
+                              style: TtsHighlightStyle.underline,
+                              currentStyle: highlightStyle,
+                              onChanged: onHighlightStyleChanged!,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildStyleChip(
+                              context,
+                              label: 'Classic',
+                              style: TtsHighlightStyle.classicClean,
+                              currentStyle: highlightStyle,
+                              onChanged: onHighlightStyleChanged!,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+
                   // Toggle Options Row
                   if (onContinuousChanged != null ||
                       onTapToStartChanged != null ||
@@ -305,6 +361,47 @@ class TtsControlsSheet extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStyleChip(
+    BuildContext context, {
+    required String label,
+    required TtsHighlightStyle style,
+    required TtsHighlightStyle currentStyle,
+    required ValueChanged<TtsHighlightStyle> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = style == currentStyle;
+
+    return InkWell(
+      onTap: () => onChanged(style),
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

@@ -49,6 +49,11 @@ class PdfReaderTopBar extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+                if (pageController.pageCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Text("${pageController.pageIndex + 1} / ${pageController.pageCount}"),
+                  ),
                 IconButton(
                   icon: Icon(chromeController.isLocked ? Icons.lock : Icons.lock_open),
                   tooltip: chromeController.isLocked ? 'Unlock' : 'Lock',

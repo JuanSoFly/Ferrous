@@ -6,18 +6,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
-import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
+import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.dart';
+import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 
-class EpubContentViewer extends StatefulWidget {
+class MobiContentViewer extends StatefulWidget {
   final int chapterIndex;
   final String htmlContent;
-  final EpubChapterController chapterController;
-  final EpubTtsController ttsController;
+  final MobiChapterController chapterController;
+  final MobiTtsController ttsController;
 
-  const EpubContentViewer({
+  const MobiContentViewer({
     super.key,
     required this.chapterIndex,
     required this.htmlContent,
@@ -26,12 +26,11 @@ class EpubContentViewer extends StatefulWidget {
   });
 
   @override
-  State<EpubContentViewer> createState() => _EpubContentViewerState();
+  State<MobiContentViewer> createState() => _MobiContentViewerState();
 }
 
-class _EpubContentViewerState extends State<EpubContentViewer> {
+class _MobiContentViewerState extends State<MobiContentViewer> {
   // Static cache keyed by bookId:chapterIndex:hyphenation:paragraphIndent
-  // Theme changes like font size, font family, etc. do NOT invalidate this cache.
   static final Map<String, String> _processedHtmlCache = {};
 
   String _cacheKey(bool hyphenation, bool paragraphIndent) {
@@ -49,7 +48,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
   }) {
     final key = _cacheKey(hyphenation, paragraphIndent);
 
-    // Cache hit: render synchronously, no FutureBuilder
     if (_processedHtmlCache.containsKey(key)) {
       return _buildHtmlWidget(
         _processedHtmlCache[key]!,
@@ -59,7 +57,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       );
     }
 
-    // Cache miss: process in background isolate, show raw content immediately
     return FutureBuilder<String>(
       future: _getProcessedHtml(key, content, hyphenation, paragraphIndent),
       initialData: content,

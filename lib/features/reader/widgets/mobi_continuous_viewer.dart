@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
-import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
+import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.dart';
+import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
-import 'epub_content_viewer.dart';
+import 'mobi_content_viewer.dart';
 
-class EpubContinuousViewer extends StatelessWidget {
-  final EpubChapterController chapterController;
-  final EpubTtsController ttsController;
+class MobiContinuousViewer extends StatelessWidget {
+  final MobiChapterController chapterController;
+  final MobiTtsController ttsController;
   final ReaderModeController modeController;
   final double chapterSpacing;
   final double topPadding;
@@ -15,7 +15,7 @@ class EpubContinuousViewer extends StatelessWidget {
   final VoidCallback onToggleChrome;
   final Function(TapUpDetails) onTapUp;
 
-  const EpubContinuousViewer({
+  const MobiContinuousViewer({
     super.key,
     required this.chapterController,
     required this.ttsController,
@@ -58,7 +58,7 @@ class EpubContinuousViewer extends StatelessWidget {
                 top: isFirst ? topPadding : chapterSpacing,
                 bottom: isLast ? bottomPadding : 0.0,
               ),
-              child: EpubContentViewer(
+              child: MobiContentViewer(
                 chapterIndex: index,
                 htmlContent: htmlContent,
                 chapterController: chapterController,

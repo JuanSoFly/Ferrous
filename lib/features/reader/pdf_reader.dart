@@ -13,6 +13,8 @@ import 'controllers/reader_mode_controller.dart';
 import 'widgets/pdf_page_viewer.dart';
 import 'widgets/pdf_reader_top_bar.dart';
 import 'widgets/pdf_page_controls.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'tts_controls_sheet.dart';
 
 class PdfReaderScreen extends StatefulWidget {
@@ -65,6 +67,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeController.enterImmersiveMode();
+      _pageController.restoreContinuousScroll();
     });
   }
 
@@ -84,11 +87,15 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
-      _pageController.repository.updateReadingProgress(
-        widget.book.id,
-        currentPage: _pageController.pageIndex,
-        totalPages: _pageController.pageCount,
-      );
+      if (_pageController.isContinuousMode) {
+        _pageController.saveContinuousProgress();
+      } else {
+        _pageController.repository.updateReadingProgress(
+          widget.book.id,
+          currentPage: _pageController.pageIndex,
+          totalPages: _pageController.pageCount,
+        );
+      }
       _ttsController.saveCurrentTtsSentence();
     }
   }
@@ -104,18 +111,13 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
   Future<void> _showReadingModePicker() async {
     final selected = await showReadingModeSheet(
       context,
-      current: _modeController.mode,
+      current: _pageController.readingMode,
       formatType: ReaderFormatType.pdf,
     );
-    if (selected == null || selected == _modeController.mode) return;
+    if (selected == null || selected == _pageController.readingMode) return;
     
-    unawaited(widget.repository.updateReadingProgress(widget.book.id, readingMode: selected));
-    
-    if (mounted) {
-       ScaffoldMessenger.of(context).showSnackBar(
-         const SnackBar(content: Text('Reading mode updated. Re-open book to apply changes.')),
-       );
-    }
+    _pageController.updateReadingMode(selected);
+    _modeController.mode = selected;
   }
 
   void _openTextPicker() {
@@ -132,11 +134,14 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
             await _pageController.loadPageText(_pageController.pageIndex);
             return _pageController.currentPageText;
           },
-          onListenFromHere: (text) {
+          onListenFromHere: (text) async {
             final trimmed = text.trim();
             if (trimmed.isEmpty) return;
-            _ttsController.toggleTts(); 
-            _ttsController.startSpeakingOverride(trimmed);
+            // Show TTS controls if not already visible
+            if (!_ttsController.showTtsControls) {
+              await _ttsController.toggleTts();
+            }
+            await _ttsController.startSpeakingOverride(trimmed);
           },
         );
       },
@@ -145,6 +150,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    final themeRepo = context.watch<ReaderThemeRepository>();
     return Scaffold(
       body: Stack(
         children: [
@@ -160,13 +166,13 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
             ),
           ),
 
-          // Chrome layers - only rebuild when chrome or TTS controls visibility changes
+          // Chrome layers - only rebuild when chrome, TTS controls, or page changes
           ListenableBuilder(
-            listenable: Listenable.merge([_chromeController, _ttsController]),
+            listenable: Listenable.merge([_chromeController, _ttsController, _pageController]),
             builder: (context, _) {
               final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
               final showTtsControls = showChrome && _ttsController.showTtsControls;
-              final showBottomControls = showChrome && !_ttsController.showTtsControls;
+              final showBottomControls = showChrome && !_ttsController.showTtsControls && _modeController.isPagedMode;
 
               return Stack(
                 children: [
@@ -191,7 +197,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                         top: false,
                         child: TtsControlsSheet(
                           ttsService: _ttsController.ttsService,
-                          textToSpeak: _pageController.currentPageText,
+                          textToSpeak: _ttsController.documentText?.fullText ?? _pageController.currentPageText,
                           resolveTextToSpeak: _ttsController.resolveTtsText,
                           onStart: () async {
                             // resolveTtsText also sets the base offset internally
@@ -200,7 +206,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                               await _ttsController.ttsService.speak(text);
                             }
                           },
-                          isTextLoading: _pageController.isTextLoading,
+                          isTextLoading: _ttsController.documentTextLoading || _pageController.isTextLoading,
                           emptyTextMessage: _pageController.textError ?? 'No readable text on this page.',
                           isContinuous: _ttsController.ttsContinuous,
                           onContinuousChanged: (v) => _ttsController.setTtsContinuous(v),
@@ -211,6 +217,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                           onStop: _ttsController.saveCurrentTtsSentence,
                           onPause: _ttsController.saveCurrentTtsSentence,
                           onClose: _ttsController.closeTtsControls,
+                          highlightStyle: themeRepo.highlightStyle,
+                          onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
                         ),
                       ),
                     ),

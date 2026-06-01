@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/src/rust/api/pdf.dart';
 import 'package:reader_app/src/rust/api/crop.dart';
 import '../controllers/pdf_page_controller.dart';
 import '../controllers/pdf_tts_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/data/models/tts_highlight_style.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;
@@ -29,7 +34,7 @@ class PdfPageViewer extends StatefulWidget {
 }
 
 class _PdfPageViewerState extends State<PdfPageViewer> {
-  late final PageController _viewPageController;
+  late PageController _viewPageController;
   bool _syncing = false;
 
   @override
@@ -71,6 +76,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         _syncing = true;
         _viewPageController.jumpToPage(target);
         _syncing = false;
+      }
+    } else {
+      final target = widget.pageController.pageIndex;
+      if (_viewPageController.initialPage != target) {
+        _viewPageController.dispose();
+        _viewPageController = PageController(initialPage: target);
       }
     }
     // Trigger rebuild for loading/image state changes
@@ -120,28 +131,121 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
           widget.pageController.viewerSize =
               Size(constraints.maxWidth, constraints.maxHeight);
 
-          return PageView.builder(
-            controller: _viewPageController,
-            scrollDirection: widget.modeController.useVerticalSwipe
-                ? Axis.vertical
-                : Axis.horizontal,
-            physics: _canSwipe()
-                ? const AlwaysScrollableScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
-            itemCount: pageController.pageCount,
-            onPageChanged: _onPageViewChanged,
-            itemBuilder: (context, index) {
-              return InteractiveViewer(
-                transformationController: widget.transformController,
-                minScale: 1.0,
-                maxScale: 5.0,
-                panEnabled: true,
-                scaleEnabled: true,
-                child: Center(
-                  child: _buildPageLayer(context, index),
-                ),
-              );
-            },
+          return _buildGallery();
+        },
+      ),
+    );
+  }
+
+  Widget _buildGallery() {
+    final mode = widget.pageController.readingMode;
+
+    if (widget.modeController.isPagedMode) {
+      return _buildPagedView();
+    }
+
+    if (mode == ReadingMode.verticalContinuous || mode == ReadingMode.webtoon) {
+      return _buildVerticalContinuousView();
+    }
+
+    if (mode == ReadingMode.horizontalContinuous) {
+      return _buildHorizontalContinuousView();
+    }
+
+    return _buildPagedView();
+  }
+
+  Widget _buildPagedView() {
+    return PageView.builder(
+      controller: _viewPageController,
+      scrollDirection: widget.modeController.useVerticalSwipe
+          ? Axis.vertical
+          : Axis.horizontal,
+      physics: _canSwipe()
+          ? const AlwaysScrollableScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
+      itemCount: widget.pageController.pageCount,
+      onPageChanged: _onPageViewChanged,
+      itemBuilder: (context, index) {
+        return InteractiveViewer(
+          transformationController: widget.transformController,
+          minScale: 1.0,
+          maxScale: 5.0,
+          panEnabled: true,
+          scaleEnabled: true,
+          child: Center(
+            child: _buildPageLayer(context, index),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVerticalContinuousView() {
+    final isWebtoon = widget.pageController.readingMode == ReadingMode.webtoon;
+    final spacing = isWebtoon ? 1.0 : 12.0;
+    final size = MediaQuery.of(context).size;
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification ||
+            (notification is UserScrollNotification &&
+                notification.direction == ScrollDirection.idle)) {
+          widget.pageController.flushContinuousProgressSave();
+        }
+        return false;
+      },
+      child: ListView.separated(
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.height),
+        controller: widget.pageController.scrollController,
+        key: PageStorageKey(
+            'pdf-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        itemCount: widget.pageController.pageCount,
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
+        separatorBuilder: (_, __) => SizedBox(height: spacing),
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            maxScale: 5.0,
+            child: Center(
+              child: _buildPageLayer(context, index),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHorizontalContinuousView() {
+    final size = MediaQuery.of(context).size;
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification ||
+            (notification is UserScrollNotification &&
+                notification.direction == ScrollDirection.idle)) {
+          widget.pageController.flushContinuousProgressSave();
+        }
+        return false;
+      },
+      child: ListView.separated(
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.width),
+        controller: widget.pageController.scrollController,
+        key: PageStorageKey(
+            'pdf-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: widget.pageController.pageCount,
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            maxScale: 5.0,
+            child: Center(
+              child: _buildPageLayer(context, index),
+            ),
           );
         },
       ),
@@ -158,19 +262,63 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       // Using preloadPage() avoids mutating the active page index or loading state,
       // which would cause re-entrant notifyListeners() during the build phase.
       pageController.preloadPage(index);
-      return const Center(child: CircularProgressIndicator());
+
+      double? placeholderHeight;
+      double? placeholderWidth;
+
+      if (!pageController.viewerSize.isEmpty) {
+        if (widget.modeController.isHorizontal) {
+          placeholderHeight = pageController.viewerSize.height;
+          placeholderWidth = pageController.viewerSize.width * 0.75;
+        } else {
+          placeholderWidth = pageController.viewerSize.width;
+          placeholderHeight = pageController.viewerSize.width * 1.41;
+          if (placeholderHeight > pageController.viewerSize.height) {
+            placeholderHeight = pageController.viewerSize.height;
+          }
+        }
+      } else {
+        placeholderHeight = 400.0;
+      }
+
+      return Container(
+        width: placeholderWidth,
+        height: placeholderHeight,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.0,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
     final isActive = index == pageController.pageIndex;
+    final isHighlightPage = index == ttsController.highlightPageIndex;
     final margins = pageController.getPageMargins(index);
 
     Widget imageWidget = Image.memory(pageImage, fit: BoxFit.contain);
 
     Widget layer;
     // Use logicalPageSize for stable UI layout
-    final layoutSize = pageController.logicalPageSize.isEmpty
-        ? pageController.renderedPageSize
-        : pageController.logicalPageSize;
+    final layoutSize = pageController.getLogicalPageSize(index).isEmpty
+        ? (pageController.logicalPageSize.isEmpty
+            ? pageController.renderedPageSize
+            : pageController.logicalPageSize)
+        : pageController.getLogicalPageSize(index);
+
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final highlightStyle = themeRepo.highlightStyle;
 
     if (layoutSize.isEmpty) {
       layer = imageWidget;
@@ -181,12 +329,13 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         child: Stack(
           children: [
             Positioned.fill(child: imageWidget),
-            if (isActive)
+            if (isActive || isHighlightPage)
               ListenableBuilder(
                 listenable: ttsController,
                 builder: (context, _) {
                   if (!ttsController.showTtsControls ||
-                      ttsController.ttsHighlightRects.isEmpty) {
+                      ttsController.ttsHighlightRects.isEmpty ||
+                      ttsController.highlightPageIndex != index) {
                     return const SizedBox.shrink();
                   }
                   return Positioned.fill(
@@ -194,14 +343,8 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
                       child: CustomPaint(
                         painter: PdfHighlightPainter(
                           rects: ttsController.ttsHighlightRects,
-                          fillColor: Theme.of(context)
-                              .colorScheme
-                              .primaryContainer
-                              .withValues(alpha: 0.65),
-                          borderColor: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.9),
+                          style: highlightStyle,
+                          primaryColor: Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ),
@@ -303,22 +446,18 @@ class MarginClipper extends CustomClipper<Rect> {
 
 class PdfHighlightPainter extends CustomPainter {
   final List<PdfTextRect> rects;
-  final Color fillColor;
-  final Color borderColor;
+  final TtsHighlightStyle style;
+  final Color primaryColor;
 
-  PdfHighlightPainter(
-      {required this.rects, required this.fillColor, required this.borderColor});
+  PdfHighlightPainter({
+    required this.rects,
+    required this.style,
+    required this.primaryColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (rects.isEmpty || size.isEmpty) return;
-    final fillPaint = Paint()
-      ..color = fillColor
-      ..style = PaintingStyle.fill;
-    final borderPaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
 
     for (final rect in rects) {
       final r = Rect.fromLTRB(
@@ -330,13 +469,48 @@ class PdfHighlightPainter extends CustomPainter {
       if (r.width <= 0 || r.height <= 0) continue;
 
       final inflated = r.inflate(2.0);
-      final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
-      canvas.drawRRect(rr, fillPaint);
-      canvas.drawRRect(rr, borderPaint);
+
+      switch (style) {
+        case TtsHighlightStyle.softPill:
+          final fillPaint = Paint()
+            ..color = primaryColor.withValues(alpha: 0.20)
+            ..style = PaintingStyle.fill;
+          final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
+          canvas.drawRRect(rr, fillPaint);
+          break;
+
+        case TtsHighlightStyle.underline:
+          final linePaint = Paint()
+            ..color = primaryColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5;
+          // Draw a line at the bottom of the word/rect
+          canvas.drawLine(
+            Offset(r.left, r.bottom + 1),
+            Offset(r.right, r.bottom + 1),
+            linePaint,
+          );
+          break;
+
+        case TtsHighlightStyle.classicClean:
+          final fillPaint = Paint()
+            ..color = primaryColor.withValues(alpha: 0.12)
+            ..style = PaintingStyle.fill;
+          final borderPaint = Paint()
+            ..color = primaryColor.withValues(alpha: 0.4)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0;
+          final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
+          canvas.drawRRect(rr, fillPaint);
+          canvas.drawRRect(rr, borderPaint);
+          break;
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant PdfHighlightPainter oldDelegate) =>
-      oldDelegate.rects != rects;
+      oldDelegate.rects != rects ||
+      oldDelegate.style != style ||
+      oldDelegate.primaryColor != primaryColor;
 }

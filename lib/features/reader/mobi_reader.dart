@@ -1,28 +1,474 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:reader_app/features/reader/html_reader_screen.dart';
-import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
-import 'package:reader_app/core/utils/performance.dart';
+import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/data/services/tts_service.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+import 'package:reader_app/features/reader/tts_controls_sheet.dart';
+import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.dart';
+import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
+import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
+import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
+import 'package:reader_app/features/reader/widgets/mobi_continuous_viewer.dart';
+import 'package:reader_app/features/reader/widgets/mobi_paged_viewer.dart';
+import 'package:reader_app/features/reader/widgets/mobi_reader_top_bar.dart';
+import 'package:reader_app/features/reader/widgets/mobi_reader_bottom_controls.dart';
+import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
+import 'package:reader_app/features/reader/widgets/tap_selection_overlay.dart';
 
-class MobiReaderScreen extends HtmlReaderScreen {
+class MobiReaderScreen extends StatefulWidget {
+  final Book book;
+  final BookRepository repository;
+
   const MobiReaderScreen({
     super.key,
-    required super.book,
-    required super.repository,
+    required this.book,
+    required this.repository,
   });
 
   @override
   State<MobiReaderScreen> createState() => _MobiReaderScreenState();
 }
 
-class _MobiReaderScreenState extends HtmlReaderScreenState<MobiReaderScreen> {
-  @override
-  HtmlReaderConfig get config => HtmlReaderConfig.mobi;
+class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBindingObserver {
+  late MobiChapterController _chapterController;
+  late MobiTtsController _ttsController;
+  late final TtsService _ttsService;
+  late ReaderChromeController _chromeController;
+  late ReaderModeController _modeController;
+  late PageController _pageController;
+
+  ReadingMode _readingMode = ReadingMode.vertical;
+  Offset? _lastDoubleTapDown;
+  String _lastLoadedFontFamily = '';
+  ReaderThemeRepository? _themeRepository;
+  bool _hasRestoredPosition = false;
+
+  TapDetectionResult? _pendingTapResult;
 
   @override
-  Future<String> loadContent(String path) async {
-    // Note: getMobiContent is synchronous, wrap in async for measureAsync
-    return await measureAsync('load_mobi_content', () async {
-      return rust_mobi.getMobiContent(path: path);
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    HyphenationHelper.init();
+
+    _readingMode = widget.book.readingMode;
+    _modeController = ReaderModeController(_readingMode);
+    
+    _chapterController = MobiChapterController(
+      book: widget.book,
+      repository: widget.repository,
+    )..init();
+
+    _chapterController.addListener(_onChapterControllerChanged);
+
+    _ttsService = TtsService();
+    _ttsController = MobiTtsController(
+      book: widget.book,
+      repository: widget.repository,
+      ttsService: _ttsService,
+      chapterController: _chapterController,
+    );
+
+    _chromeController = ReaderChromeController();
+    _pageController = PageController(initialPage: widget.book.sectionIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _chromeController.enterImmersiveMode();
+      _themeRepository = context.read<ReaderThemeRepository>();
+      _themeRepository?.addListener(_onThemeChanged);
+      
+      final initialFont = _themeRepository?.config.fontFamily ?? '';
+      if (initialFont.isNotEmpty) {
+        _lastLoadedFontFamily = initialFont;
+        _preloadFont(initialFont);
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _themeRepository?.removeListener(_onThemeChanged);
+    _chapterController.removeListener(_onChapterControllerChanged);
+    _chapterController.dispose();
+    _ttsController.dispose();
+    _ttsService.dispose();
+    _chromeController.dispose();
+    _pageController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _onChapterControllerChanged() {
+    if (!_chapterController.isLoading && !_hasRestoredPosition) {
+      _hasRestoredPosition = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _chapterController.restoreReadingPosition(_readingMode);
+        }
+      });
+    }
+  }
+
+  void _onThemeChanged() {
+    final newFontFamily = _themeRepository?.config.fontFamily ?? '';
+    if (newFontFamily.isNotEmpty && newFontFamily != _lastLoadedFontFamily) {
+      _lastLoadedFontFamily = newFontFamily;
+      _preloadFont(newFontFamily).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  Future<void> _preloadFont(String fontFamily) async {
+    try {
+      GoogleFonts.getFont(fontFamily);
+      await GoogleFonts.pendingFonts();
+    } catch (e) {
+      debugPrint('Failed to preload font $fontFamily: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+      _ttsController.saveCurrentTtsSentence();
+    }
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _lastDoubleTapDown = details.globalPosition;
+  }
+
+  void _handleDoubleTap() {
+    if (!_chromeController.isLocked) return;
+    final position = _lastDoubleTapDown;
+    if (position == null) return;
+    
+    if (_chromeController.isCenterTap(position, MediaQuery.of(context).size)) {
+      final isLocked = _chromeController.toggleLockMode();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isLocked ? 'Lock mode on. Double-tap center to unlock.' : 'Lock mode off.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _toggleAllUi() {
+    _chromeController.toggleChrome();
+    _ttsController.setTtsControlsVisible(_chromeController.showChrome);
+  }
+
+  Future<void> _showReadingModePicker() async {
+    final selected = await showReadingModeSheet(
+      context,
+      current: _readingMode,
+      formatType: ReaderFormatType.text,
+    );
+    if (selected == null || selected == _readingMode) return;
+    if (!mounted) return;
+    
+    _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+
+    final switchingToPaged = selected == ReadingMode.vertical || selected == ReadingMode.leftToRight;
+
+    setState(() {
+      _readingMode = selected;
+      _modeController = ReaderModeController(selected);
+      if (switchingToPaged) {
+        _pageController.dispose();
+        _pageController = PageController(
+          initialPage: _chapterController.currentChapterIndex,
+        );
+      }
+    });
+
+    unawaited(widget.repository.updateReadingProgress(
+      widget.book.id,
+      readingMode: selected,
+    ));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chapterController.restoreReadingPosition(_readingMode);
+    });
+  }
+
+  void _showSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const ReaderSettingsSheet(),
+    );
+  }
+
+  void _showChapterList() {
+    final chapters = _chapterController.chapters;
+    if (chapters == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => ListView.builder(
+        itemCount: chapters.length,
+        itemBuilder: (context, index) {
+          final chapter = chapters[index];
+          return ListTile(
+            title: Text(chapter.Title ?? 'Section ${index + 1}'),
+            selected: index == _chapterController.currentChapterIndex,
+            onTap: () {
+              Navigator.pop(context);
+              _chapterController.loadChapter(index, userInitiated: true);
+              if (_modeController.isPagedMode && _pageController.hasClients) {
+                _pageController.jumpToPage(index);
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _handleTapUpForTts(TapUpDetails details) {
+    if (!_ttsController.showTtsControls) {
+      return;
+    }
+
+    final screenSize = MediaQuery.of(context).size;
+    if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
+      return;
+    }
+
+    if (!_ttsController.tapToStartEnabled) {
+      _ttsController.startTtsFromTap(
+        details,
+        modeController: _modeController,
+        context: context,
+      );
+      return;
+    }
+
+    final result = _ttsController.detectWordAtTap(
+      details,
+      modeController: _modeController,
+      context: context,
+    );
+
+    if (result != null) {
+      setState(() {
+        _pendingTapResult = result;
+      });
+    }
+  }
+
+  void _confirmTapSelection() {
+    final result = _pendingTapResult;
+    if (result == null) return;
+
+    setState(() {
+      _pendingTapResult = null;
+    });
+
+    _ttsController.speakFromLocation(
+      chapterIndex: result.chapterIndex,
+      offset: result.offset,
+    );
+  }
+
+  void _cancelTapSelection() {
+    setState(() {
+      _pendingTapResult = null;
+    });
+  }
+
+  void _showSearchDialog() {
+    final searchController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Find in Section'),
+        content: TextField(
+          controller: searchController,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Enter text to find...'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              final query = searchController.text.trim();
+              Navigator.pop(ctx);
+              if (query.isNotEmpty) {
+                final txt = _chapterController.currentPlainText;
+                final found = txt.toLowerCase().contains(query.toLowerCase());
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(found ? 'Found "$query" in this section.' : '"$query" not found.')),
+                );
+              }
+            },
+            child: const Text('Find'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        _chapterController,
+        _ttsController,
+        _chromeController,
+      ]),
+      builder: (context, _) {
+        if (_chapterController.isLoading) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        if (_chapterController.error != null) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text("Error loading book:", style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Text(_chapterController.error!, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: 24),
+                    ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back")),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Scaffold(
+          body: PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) {
+                _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+                _ttsController.saveCurrentTtsSentence();
+              }
+            },
+            child: GestureDetector(
+              onDoubleTapDown: _handleDoubleTapDown,
+              onDoubleTap: _handleDoubleTap,
+              child: SelectionArea(
+                onSelectionChanged: (value) {},
+                child: Stack(
+                  children: [
+                    if (_modeController.isPagedMode)
+                      MobiPagedViewer(
+                        chapterController: _chapterController,
+                        ttsController: _ttsController,
+                        pageController: _pageController,
+                        readingMode: _readingMode,
+                        onToggleChrome: _toggleAllUi,
+                        onTapUp: _handleTapUpForTts,
+                      )
+                    else
+                      MobiContinuousViewer(
+                        chapterController: _chapterController,
+                        ttsController: _ttsController,
+                        modeController: _modeController,
+                        onToggleChrome: _toggleAllUi,
+                        onTapUp: _handleTapUpForTts,
+                      ),
+
+                  if (_chromeController.showChrome && !_chromeController.isLocked) ...[
+                    MobiReaderTopBar(
+                      book: widget.book,
+                      lockMode: _chromeController.isLocked,
+                      showTtsControls: _ttsController.showTtsControls,
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onToggleLock: () {
+                        final isLocked = _chromeController.toggleLockMode();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(isLocked ? 'Lock mode on.' : 'Lock mode off.')),
+                        );
+                      },
+                      onShowSettings: _showSettingsSheet,
+                      onShowReadingMode: _showReadingModePicker,
+                      onToggleTts: () => _ttsController.toggleTts(modeController: _modeController),
+                      onShowSearch: _showSearchDialog,
+                      onShowChapters: _showChapterList,
+                    ),
+                    if (!_ttsController.showTtsControls)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: MobiReaderBottomControls(
+                          currentChapterIndex: _chapterController.currentChapterIndex,
+                          totalChapters: _chapterController.chapters?.length ?? 0,
+                          onLoadChapter: (index) {
+                            _chapterController.loadChapter(index, userInitiated: true);
+                            if (_modeController.isPagedMode && _pageController.hasClients) {
+                              _pageController.jumpToPage(index);
+                            }
+                          },
+                        ),
+                      ),
+                  ],
+
+                  if (_pendingTapResult != null)
+                    TapSelectionOverlay(
+                      word: _pendingTapResult!.word,
+                      position: _pendingTapResult!.tapPosition,
+                      onConfirm: _confirmTapSelection,
+                      onCancel: _cancelTapSelection,
+                    ),
+
+                  if (_ttsController.showTtsControls)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: TtsControlsSheet(
+                        ttsService: _ttsController.ttsService,
+                        textToSpeak: '', 
+                        resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
+                        onStart: () async {
+                          final text = _ttsController.resolveTtsText(modeController: _modeController);
+                          if (text.trim().isNotEmpty) {
+                            await _ttsController.ttsService.speak(text);
+                          }
+                        },
+                        isContinuous: _ttsController.ttsContinuous,
+                        isFollowMode: _ttsController.ttsFollowMode,
+                        isTapToStart: _ttsController.tapToStartEnabled,
+                        onContinuousChanged: _ttsController.setTtsContinuous,
+                        onFollowModeChanged: _ttsController.setTtsFollowMode,
+                        onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                        onClose: _ttsController.closeTtsControls,
+                        highlightStyle: themeRepo.highlightStyle,
+                        onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

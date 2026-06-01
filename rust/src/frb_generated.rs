@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 946004666;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1736096077;
 
 // Section: executor
 
@@ -502,6 +502,41 @@ fn wire__crate__api__mobi__get_mobi_author_impl(
         },
     )
 }
+fn wire__crate__api__mobi__get_mobi_chapters_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_mobi_chapters",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::mobi::get_mobi_chapters(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__mobi__get_mobi_content_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -787,6 +822,41 @@ fn wire__crate__api__docx__read_docx_to_html_impl(
         },
     )
 }
+fn wire__crate__api__txt__read_txt_to_html_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "read_txt_to_html",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::txt::read_txt_to_html(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__pdf__render_pdf_page_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1039,6 +1109,18 @@ impl SseDecode for Vec<crate::api::library::BookMetadata> {
     }
 }
 
+impl SseDecode for Vec<crate::api::mobi::MobiChapter> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::mobi::MobiChapter>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::pdf::PdfTextRect> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1086,6 +1168,18 @@ impl SseDecode for Vec<crate::api::tts_text::WordSpan> {
             ans_.push(<crate::api::tts_text::WordSpan>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for crate::api::mobi::MobiChapter {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_htmlContent = <String>::sse_decode(deserializer);
+        return crate::api::mobi::MobiChapter {
+            title: var_title,
+            html_content: var_htmlContent,
+        };
     }
 }
 
@@ -1250,28 +1344,30 @@ fn pde_ffi_dispatcher_primary_impl(
         10 => wire__crate__api__cbz__get_cbz_page_count_impl(port, ptr, rust_vec_len, data_len),
         11 => wire__crate__api__cbz__get_cbz_page_names_impl(port, ptr, rust_vec_len, data_len),
         12 => wire__crate__api__mobi__get_mobi_author_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__mobi__get_mobi_content_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__mobi__get_mobi_title_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__pdf__get_pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__hello_world_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__pdf__init_pdfium_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__tts_text__insert_html_highlight_impl(
+        13 => wire__crate__api__mobi__get_mobi_chapters_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__mobi__get_mobi_content_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__mobi__get_mobi_title_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__pdf__get_pdf_page_count_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__hello_world_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__pdf__init_pdfium_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__tts_text__insert_html_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__crate__api__tts_text__precompute_text_highlights_impl(
+        20 => wire__crate__api__tts_text__precompute_text_highlights_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
-        24 => {
+        21 => wire__crate__api__docx__read_docx_to_html_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__txt__read_txt_to_html_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__pdf__render_pdf_page_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__library__scan_library_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__pdf__test_pdf_module_impl(port, ptr, rust_vec_len, data_len),
+        26 => {
             wire__crate__api__tts_text__test_tts_text_module_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1350,6 +1446,24 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::crop::CropMargins>
     for crate::api::crop::CropMargins
 {
     fn into_into_dart(self) -> crate::api::crop::CropMargins {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mobi::MobiChapter {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.title.into_into_dart().into_dart(),
+            self.html_content.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::mobi::MobiChapter {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mobi::MobiChapter>
+    for crate::api::mobi::MobiChapter
+{
+    fn into_into_dart(self) -> crate::api::mobi::MobiChapter {
         self
     }
 }
@@ -1544,6 +1658,16 @@ impl SseEncode for Vec<crate::api::library::BookMetadata> {
     }
 }
 
+impl SseEncode for Vec<crate::api::mobi::MobiChapter> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::mobi::MobiChapter>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::pdf::PdfTextRect> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1581,6 +1705,14 @@ impl SseEncode for Vec<crate::api::tts_text::WordSpan> {
         for item in self {
             <crate::api::tts_text::WordSpan>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::api::mobi::MobiChapter {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.title, serializer);
+        <String>::sse_encode(self.html_content, serializer);
     }
 }
 

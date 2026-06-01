@@ -6,11 +6,37 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `extract_title`, `prepare_mobi_content`, `split_large_html`
+
 Future<String> getMobiContent({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiContent(path: path);
+
+Future<List<MobiChapter>> getMobiChapters({required String path}) =>
+    RustLib.instance.api.crateApiMobiGetMobiChapters(path: path);
 
 Future<String> getMobiTitle({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiTitle(path: path);
 
 Future<String> getMobiAuthor({required String path}) =>
     RustLib.instance.api.crateApiMobiGetMobiAuthor(path: path);
+
+class MobiChapter {
+  final String title;
+  final String htmlContent;
+
+  const MobiChapter({
+    required this.title,
+    required this.htmlContent,
+  });
+
+  @override
+  int get hashCode => title.hashCode ^ htmlContent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MobiChapter &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          htmlContent == other.htmlContent;
+}

@@ -7,7 +7,7 @@ pub struct BookMetadata {
 }
 
 pub fn scan_library(root_path: String) -> Vec<BookMetadata> {
-    let supported_extensions = vec!["pdf", "epub", "cbz", "docx"];
+    let supported_extensions = vec!["pdf", "epub", "cbz", "docx", "txt", "mobi", "azw", "azw3"];
     
     let mut books = Vec::new();
     

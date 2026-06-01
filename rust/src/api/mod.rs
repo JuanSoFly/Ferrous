@@ -7,6 +7,7 @@ pub mod crop;
 pub mod mobi;
 pub mod cbz;
 pub mod tts_text;
+pub mod txt;
 
 pub use library::*;
 pub use pdf::*;
@@ -16,6 +17,7 @@ pub use crop::*;
 pub use mobi::*;
 pub use cbz::*;
 pub use tts_text::*;
+pub use txt::*;
 
 pub fn hello_world() -> String {
     "Hello from Rust!".to_string()

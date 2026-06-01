@@ -338,6 +338,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
+    final themeRepo = context.watch<ReaderThemeRepository>();
     return ListenableBuilder(
       listenable: Listenable.merge([
         _chapterController,
@@ -476,6 +477,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                         onFollowModeChanged: _ttsController.setTtsFollowMode,
                         onTapToStartChanged: _ttsController.setTapToStartEnabled,
                         onClose: _ttsController.closeTtsControls,
+                        highlightStyle: themeRepo.highlightStyle,
+                        onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
                       ),
                     ),
                   ],

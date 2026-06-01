@@ -1,16 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
+import 'package:reader_app/data/models/tts_highlight_style.dart';
 
 class ReaderThemeRepository extends ChangeNotifier {
   static const String _boxName = 'reader_theme';
   static const String _key = 'config';
+  static const String _keyHighlightStyle = 'tts_highlight_style';
 
   Box<ReaderThemeConfig>? _box;
   ReaderThemeConfig _config = const ReaderThemeConfig();
+  TtsHighlightStyle _highlightStyle = TtsHighlightStyle.softPill;
   bool _initialized = false;
 
   ReaderThemeConfig get config => _config;
+  TtsHighlightStyle get highlightStyle => _highlightStyle;
   bool get isInitialized => _initialized;
 
   Future<void> init() async {
@@ -41,8 +45,30 @@ class ReaderThemeRepository extends ChangeNotifier {
       } catch (_) {}
     }
     
+    try {
+      final settingsBox = await Hive.openBox('settings');
+      final styleString = settingsBox.get(_keyHighlightStyle) as String?;
+      if (styleString != null) {
+        _highlightStyle = TtsHighlightStyle.values.byName(styleString);
+      }
+    } catch (e) {
+      debugPrint('Error reading tts highlight style: $e. Using default.');
+      _highlightStyle = TtsHighlightStyle.softPill;
+    }
+    
     _initialized = true;
     notifyListeners();
+  }
+
+  Future<void> setTtsHighlightStyle(TtsHighlightStyle style) async {
+    _highlightStyle = style;
+    notifyListeners();
+    try {
+      final settingsBox = await Hive.openBox('settings');
+      await settingsBox.put(_keyHighlightStyle, style.name);
+    } catch (e) {
+      debugPrint('Failed to persist tts highlight style: $e');
+    }
   }
 
   Future<void> updateConfig(ReaderThemeConfig newConfig) async {

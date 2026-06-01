@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/data/models/tts_highlight_style.dart';
 
 /// Used for TTS text highlighting to show the currently spoken word.
 class HighlightedTextView extends StatefulWidget {
@@ -161,6 +164,39 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
     final highlightedText = widget.text.substring(start, end);
     final afterText = widget.text.substring(end);
 
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final highlightStyle = themeRepo.highlightStyle;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    TextStyle highlightedTextStyle;
+    switch (highlightStyle) {
+      case TtsHighlightStyle.softPill:
+        highlightedTextStyle = TextStyle(
+          backgroundColor: primaryColor.withValues(alpha: 0.16),
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+        );
+        break;
+      case TtsHighlightStyle.underline:
+        highlightedTextStyle = TextStyle(
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.underline,
+          decorationColor: primaryColor,
+          decorationThickness: 2.0,
+        );
+        break;
+      case TtsHighlightStyle.classicClean:
+        highlightedTextStyle = TextStyle(
+          backgroundColor: primaryColor.withValues(alpha: 0.12),
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.underline,
+          decorationColor: primaryColor.withValues(alpha: 0.4),
+          decorationThickness: 1.0,
+        );
+        break;
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,10 +218,7 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
                 TextSpan(text: beforeText),
                 TextSpan(
                   text: highlightedText,
-                  style: TextStyle(
-                    backgroundColor: widget.highlightColor,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: highlightedTextStyle,
                 ),
                 TextSpan(text: afterText),
               ],

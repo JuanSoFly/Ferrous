@@ -31,14 +31,32 @@ Future<ReadingMode?> showReadingModeSheet(
             _ModeTile(
               mode: ReadingMode.vertical,
               current: current,
-              title: 'Vertical',
+              title: 'Vertical paged',
               description: 'Swipe up/down to change pages',
             ),
             _ModeTile(
               mode: ReadingMode.leftToRight,
               current: current,
-              title: 'Left to right',
+              title: 'Left to right paged',
               description: 'Swipe left/right to change pages',
+            ),
+            _ModeTile(
+              mode: ReadingMode.verticalContinuous,
+              current: current,
+              title: 'Vertical continuous',
+              description: 'Scroll through all pages vertically',
+            ),
+            _ModeTile(
+              mode: ReadingMode.webtoon,
+              current: current,
+              title: 'Webtoon',
+              description: 'Continuous with extra spacing',
+            ),
+            _ModeTile(
+              mode: ReadingMode.horizontalContinuous,
+              current: current,
+              title: 'Horizontal continuous',
+              description: 'Scroll through all pages horizontally',
             ),
           ]);
           break;

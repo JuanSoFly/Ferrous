@@ -15,6 +15,7 @@ import 'api/library.dart';
 import 'api/mobi.dart';
 import 'api/pdf.dart';
 import 'api/tts_text.dart';
+import 'api/txt.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -65,6 +66,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BookMetadata> dco_decode_list_book_metadata(dynamic raw);
 
   @protected
+  List<MobiChapter> dco_decode_list_mobi_chapter(dynamic raw);
+
+  @protected
   List<PdfTextRect> dco_decode_list_pdf_text_rect(dynamic raw);
 
   @protected
@@ -75,6 +79,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<WordSpan> dco_decode_list_word_span(dynamic raw);
+
+  @protected
+  MobiChapter dco_decode_mobi_chapter(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_i_32(dynamic raw);
@@ -145,6 +152,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       SseDeserializer deserializer);
 
   @protected
+  List<MobiChapter> sse_decode_list_mobi_chapter(SseDeserializer deserializer);
+
+  @protected
   List<PdfTextRect> sse_decode_list_pdf_text_rect(SseDeserializer deserializer);
 
   @protected
@@ -156,6 +166,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<WordSpan> sse_decode_list_word_span(SseDeserializer deserializer);
+
+  @protected
+  MobiChapter sse_decode_mobi_chapter(SseDeserializer deserializer);
 
   @protected
   int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer);
@@ -233,6 +246,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       List<BookMetadata> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_mobi_chapter(
+      List<MobiChapter> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_pdf_text_rect(
       List<PdfTextRect> self, SseSerializer serializer);
 
@@ -246,6 +263,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_word_span(List<WordSpan> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mobi_chapter(MobiChapter self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer);

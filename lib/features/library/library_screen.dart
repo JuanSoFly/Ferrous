@@ -11,6 +11,7 @@ import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/split_reader_screen.dart';
 import 'package:reader_app/data/services/saf_service.dart';
+import 'package:reader_app/core/models/book_format.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -272,12 +273,17 @@ class _LibraryViewState extends State<_LibraryView> {
     }
     
     final displayedBooks = state.filteredBooks;
-    final continueReadingBooks = state.searchQuery.isEmpty 
-        ? displayedBooks.where((b) => b.progress > 0).toList()
-        : <Book>[];
+    final continueReadingBooks = state.searchQuery.isEmpty && state.selectedFormats.isEmpty
+        ? state.books.where((b) => b.progress > 0).toList()
+        : state.searchQuery.isEmpty && state.selectedFormats.isNotEmpty
+            ? state.books.where((b) => b.progress > 0 && state.selectedFormats.contains(b.format.toLowerCase())).toList()
+            : <Book>[];
 
     return CustomScrollView(
       slivers: [
+        SliverToBoxAdapter(
+          child: _buildSortFilterBar(context, state, controller),
+        ),
         if (state.isGeneratingCovers)
           SliverToBoxAdapter(
             child: Padding(
@@ -418,6 +424,510 @@ class _LibraryViewState extends State<_LibraryView> {
         );
       },
     );
+  }
+
+  Widget _buildSortFilterBar(BuildContext context, LibraryState state, LibraryController controller) {
+    final theme = Theme.of(context);
+    
+    // Check if any filters are active
+    final hasActiveFilters = state.selectedFormats.isNotEmpty ||
+        state.filterNoAuthor ||
+        state.filterNoCollection ||
+        state.filterUnread;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              // Sort Trigger
+              InkWell(
+                onTap: () => _showSortBottomSheet(context, state, controller),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.sort,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _getSortLabel(state.sortBy),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        state.sortOrder == SortOrder.ascending 
+                            ? Icons.arrow_upward 
+                            : Icons.arrow_downward,
+                        size: 12,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Filter Trigger (Matches Photo Modal launcher)
+              InkWell(
+                onTap: () => _showFilterDialog(context, state, controller),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: hasActiveFilters 
+                        ? theme.colorScheme.primaryContainer 
+                        : theme.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: hasActiveFilters 
+                          ? theme.colorScheme.primary 
+                          : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.filter_alt,
+                        size: 16,
+                        color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Filter',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: hasActiveFilters ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      if (hasActiveFilters) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: theme.colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ]
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '${state.filteredBooks.length} books',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFilterDialog(BuildContext context, LibraryState state, LibraryController controller) {
+    // Get all book IDs that are in collections
+    final collectionRepo = context.read<CollectionRepository>();
+    final collections = collectionRepo.getAllCollections();
+    final bookIdsInCollections = collections.expand((c) => c.bookIds).toSet();
+
+    // Local temp states
+    Set<String> tempSelectedFormats = Set<String>.from(state.selectedFormats);
+    bool tempFilterNoAuthor = state.filterNoAuthor;
+    bool tempFilterNoCollection = state.filterNoCollection;
+    bool tempFilterUnread = state.filterUnread;
+
+    // The format options based on what extensions the reading app uses
+    final formats = BookFormat.values
+        .where((f) => f != BookFormat.unknown)
+        .map((f) => f.formatString)
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            // Dynamic calculation of matching book count
+            final tempFilteredList = state.books.where((book) {
+              if (tempSelectedFormats.isNotEmpty && !tempSelectedFormats.contains(book.format.toLowerCase())) {
+                return false;
+              }
+              if (tempFilterNoAuthor && !(book.author.isEmpty || book.author.toLowerCase() == 'unknown author')) {
+                return false;
+              }
+              if (tempFilterNoCollection && bookIdsInCollections.contains(book.id)) {
+                return false;
+              }
+              if (tempFilterUnread && book.progress != 0.0) {
+                return false;
+              }
+              return true;
+            }).toList();
+            final matchCount = tempFilteredList.length;
+
+            // Color palette dynamically resolved from current theme to support Ferrous, Console, Sepia, and Light modes
+            final dialogBgColor = theme.colorScheme.surface;
+            final buttonUnselectedColor = theme.colorScheme.surfaceContainerHigh;
+            final buttonSelectedColor = theme.colorScheme.primaryContainer;
+            final actionTextColor = theme.colorScheme.primary;
+            final onSurface = theme.colorScheme.onSurface;
+            final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
+            final onPrimaryContainer = theme.colorScheme.onPrimaryContainer;
+
+            Widget formatButton(String label, String formatValue) {
+              final isSelected = tempSelectedFormats.contains(formatValue);
+              return InkWell(
+                onTap: () {
+                  setModalState(() {
+                    if (isSelected) {
+                      tempSelectedFormats.remove(formatValue);
+                    } else {
+                      tempSelectedFormats.add(formatValue);
+                    }
+                  });
+                },
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected ? buttonSelectedColor : buttonUnselectedColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isSelected ? actionTextColor : onSurface.withValues(alpha: 0.08),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    label.toUpperCase(),
+                    style: TextStyle(
+                      color: isSelected ? onPrimaryContainer : onSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget otherFilterButton(String label, bool isSelected, VoidCallback onTap) {
+              return InkWell(
+                onTap: onTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? buttonSelectedColor : buttonUnselectedColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isSelected ? actionTextColor : onSurface.withValues(alpha: 0.08),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected ? onPrimaryContainer : onSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Dialog(
+              backgroundColor: dialogBgColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                width: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Filter',
+                      style: TextStyle(
+                        color: onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
+                    const SizedBox(height: 16),
+                    
+                    // Formats Grid
+                    GridView.count(
+                      shrinkWrap: true,
+                      crossAxisCount: 3,
+                      childAspectRatio: 2.3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: formats.map((f) => formatButton(f, f)).toList(),
+                    ),
+
+                    const SizedBox(height: 20),
+                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
+                    const SizedBox(height: 20),
+
+                    // Other Filters (No author, No collection, Unread)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        otherFilterButton(
+                          'No author',
+                          tempFilterNoAuthor,
+                          () => setModalState(() => tempFilterNoAuthor = !tempFilterNoAuthor),
+                        ),
+                        otherFilterButton(
+                          'No collection',
+                          tempFilterNoCollection,
+                          () => setModalState(() => tempFilterNoCollection = !tempFilterNoCollection),
+                        ),
+                        otherFilterButton(
+                          'Unread',
+                          tempFilterUnread,
+                          () => setModalState(() => tempFilterUnread = !tempFilterUnread),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
+                    const SizedBox(height: 16),
+
+                    // Bottom Action Bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '$matchCount',
+                          style: TextStyle(
+                            color: onSurface,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: Text(
+                                'CANCEL',
+                                style: TextStyle(
+                                  color: actionTextColor,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () {
+                                controller.applyFilters(
+                                  selectedFormats: tempSelectedFormats,
+                                  filterNoAuthor: tempFilterNoAuthor,
+                                  filterNoCollection: tempFilterNoCollection,
+                                  filterUnread: tempFilterUnread,
+                                  bookIdsInCollections: bookIdsInCollections,
+                                );
+                                Navigator.pop(context);
+                              },
+                              child: Text(
+                                'APPLY',
+                                style: TextStyle(
+                                  color: actionTextColor,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSortBottomSheet(BuildContext context, LibraryState state, LibraryController controller) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      elevation: 4,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Sort by',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                        TextButton.icon(
+                          icon: Icon(
+                            state.sortOrder == SortOrder.ascending 
+                                ? Icons.arrow_upward 
+                                : Icons.arrow_downward,
+                            size: 16,
+                          ),
+                          label: Text(
+                            state.sortOrder == SortOrder.ascending ? 'Ascending' : 'Descending',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () {
+                            final nextOrder = state.sortOrder == SortOrder.ascending
+                                ? SortOrder.descending
+                                : SortOrder.ascending;
+                            controller.setSortOrder(nextOrder);
+                            setModalState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: SortType.values.map((type) {
+                        final isSelected = state.sortBy == type;
+                        return ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected 
+                                  ? theme.colorScheme.primaryContainer 
+                                  : theme.colorScheme.surfaceContainer,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              _getSortIcon(type),
+                              size: 18,
+                              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          title: Text(
+                            _getSortLabel(type),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          trailing: isSelected 
+                              ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20) 
+                              : null,
+                          onTap: () {
+                            controller.setSortBy(type);
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          }
+        );
+      },
+    );
+  }
+
+  String _getSortLabel(SortType type) {
+    switch (type) {
+      case SortType.name:
+        return 'Name';
+      case SortType.fileName:
+        return 'File Name';
+      case SortType.fileFormat:
+        return 'File Format';
+      case SortType.fileSize:
+        return 'File Size';
+      case SortType.modifiedTime:
+        return 'Modified Time';
+      case SortType.dateRead:
+        return 'Date Read';
+    }
+  }
+
+  IconData _getSortIcon(SortType type) {
+    switch (type) {
+      case SortType.name:
+        return Icons.title;
+      case SortType.fileName:
+        return Icons.description;
+      case SortType.fileFormat:
+        return Icons.extension;
+      case SortType.fileSize:
+        return Icons.insert_drive_file;
+      case SortType.modifiedTime:
+        return Icons.update;
+      case SortType.dateRead:
+        return Icons.history;
+    }
   }
 }
 

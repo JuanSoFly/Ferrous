@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:hive/hive.dart';
 
 enum BookSourceType { imported, linked }
@@ -99,6 +100,12 @@ class Book extends HiveObject {
   @HiveField(20)
   int lastTtsSection;
 
+  @HiveField(21)
+  final int? fileSize;
+
+  @HiveField(22)
+  final DateTime? fileLastModified;
+
   Book({
     required this.id,
     required this.title,
@@ -119,10 +126,38 @@ class Book extends HiveObject {
     this.lastTtsSentenceEnd = -1,
     this.lastTtsPage = 0,
     this.lastTtsSection = 0,
+    this.fileSize,
+    this.fileLastModified,
     DateTime? lastOpened,
     DateTime? addedAt,
   })  : lastOpened = lastOpened ?? DateTime.now(),
         addedAt = addedAt ?? DateTime.now();
+
+  int get safeFileSize {
+    if (fileSize != null) return fileSize!;
+    try {
+      if (filePath.isNotEmpty) {
+        final file = File(filePath);
+        if (file.existsSync()) {
+          return file.lengthSync();
+        }
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  DateTime get safeFileLastModified {
+    if (fileLastModified != null) return fileLastModified!;
+    try {
+      if (filePath.isNotEmpty) {
+        final file = File(filePath);
+        if (file.existsSync()) {
+          return file.lastModifiedSync();
+        }
+      }
+    } catch (_) {}
+    return addedAt;
+  }
 
   double get progress {
     if (format == 'epub' && totalPages > 0) {
@@ -149,6 +184,8 @@ class Book extends HiveObject {
     int? lastTtsSentenceEnd,
     int? lastTtsPage,
     int? lastTtsSection,
+    int? fileSize,
+    DateTime? fileLastModified,
   }) {
     return Book(
       id: id,
@@ -172,6 +209,8 @@ class Book extends HiveObject {
       lastTtsSentenceEnd: lastTtsSentenceEnd ?? this.lastTtsSentenceEnd,
       lastTtsPage: lastTtsPage ?? this.lastTtsPage,
       lastTtsSection: lastTtsSection ?? this.lastTtsSection,
+      fileSize: fileSize ?? this.fileSize,
+      fileLastModified: fileLastModified ?? this.fileLastModified,
       lastOpened: lastOpened ?? this.lastOpened,
       addedAt: addedAt,
     );

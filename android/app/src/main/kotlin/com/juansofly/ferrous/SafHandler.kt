@@ -27,7 +27,7 @@ class SafHandler(private val activity: MainActivity) {
         const val CHANNEL = "com.juansofly.ferrous/saf"
         const val REQUEST_CODE_OPEN_FOLDER = 1001
         
-        private val SUPPORTED_EXTENSIONS = listOf("pdf", "epub", "cbz", "docx")
+        private val SUPPORTED_EXTENSIONS = listOf("pdf", "epub", "cbz", "docx", "txt", "mobi", "azw", "azw3")
         private const val PREFS_NAME = "saf_prefs"
         private const val PREFS_KEY_URIS = "persisted_uris"
         private const val PREFS_KEY_URI_MODES = "persisted_uri_modes"

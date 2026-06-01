@@ -33,13 +33,15 @@ class BookAdapter extends TypeAdapter<Book> {
       lastTtsSentenceEnd: fields[18] as int? ?? -1,
       lastTtsPage: fields[19] as int? ?? 0,
       lastTtsSection: fields[20] as int? ?? 0,
+      fileSize: fields[21] as int?,
+      fileLastModified: fields[22] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Book obj) {
     writer
-      ..writeByte(21)
+      ..writeByte(23)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -81,7 +83,11 @@ class BookAdapter extends TypeAdapter<Book> {
       ..writeByte(19)
       ..write(obj.lastTtsPage)
       ..writeByte(20)
-      ..write(obj.lastTtsSection);
+      ..write(obj.lastTtsSection)
+      ..writeByte(21)
+      ..write(obj.fileSize)
+      ..writeByte(22)
+      ..write(obj.fileLastModified);
   }
 
   @override

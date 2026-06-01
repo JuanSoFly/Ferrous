@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `escape_html`, `extract_docx_media`, `parse_docx_relationships`, `parse_paragraph_to_html`, `parse_table_to_html`
+// These functions are ignored because they are not marked as `pub`: `base64_encode`, `escape_html`
 
-Future<String> readDocxToHtml({required String path}) =>
-    RustLib.instance.api.crateApiDocxReadDocxToHtml(path: path);
+Future<String> readTxtToHtml({required String path}) =>
+    RustLib.instance.api.crateApiTxtReadTxtToHtml(path: path);

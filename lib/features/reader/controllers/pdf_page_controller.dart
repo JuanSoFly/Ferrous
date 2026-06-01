@@ -15,10 +15,20 @@ class PdfPageController extends ChangeNotifier {
   final Book book;
   final BookRepository repository;
 
+  final ScrollController scrollController = ScrollController();
+  Timer? _progressSaveTimer;
+  bool isRestoringScroll = false;
+  double _lastScrollPosition;
+  ReadingMode _readingMode;
+
   PdfPageController({
     required this.book,
     required this.repository,
-  });
+  }) : _pageIndex = book.currentPage,
+       _readingMode = book.readingMode,
+       _lastScrollPosition = book.scrollPosition {
+    scrollController.addListener(_handleScrollUpdate);
+  }
 
   ResolvedBookFile? _resolvedFile;
   Uint8List? _currentPageImage;
@@ -34,15 +44,17 @@ class PdfPageController extends ChangeNotifier {
   double _devicePixelRatio = 2.0; // Default 2x, can be updated from widget
   double _currentZoomScale = 1.0;
   bool _disposed = false;
+
+  final Map<int, Size> _renderedPageSizes = {};
   
   // Maximum texture dimension to prevent OOM crashes
   static const int _maxTextureDimension = 4096;
 
   // LRU cache for rendered pages (R5)
   final LinkedHashMap<int, Uint8List> _pageRenderCache = LinkedHashMap();
-  static const int _maxCachedPages = 5;
-  static const int _prefetchAhead = 2;
-  static const int _prefetchBehind = 1;
+  int get maxCachedPages => isContinuousMode ? 16 : 5;
+  int get prefetchAhead => isContinuousMode ? 4 : 2;
+  int get prefetchBehind => isContinuousMode ? 2 : 1;
   final Set<int> _prefetchInFlight = {};
 
   // Text loading state
@@ -76,6 +88,146 @@ class PdfPageController extends ChangeNotifier {
   String? get textError => _textError;
   Map<int, String> get pageTextCache => _pageTextCache;
   Map<int, List<PdfTextRect>> get pageCharBoundsCache => _pageCharBoundsCache;
+
+  ReadingMode get readingMode => _readingMode;
+  bool get isContinuousMode =>
+      _readingMode == ReadingMode.verticalContinuous ||
+      _readingMode == ReadingMode.webtoon ||
+      _readingMode == ReadingMode.horizontalContinuous;
+
+  void _handleScrollUpdate() {
+    if (!isContinuousMode) return;
+    if (isRestoringScroll) return;
+    _scheduleContinuousProgressSave();
+  }
+
+  void _scheduleContinuousProgressSave() {
+    if (_progressSaveTimer?.isActive ?? false) return;
+    _progressSaveTimer = Timer(const Duration(milliseconds: 350), () {
+      saveContinuousProgress();
+    });
+  }
+
+  void flushContinuousProgressSave() {
+    _progressSaveTimer?.cancel();
+    saveContinuousProgress();
+  }
+
+  void saveContinuousProgress() {
+    if (!scrollController.hasClients) return;
+    if (_pageCount == 0) return;
+    
+    final offset = scrollController.offset;
+    final viewport = scrollController.position.viewportDimension;
+    final approxIndex = viewport <= 0
+        ? 0
+        : (offset / viewport).round().clamp(0, _pageCount - 1);
+        
+    _lastScrollPosition = offset;
+    _pageIndex = approxIndex;
+    
+    repository.updateReadingProgress(
+      book.id,
+      currentPage: approxIndex,
+      totalPages: _pageCount,
+      scrollPosition: offset,
+    );
+  }
+
+  void restoreContinuousScroll() {
+    if (!scrollController.hasClients) return;
+    if (_lastScrollPosition <= 0 && _pageIndex <= 0) return;
+
+    isRestoringScroll = true;
+    var attempts = 0;
+
+    void tryRestore() {
+      if (!scrollController.hasClients) {
+        isRestoringScroll = false;
+        return;
+      }
+
+      final position = scrollController.position;
+      if (!position.hasContentDimensions) {
+        attempts++;
+        if (attempts < 5) {
+          Future.delayed(const Duration(milliseconds: 50), tryRestore);
+        } else {
+          isRestoringScroll = false;
+        }
+        return;
+      }
+
+      final baseOffset = _lastScrollPosition > 0
+          ? _lastScrollPosition
+          : position.viewportDimension * _pageIndex;
+      final clamped = baseOffset.clamp(0.0, position.maxScrollExtent);
+      
+      if ((position.pixels - clamped).abs() > 1.0) {
+        scrollController.jumpTo(clamped);
+      }
+
+      isRestoringScroll = false;
+    }
+
+    tryRestore();
+  }
+
+  void updateReadingMode(ReadingMode mode) {
+    if (_readingMode == mode) return;
+    
+    // Save progress before switching
+    if (isContinuousMode) {
+      saveContinuousProgress();
+    } else {
+      repository.updateReadingProgress(
+        book.id,
+        currentPage: _pageIndex,
+        totalPages: _pageCount,
+      );
+    }
+    
+    _readingMode = mode;
+    repository.updateReadingProgress(book.id, readingMode: mode);
+    
+    // If switching to continuous, handle scroll position
+    if (isContinuousMode) {
+       Future.delayed(const Duration(milliseconds: 50), () {
+          if (!scrollController.hasClients) return;
+          final viewport = scrollController.position.viewportDimension;
+          final targetScroll = _pageIndex * viewport;
+          scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
+       });
+    }
+    
+    notifyListeners();
+  }
+
+  void _saveProgressOnDispose() {
+    if (isContinuousMode) {
+      saveContinuousProgress();
+    } else if (_pageCount > 0) {
+      repository.updateReadingProgress(
+        book.id,
+        currentPage: _pageIndex,
+        totalPages: _pageCount,
+      );
+    }
+  }
+
+  Size getLogicalPageSize(int index) {
+    final renderedSize = _renderedPageSizes[index];
+    if (renderedSize == null || renderedSize.isEmpty || _viewerSize.isEmpty) {
+      return Size.zero;
+    }
+    final aspectRatio = renderedSize.width / renderedSize.height;
+    final viewerAspect = _viewerSize.width / _viewerSize.height;
+    if (aspectRatio > viewerAspect) {
+      return Size(_viewerSize.width, _viewerSize.width / aspectRatio);
+    } else {
+      return Size(_viewerSize.height * aspectRatio, _viewerSize.height);
+    }
+  }
 
   set viewerSize(Size size) {
     if (_viewerSize == size) return;
@@ -179,7 +331,6 @@ class PdfPageController extends ChangeNotifier {
         _error = null;
         notifyListeners();
         
-        
         // Save progress anyway
         repository.updateReadingProgress(
           book.id,
@@ -189,6 +340,12 @@ class PdfPageController extends ChangeNotifier {
         
         // Trigger prefetch in background
         _schedulePrefetch(index);
+
+        if (isContinuousMode && scrollController.hasClients && !userInitiated) {
+          final viewport = scrollController.position.viewportDimension;
+          final targetScroll = index * viewport;
+          scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
+        }
         return;
       }
 
@@ -203,6 +360,12 @@ class PdfPageController extends ChangeNotifier {
         currentPage: index,
         totalPages: _pageCount,
       );
+
+      if (isContinuousMode && scrollController.hasClients && !userInitiated) {
+        final viewport = scrollController.position.viewportDimension;
+        final targetScroll = index * viewport;
+        scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
+      }
 
       try {
         if (_resolvedFile == null) return;
@@ -248,6 +411,7 @@ class PdfPageController extends ChangeNotifier {
           // Use ACTUAL dimensions from the rendered result, not requested dimensions
           _currentPageImage = result.data;
           _renderedPageSize = Size(result.width.toDouble(), result.height.toDouble());
+          _renderedPageSizes[index] = Size(result.width.toDouble(), result.height.toDouble());
           _currentZoomScale = maxZoomQuality;
           
           // Calculate logical size to fit within viewer while preserving aspect ratio
@@ -341,7 +505,7 @@ class PdfPageController extends ChangeNotifier {
     _pageRenderCache.remove(index);
     
     // Evict oldest if full
-    if (_pageRenderCache.length >= _maxCachedPages) {
+    while (_pageRenderCache.length >= maxCachedPages) {
       _pageRenderCache.remove(_pageRenderCache.keys.first);
     }
     
@@ -353,10 +517,10 @@ class PdfPageController extends ChangeNotifier {
     
     // Use post frame to avoid interfering with current frame
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      for (int i = 1; i <= _prefetchAhead; i++) {
+      for (int i = 1; i <= prefetchAhead; i++) {
         _prefetchPage(currentIndex + i);
       }
-      for (int i = 1; i <= _prefetchBehind; i++) {
+      for (int i = 1; i <= prefetchBehind; i++) {
         _prefetchPage(currentIndex - i);
       }
     });
@@ -395,6 +559,7 @@ class PdfPageController extends ChangeNotifier {
         
         if (_disposed) return;
 
+        _renderedPageSizes[index] = Size(result.width.toDouble(), result.height.toDouble());
         _addToCache(index, result.data);
         debugPrint("PDF: Prefetched page $index");
         notifyListeners();
@@ -516,6 +681,9 @@ class PdfPageController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _progressSaveTimer?.cancel();
+    _saveProgressOnDispose();
+    scrollController.dispose();
     cleanup();
     super.dispose();
   }
@@ -528,6 +696,7 @@ class PdfPageController extends ChangeNotifier {
 
   void cleanup() {
     _pageRenderCache.clear();
+    _renderedPageSizes.clear();
     _marginsCache.clear();
     _pageTextCache.clear();
     _pageCharBoundsCache.clear();
