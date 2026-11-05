@@ -80,7 +80,7 @@ class Book extends HiveObject {
   final String? sourceUri;
 
   @HiveField(14)
-  final ReadingMode readingMode;
+  ReadingMode readingMode;
 
   @HiveField(15)
   int lastReadingSentenceStart;

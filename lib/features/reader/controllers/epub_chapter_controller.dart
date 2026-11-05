@@ -437,8 +437,8 @@ class EpubChapterController extends ChangeNotifier {
       final initialOffset = _chapterScrollOffsets[index] ?? 0.0;
       controller = ScrollController(initialScrollOffset: initialOffset);
       controller.addListener(() {
-        if (controller!.hasClients) {
-          _chapterScrollOffsets[index] = controller!.offset;
+        if (controller.hasClients) {
+          _chapterScrollOffsets[index] = controller.offset;
         }
       });
       _chapterScrollControllers[index] = controller;

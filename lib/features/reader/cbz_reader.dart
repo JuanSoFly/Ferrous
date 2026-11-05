@@ -121,7 +121,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
       current: _pageController.readingMode,
       formatType: ReaderFormatType.image,
     );
-    if (selected == null || selected == _pageController.readingMode) return;
+    if (!mounted || selected == null || selected == _pageController.readingMode) return;
     
     _pageController.updateReadingMode(selected, context: context);
     _modeController.mode = selected;

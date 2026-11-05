@@ -999,7 +999,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       margin: Margins.only(bottom: 6),
                     ),
                     "table": Style(
-                      minWidth: Width(100, Unit.percent),
+                      width: Width(100, Unit.percent),
                       margin: Margins.symmetric(vertical: 14.0),
                       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 1.0),
                     ),

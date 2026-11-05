@@ -396,7 +396,6 @@ class CbzPageController extends ChangeNotifier {
       );
     }
 
-    final oldMode = _readingMode;
     _readingMode = mode;
     book.readingMode = mode;
     repository.updateReadingProgress(book.id, readingMode: mode);

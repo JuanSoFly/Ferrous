@@ -306,7 +306,7 @@ class _TableFullScreenViewerState extends State<TableFullScreenViewer> {
     final currentScale = _transformController.value.getMaxScaleOnAxis();
     if (currentScale < 4.2) {
       final newScale = (currentScale * 1.3).clamp(0.2, 4.5);
-      _transformController.value = Matrix4.identity()..scale(newScale);
+      _transformController.value = Matrix4.identity()..scaleByDouble(newScale);
     }
   }
 
@@ -314,7 +314,7 @@ class _TableFullScreenViewerState extends State<TableFullScreenViewer> {
     final currentScale = _transformController.value.getMaxScaleOnAxis();
     if (currentScale > 0.25) {
       final newScale = (currentScale / 1.3).clamp(0.2, 4.5);
-      _transformController.value = Matrix4.identity()..scale(newScale);
+      _transformController.value = Matrix4.identity()..scaleByDouble(newScale);
     }
   }
 
