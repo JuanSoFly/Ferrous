@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 
 class AddLocationDialog extends StatefulWidget {
@@ -51,41 +51,47 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
         ],
       ),
       content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Choose how books in this folder should be stored and managed:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+        child: RadioGroup<SafStorageMode>(
+          groupValue: _selectedMode,
+          onChanged: (val) {
+            if (val != null) setState(() => _selectedMode = val);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Choose how books in this folder should be stored and managed:',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _buildOptionCard(
-              context: context,
-              theme: theme,
-              mode: SafStorageMode.linked,
-              title: 'Link Files (Recommended)',
-              badge: 'ZERO EXTRA STORAGE',
-              badgeColor: const Color(0xFF10B981),
-              description:
-                  'Keep files in place on your device. Books are streamed directly from their folder. Ideal for SD cards and large libraries.',
-              icon: Icons.link_rounded,
-            ),
-            const SizedBox(height: 12),
-            _buildOptionCard(
-              context: context,
-              theme: theme,
-              mode: SafStorageMode.imported,
-              title: 'Import Files',
-              badge: 'PERSISTENT COPY',
-              badgeColor: const Color(0xFF8B5CF6),
-              description:
-                  'Copy files into Ferrous internal storage. Books remain safe and accessible even if the source folder is deleted.',
-              icon: Icons.file_download_outlined,
-            ),
-          ],
+              const SizedBox(height: 16),
+              _buildOptionCard(
+                context: context,
+                theme: theme,
+                mode: SafStorageMode.linked,
+                title: 'Link Files (Recommended)',
+                badge: 'ZERO EXTRA STORAGE',
+                badgeColor: const Color(0xFF10B981),
+                description:
+                    'Keep files in place on your device. Books are streamed directly from their folder. Ideal for SD cards and large libraries.',
+                icon: Icons.link_rounded,
+              ),
+              const SizedBox(height: 12),
+              _buildOptionCard(
+                context: context,
+                theme: theme,
+                mode: SafStorageMode.imported,
+                title: 'Import Files',
+                badge: 'PERSISTENT COPY',
+                badgeColor: const Color(0xFF8B5CF6),
+                description:
+                    'Copy files into Ferrous internal storage. Books remain safe and accessible even if the source folder is deleted.',
+                icon: Icons.file_download_outlined,
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -153,10 +159,6 @@ class _AddLocationDialogState extends State<AddLocationDialog> {
           children: [
             Radio<SafStorageMode>(
               value: mode,
-              groupValue: _selectedMode,
-              onChanged: (val) {
-                if (val != null) setState(() => _selectedMode = val);
-              },
               activeColor: theme.colorScheme.primary,
             ),
             const SizedBox(width: 8),

@@ -383,8 +383,9 @@ class PdfPageController extends ChangeNotifier {
 
         // Render at high-density retina resolution (1.25x supersampled) for crystal-clear,
         // razor-sharp reading without multi-second CPU stalling or 16-megapixel memory spikes.
-        final targetWidth = (_viewerSize.width * _devicePixelRatio * 1.25).round().clamp(800, _maxTextureDimension);
-        final targetHeight = (_viewerSize.height * _devicePixelRatio * 1.25).round().clamp(1000, _maxTextureDimension);
+        const double maxZoomQuality = 1.25;
+        final targetWidth = (_viewerSize.width * _devicePixelRatio * maxZoomQuality).round().clamp(800, _maxTextureDimension);
+        final targetHeight = (_viewerSize.height * _devicePixelRatio * maxZoomQuality).round().clamp(1000, _maxTextureDimension);
         final width = targetWidth;
         final height = targetHeight;
 

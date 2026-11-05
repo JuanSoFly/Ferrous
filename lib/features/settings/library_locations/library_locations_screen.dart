@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/library_location.dart';
 import 'package:reader_app/data/repositories/library_location_repository.dart';
@@ -678,7 +678,7 @@ class LibraryLocationsScreen extends StatelessWidget {
 
 class _FormatChip extends StatelessWidget {
   final String ext;
-  const _FormatChip({super.key, required this.ext});
+  const _FormatChip({required this.ext});
 
   @override
   Widget build(BuildContext context) {
@@ -707,7 +707,7 @@ class _FormatChip extends StatelessWidget {
 class _FormatInfoRow extends StatelessWidget {
   final String fmt;
   final String desc;
-  const _FormatInfoRow({super.key, required this.fmt, required this.desc});
+  const _FormatInfoRow({required this.fmt, required this.desc});
 
   @override
   Widget build(BuildContext context) {

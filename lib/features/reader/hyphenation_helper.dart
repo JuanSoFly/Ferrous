@@ -17,7 +17,7 @@ class HyphenationHelper {
     );
   }
 
-  /// Initialize the hyphenator synchronously. Returns a Future<void> so existing callers
+  /// Initialize the hyphenator synchronously. Returns a `Future<void>` so existing callers
   /// can continue to call `await HyphenationHelper.init()` without breaking.
   static Future<void> init() async {
     _hyphenator ??= Hyphenator(

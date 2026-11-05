@@ -35,7 +35,7 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
-  Future<void> _handleEdit(BuildContext context) async {
+  Future<void> _handleEdit() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => AnnotationDialog(
@@ -71,10 +71,10 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
     }
   }
 
-  Future<void> _handleDelete(BuildContext context) async {
+  Future<void> _handleDelete() async {
     final repo = context.read<AnnotationRepository>();
     await repo.deleteAnnotation(_annotation.id);
-    if (context.mounted) {
+    if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -218,13 +218,13 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
                 style: TextButton.styleFrom(
                   foregroundColor: theme.colorScheme.error,
                 ),
-                onPressed: () => _handleDelete(context),
+                onPressed: _handleDelete,
               ),
               const SizedBox(width: 8),
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('Edit'),
-                onPressed: () => _handleEdit(context),
+                onPressed: _handleEdit,
               ),
             ],
           ),

@@ -163,7 +163,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                 IconButton(
                   tooltip: 'Edit note',
                   icon: const Icon(Icons.edit_outlined, size: 16),
-                  onPressed: () => _handleEdit(context, annotation),
+                  onPressed: () => _handleEdit(annotation),
                 ),
                 IconButton(
                   tooltip: 'Delete annotation',
@@ -180,7 +180,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
     );
   }
 
-  Future<void> _handleEdit(BuildContext context, Annotation annotation) async {
+  Future<void> _handleEdit(Annotation annotation) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => AnnotationDialog(

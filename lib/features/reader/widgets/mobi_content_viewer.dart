@@ -47,7 +47,7 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     String content, {
     required bool hyphenation,
     required bool paragraphIndent,
-    required List<TagExtension> extensions,
+    required List<HtmlExtension> extensions,
     required double horizontalMargin,
     required ReaderThemeConfig themeConfig,
     List<Annotation> annotations = const [],
@@ -111,7 +111,7 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
 
   Widget _buildHtmlWidget(
     String content, {
-    required List<TagExtension> extensions,
+    required List<HtmlExtension> extensions,
     required double horizontalMargin,
     required ReaderThemeConfig themeConfig,
   }) {
