@@ -162,7 +162,7 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
 #[hotpath::measure]
 pub fn extract_cover(book_path: String, save_path: String) -> Result<String> {
     timed!("extract_cover", {
-        let format = book_path.split('.').last().unwrap_or("").to_lowercase();
+        let format = book_path.split('.').next_back().unwrap_or("").to_lowercase();
         match format.as_str() {
             "pdf" => extract_pdf_cover(&book_path, &save_path),
             "epub" => extract_epub_cover(&book_path, &save_path),
