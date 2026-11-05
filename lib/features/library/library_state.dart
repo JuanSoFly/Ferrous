@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:state_notifier/state_notifier.dart';
 import 'package:uuid/uuid.dart';
@@ -214,17 +216,31 @@ class LibraryState {
 
 class LibraryController extends StateNotifier<LibraryState> {
   final BookRepository _bookRepository;
+  final CollectionRepository? _collectionRepository;
+  final AnnotationRepository? _annotationRepository;
   final SafService _safService = SafService();
   bool _coverGenerationStarted = false;
   Timer? _searchDebounce;
 
-  LibraryController(this._bookRepository) : super(const LibraryState()) {
+  LibraryController(
+    this._bookRepository, {
+    CollectionRepository? collectionRepository,
+    AnnotationRepository? annotationRepository,
+  })  : _collectionRepository = collectionRepository,
+        _annotationRepository = annotationRepository,
+        super(const LibraryState()) {
+    _bookRepository.addListener(_onBookRepositoryChanged);
     loadBooks();
     unawaited(_maybeGenerateMissingCovers());
   }
 
+  void _onBookRepositoryChanged() {
+    loadBooks();
+  }
+
   @override
   void dispose() {
+    _bookRepository.removeListener(_onBookRepositoryChanged);
     _searchDebounce?.cancel();
     super.dispose();
   }
@@ -322,6 +338,29 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   void clearSplitPending() {
     state = state.copyWith(clearSplitPending: true);
+  }
+
+  Future<void> deleteBook(String bookId, {bool deleteFile = false}) async {
+    if (state.splitPendingBook?.id == bookId) {
+      clearSplitPending();
+    }
+
+    if (_collectionRepository != null) {
+      await _collectionRepository.removeBookFromAllCollections(bookId);
+    }
+
+    if (_annotationRepository != null) {
+      await _annotationRepository.deleteAnnotationsForBook(bookId);
+    }
+
+    await _bookRepository.deleteBook(bookId, deleteFile: deleteFile);
+
+    if (state.bookIdsInCollections.contains(bookId)) {
+      final updatedIds = Set<String>.from(state.bookIdsInCollections)..remove(bookId);
+      state = state.copyWith(bookIdsInCollections: updatedIds);
+    }
+
+    loadBooks();
   }
 
   Future<void> pickAndScanDirectory(SafStorageMode mode) async {

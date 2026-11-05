@@ -47,14 +47,14 @@ class PdfPageController extends ChangeNotifier {
 
   final Map<int, Size> _renderedPageSizes = {};
   
-  // Maximum texture dimension to prevent OOM crashes
-  static const int _maxTextureDimension = 4096;
+  // Maximum safe texture dimension (2048) to guarantee retina sharpness without memory bloat or CPU stalls
+  static const int _maxTextureDimension = 2048;
 
   // LRU cache for rendered pages (R5)
   final LinkedHashMap<int, Uint8List> _pageRenderCache = LinkedHashMap();
-  int get maxCachedPages => isContinuousMode ? 16 : 5;
-  int get prefetchAhead => isContinuousMode ? 4 : 2;
-  int get prefetchBehind => isContinuousMode ? 2 : 1;
+  int get maxCachedPages => isContinuousMode ? 10 : 6;
+  int get prefetchAhead => isContinuousMode ? 2 : 2;
+  int get prefetchBehind => isContinuousMode ? 1 : 1;
   final Set<int> _prefetchInFlight = {};
 
   // Text loading state
@@ -381,17 +381,12 @@ class PdfPageController extends ChangeNotifier {
           });
         }
 
-        // Always render at max zoom quality (2x) from the start
-        // This ensures crystal clear quality at any zoom level without "popping"
-        const double maxZoomQuality = 2.0;
-        final baseWidth = _viewerSize.width * _devicePixelRatio;
-        final baseHeight = _viewerSize.height * _devicePixelRatio;
-        final scaledWidth = (baseWidth * maxZoomQuality).toInt();
-        final scaledHeight = (baseHeight * maxZoomQuality).toInt();
-        
-        // Clamp to safe maximum to prevent OOM
-        final width = scaledWidth.clamp(800, _maxTextureDimension);
-        final height = scaledHeight.clamp(800, _maxTextureDimension);
+        // Render at high-density retina resolution (1.25x supersampled) for crystal-clear,
+        // razor-sharp reading without multi-second CPU stalling or 16-megapixel memory spikes.
+        final targetWidth = (_viewerSize.width * _devicePixelRatio * 1.25).round().clamp(800, _maxTextureDimension);
+        final targetHeight = (_viewerSize.height * _devicePixelRatio * 1.25).round().clamp(1000, _maxTextureDimension);
+        final width = targetWidth;
+        final height = targetHeight;
 
         await _pdfSemaphore.acquire();
         if (_disposed) {
@@ -535,14 +530,11 @@ class PdfPageController extends ChangeNotifier {
 
     _prefetchInFlight.add(index);
     try {
-      // Use same high-quality rendering as renderPage() for consistent quality
-      const double maxZoomQuality = 2.0;
-      final baseWidth = _viewerSize.width * _devicePixelRatio;
-      final baseHeight = _viewerSize.height * _devicePixelRatio;
-      final scaledWidth = (baseWidth * maxZoomQuality).toInt();
-      final scaledHeight = (baseHeight * maxZoomQuality).toInt();
-      final width = scaledWidth.clamp(800, _maxTextureDimension);
-      final height = scaledHeight.clamp(800, _maxTextureDimension);
+      // Use same high-density retina rendering as renderPage() for consistent crystal-clear quality
+      final targetWidth = (_viewerSize.width * _devicePixelRatio * 1.25).round().clamp(800, _maxTextureDimension);
+      final targetHeight = (_viewerSize.height * _devicePixelRatio * 1.25).round().clamp(1000, _maxTextureDimension);
+      final width = targetWidth;
+      final height = targetHeight;
 
       await _pdfSemaphore.acquire();
       if (_disposed) {

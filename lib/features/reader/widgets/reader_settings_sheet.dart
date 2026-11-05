@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:reader_app/core/constants/book_textures.dart';
 
 class ReaderSettingsSheet extends StatelessWidget {
   const ReaderSettingsSheet({super.key});
@@ -10,13 +11,13 @@ class ReaderSettingsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
+      height: MediaQuery.of(context).size.height * 0.78,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Column(
           children: [
             const SizedBox(height: 8),
@@ -39,6 +40,7 @@ class ReaderSettingsSheet extends StatelessWidget {
               tabs: const [
                 Tab(text: 'Text Options'),
                 Tab(text: 'Page Layout'),
+                Tab(text: 'Book Feel'),
               ],
             ),
             Expanded(
@@ -46,6 +48,7 @@ class ReaderSettingsSheet extends StatelessWidget {
                 children: [
                   _TextSettingsTab(),
                   _LayoutSettingsTab(),
+                  _BookFeelTab(),
                 ],
               ),
             ),
@@ -318,6 +321,228 @@ class _LayoutSettingsTab extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BookFeelTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final repo = context.watch<ReaderThemeRepository>();
+    final config = repo.config;
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      children: [
+        // 1. Apple Books Page Turn animation toggle
+        _buildSectionHeader(theme, 'PAGE TURN ANIMATION', Icons.auto_stories),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: SwitchListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text(
+              'Apple Books Page Turn',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Realistic 3D curl animation with dynamic paper lighting and shadows when swiping pages',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: config.pageFlip,
+            activeThumbColor: theme.colorScheme.primary,
+            onChanged: (val) => repo.setPageFlip(val),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // 2. Background Paper Texture Options
+        _buildSectionHeader(theme, 'REAL BOOK BACKGROUND TEXTURE', Icons.wallpaper),
+        const SizedBox(height: 6),
+        Text(
+          'Choose an authentic book paper texture to make the entire screen look and feel like a real book.',
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        ...BookTextures.all.map((texture) {
+          final isSelected = config.paperTexture == texture.id;
+          return _TextureCard(
+            texture: texture,
+            isSelected: isSelected,
+            onTap: () => repo.setPaperTexture(texture.id),
+          );
+        }),
+
+        const SizedBox(height: 20),
+
+        // 3. Physical Book Details & Depth
+        _buildSectionHeader(theme, 'PHYSICAL BOOK DETAILS', Icons.menu_book),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: SwitchListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text(
+              'Book Spine & Page Edges',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Show realistic book binding gutter shadow and stacked paper leaf edges along the margins',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: config.showBookSpine,
+            activeThumbColor: theme.colorScheme.primary,
+            onChanged: (_) => repo.toggleBookSpine(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(ThemeData theme, String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TextureCard extends StatelessWidget {
+  final BookTextureInfo texture;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _TextureCard({
+    required this.texture,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: isSelected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      color: isSelected
+          ? theme.colorScheme.primary.withValues(alpha: 0.06)
+          : theme.colorScheme.surfaceContainerLow,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Swatch circle showing the actual paper color
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: texture.baseColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.grey.withValues(alpha: 0.35),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.menu_book,
+                    size: 18,
+                    color: texture.textColor.withValues(alpha: 0.65),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Title and description
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      texture.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      texture.subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (isSelected)
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

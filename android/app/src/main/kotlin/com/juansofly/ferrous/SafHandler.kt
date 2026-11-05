@@ -66,6 +66,68 @@ class SafHandler(private val activity: MainActivity) {
                 val folders = getPersistedFolderUris().map { it.toString() }
                 result.success(folders)
             }
+            "getPersistedFolderDetails" -> {
+                scope.launch {
+                    try {
+                        val persistedUris = getPersistedFolderUris()
+                        val uriModes = getPersistedUriModes()
+                        val details = persistedUris.map { uri ->
+                            val uriStr = uri.toString()
+                            val mode = uriModes[uriStr] ?: MODE_IMPORTED
+                            var displayName: String? = null
+                            try {
+                                val doc = DocumentFile.fromTreeUri(activity, uri)
+                                displayName = doc?.name
+                            } catch (_: Exception) {}
+                            mapOf(
+                                "uri" to uriStr,
+                                "mode" to mode,
+                                "displayName" to (displayName ?: ""),
+                                "isValid" to hasValidPermission(uri)
+                            )
+                        }
+                        result.success(details)
+                    } catch (e: Exception) {
+                        result.error("DETAILS_ERROR", e.message, null)
+                    }
+                }
+            }
+            "rescanFolder" -> {
+                val uriString = call.argument<String>("uri")
+                if (uriString == null) {
+                    result.error("INVALID_ARGS", "URI required", null)
+                    return
+                }
+                val uri = Uri.parse(uriString)
+                val uriModes = getPersistedUriModes()
+                val mode = call.argument<String>("mode") ?: uriModes[uriString] ?: MODE_LINKED
+                scope.launch {
+                    try {
+                        val hasPermission = hasValidPermission(uri)
+                        if (!hasPermission) {
+                            result.error("PERMISSION_REVOKED", "Permission revoked or folder no longer accessible", null)
+                            return@launch
+                        }
+                        val books = when (mode) {
+                            MODE_IMPORTED -> copyFilesFromUri(uri)
+                            else -> scanFilesFromUri(uri)
+                        }
+                        result.success(books)
+                    } catch (e: Exception) {
+                        result.error("RESCAN_ERROR", e.message, null)
+                    }
+                }
+            }
+            "updateFolderMode" -> {
+                val uriString = call.argument<String>("uri")
+                val mode = call.argument<String>("mode")
+                if (uriString != null && mode != null) {
+                    saveUriMode(Uri.parse(uriString), mode)
+                    result.success(true)
+                } else {
+                    result.error("INVALID_ARGS", "URI and mode required", null)
+                }
+            }
             "removePersistedFolder" -> {
                 val uriString = call.argument<String>("uri")
                 if (uriString != null) {
@@ -293,6 +355,7 @@ class SafHandler(private val activity: MainActivity) {
                                 mapOf(
                                     "sourceType" to MODE_IMPORTED,
                                     "filePath" to destFile.absolutePath,
+                                    "sourceUri" to file.uri.toString(),
                                     "displayName" to name,
                                     "size" to destFile.length(),
                                     "lastModified" to destFile.lastModified(),
@@ -316,6 +379,7 @@ class SafHandler(private val activity: MainActivity) {
                             mapOf(
                                 "sourceType" to MODE_IMPORTED,
                                 "filePath" to finalDest.absolutePath,
+                                "sourceUri" to file.uri.toString(),
                                 "displayName" to name,
                                 "size" to finalDest.length(),
                                 "lastModified" to finalDest.lastModified(),

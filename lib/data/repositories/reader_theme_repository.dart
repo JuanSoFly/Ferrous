@@ -116,6 +116,18 @@ class ReaderThemeRepository extends ChangeNotifier {
   Future<void> togglePageFlip() async {
     await updateConfig(_config.copyWith(pageFlip: !_config.pageFlip));
   }
+
+  Future<void> setPageFlip(bool enabled) async {
+    await updateConfig(_config.copyWith(pageFlip: enabled));
+  }
+
+  Future<void> setPaperTexture(String texture) async {
+    await updateConfig(_config.copyWith(paperTexture: texture));
+  }
+
+  Future<void> toggleBookSpine() async {
+    await updateConfig(_config.copyWith(showBookSpine: !_config.showBookSpine));
+  }
   
   Future<void> toggleParagraphIndent() async {
     await updateConfig(_config.copyWith(paragraphIndent: !_config.paragraphIndent));

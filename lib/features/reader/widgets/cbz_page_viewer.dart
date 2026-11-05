@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
+import 'apple_books_page_curl.dart';
 import 'cbz_page_image.dart';
 
 class CbzPageViewer extends StatefulWidget {
@@ -152,6 +155,29 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
     final maxWidth = (size.width * devicePixelRatio).round();
 
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final useAppleCurl = !widget.modeController.useVerticalSwipe &&
+        themeRepo.config.pageFlip &&
+        _canSwipePages();
+
+    if (useAppleCurl) {
+      return AppleBooksPageCurl(
+        pageCount: widget.pageController.pageCount,
+        currentPage: widget.pageController.pageIndex,
+        textureId: themeRepo.config.paperTexture,
+        showSpine: themeRepo.config.showBookSpine,
+        onPageChanged: _onPageViewChanged,
+        onToggleChrome: () => widget.chromeController.toggleChrome(),
+        pageBuilder: (context, index) {
+          return InteractiveViewer(
+            transformationController: widget.transformController,
+            maxScale: 5.0,
+            child: _buildPageImage(index, maxWidth),
+          );
+        },
+      );
+    }
+
     return PageView.builder(
       controller: _viewPageController,
       scrollDirection: widget.modeController.useVerticalSwipe
@@ -201,7 +227,8 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.height), controller: widget.pageController.scrollController,
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.height),
+        controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -210,15 +237,12 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => SizedBox(height: spacing),
         itemBuilder: (context, index) {
-          return InteractiveViewer(
-            maxScale: 5.0,
-            child: CbzPageImage(
-              pageIndex: index,
-              pageName: widget.pageController.pageNames[index],
-              fit: BoxFit.contain,
-              maxWidth: maxWidth,
-              cacheController: widget.pageController.cacheController!,
-            ),
+          return CbzPageImage(
+            pageIndex: index,
+            pageName: widget.pageController.pageNames[index],
+            fit: BoxFit.contain,
+            maxWidth: maxWidth,
+            cacheController: widget.pageController.cacheController!,
           );
         },
       ),
@@ -240,7 +264,8 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.width), controller: widget.pageController.scrollController,
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.width),
+        controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         scrollDirection: Axis.horizontal,
@@ -250,15 +275,12 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
-          return InteractiveViewer(
-            maxScale: 5.0,
-            child: CbzPageImage(
-              pageIndex: index,
-              pageName: widget.pageController.pageNames[index],
-              fit: BoxFit.contain,
-              maxWidth: maxWidth,
-              cacheController: widget.pageController.cacheController!,
-            ),
+          return CbzPageImage(
+            pageIndex: index,
+            pageName: widget.pageController.pageNames[index],
+            fit: BoxFit.contain,
+            maxWidth: maxWidth,
+            cacheController: widget.pageController.cacheController!,
           );
         },
       ),

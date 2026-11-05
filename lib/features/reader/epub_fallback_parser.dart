@@ -58,6 +58,13 @@ class EpubFallbackParser {
     final spineIdRefs = _readSpineIdRefs(opfDoc);
     final contentDir = _directoryOf(opfPath);
 
+    final tocTitles = _readTocTitles(
+      opfDoc: opfDoc,
+      manifest: manifest,
+      contentDir: contentDir,
+      filesByLowerPath: filesByLowerPath,
+    );
+
     final orderedItems = <_ManifestItem>[];
 
     if (spineIdRefs.isNotEmpty) {
@@ -79,18 +86,34 @@ class EpubFallbackParser {
     }
 
     final chapters = <EpubChapter>[];
+    final seenPaths = <String>{};
+    final seenContents = <String>{};
     var index = 1;
 
     for (final item in orderedItems) {
       final resolvedPath = _resolveHref(contentDir, item.href);
+      final lowerPath = resolvedPath.toLowerCase();
+
+      // Deduplicate: avoid reading the same spine document twice
+      if (seenPaths.contains(lowerPath)) continue;
+      seenPaths.add(lowerPath);
+
       final file = _findFile(filesByLowerPath, resolvedPath);
       if (file == null) continue;
 
       final html = _decodeText(file);
-      if (html.trim().isEmpty) continue;
+      final trimmedHtml = html.trim();
+      if (trimmedHtml.isEmpty) continue;
+
+      // Deduplicate: avoid duplicate or identical chapter contents
+      if (seenContents.contains(trimmedHtml)) continue;
+      seenContents.add(trimmedHtml);
 
       final fallbackTitle = _fallbackTitle(item, index);
-      final title = _inferTitle(html, fallback: fallbackTitle);
+      final tocTitle = tocTitles[lowerPath];
+      final title = (tocTitle != null && tocTitle.trim().isNotEmpty)
+          ? tocTitle.trim()
+          : _inferTitle(html, fallback: fallbackTitle);
 
       chapters.add(EpubChapter()
         ..Title = title
@@ -101,6 +124,132 @@ class EpubFallbackParser {
     }
 
     return chapters;
+  }
+
+  static Map<String, String> _readTocTitles({
+    required xml.XmlDocument opfDoc,
+    required Map<String, _ManifestItem> manifest,
+    required String contentDir,
+    required Map<String, ArchiveFile> filesByLowerPath,
+  }) {
+    final tocTitles = <String, String>{};
+
+    // 1. Try NCX document (EPUB 2 / EPUB 3 backwards-compatibility)
+    String? ncxHref;
+    for (final spine in opfDoc.findAllElements('spine')) {
+      final tocId = spine.getAttribute('toc');
+      if (tocId != null && manifest.containsKey(tocId)) {
+        ncxHref = manifest[tocId]?.href;
+        break;
+      }
+    }
+
+    if (ncxHref == null) {
+      for (final item in manifest.values) {
+        final media = item.mediaType?.toLowerCase().trim();
+        final href = item.href.toLowerCase().trim();
+        if (media == 'application/x-dtbncx+xml' ||
+            href.endsWith('.ncx') ||
+            item.id.toLowerCase() == 'ncx') {
+          ncxHref = item.href;
+          break;
+        }
+      }
+    }
+
+    if (ncxHref != null) {
+      final resolvedNcxPath = _resolveHref(contentDir, ncxHref);
+      final ncxFile = _findFile(filesByLowerPath, resolvedNcxPath);
+      if (ncxFile != null) {
+        try {
+          final ncxDoc = xml.XmlDocument.parse(_decodeText(ncxFile));
+          final ncxDir = _directoryOf(resolvedNcxPath);
+
+          for (final navPoint in ncxDoc.findAllElements('navPoint')) {
+            String? title;
+            for (final navLabel in navPoint.findElements('navLabel')) {
+              for (final textEl in navLabel.findElements('text')) {
+                final t = textEl.innerText.trim();
+                if (t.isNotEmpty) {
+                  title = t;
+                  break;
+                }
+              }
+              if (title != null) break;
+            }
+
+            final contentEls = navPoint.findElements('content');
+            final contentEl = contentEls.isNotEmpty ? contentEls.first : null;
+            final src = contentEl?.getAttribute('src');
+
+            if (title != null &&
+                title.isNotEmpty &&
+                src != null &&
+                src.trim().isNotEmpty) {
+              final resolvedSrc = _resolveHref(ncxDir, src).toLowerCase();
+              tocTitles.putIfAbsent(resolvedSrc, () => title!);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Try EPUB 3 Navigation Document (nav.xhtml / properties="nav")
+    String? navHref;
+    for (final item in manifest.values) {
+      final props = item.properties?.toLowerCase().trim() ?? '';
+      if (props.contains('nav') ||
+          item.id.toLowerCase() == 'nav' ||
+          item.href.toLowerCase().endsWith('nav.xhtml') ||
+          item.href.toLowerCase().endsWith('toc.xhtml')) {
+        navHref = item.href;
+        break;
+      }
+    }
+
+    if (navHref != null) {
+      final resolvedNavPath = _resolveHref(contentDir, navHref);
+      final navFile = _findFile(filesByLowerPath, resolvedNavPath);
+      if (navFile != null) {
+        try {
+          final navHtml = _decodeText(navFile);
+          final navDoc = html_parser.parse(navHtml);
+          final navDir = _directoryOf(resolvedNavPath);
+
+          var tocNav = navDoc.querySelector('nav[type="toc"], nav#toc');
+          if (tocNav == null) {
+            for (final nav in navDoc.querySelectorAll('nav')) {
+              final epubType = nav.attributes['epub:type']?.toLowerCase().trim();
+              final type = nav.attributes['type']?.toLowerCase().trim();
+              final id = nav.id.toLowerCase().trim();
+              final className = nav.className.toLowerCase().trim();
+              if (epubType == 'toc' ||
+                  type == 'toc' ||
+                  id == 'toc' ||
+                  className.contains('toc')) {
+                tocNav = nav;
+                break;
+              }
+            }
+          }
+          tocNav ??= navDoc.querySelector('nav');
+
+          final container = tocNav ?? navDoc.body ?? navDoc.documentElement;
+          if (container != null) {
+            for (final a in container.querySelectorAll('a')) {
+              final href = a.attributes['href'];
+              final title = a.text.trim();
+              if (href != null && href.trim().isNotEmpty && title.isNotEmpty) {
+                final resolved = _resolveHref(navDir, href).toLowerCase();
+                tocTitles.putIfAbsent(resolved, () => title);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    return tocTitles;
   }
 
   static ArchiveFile? _findFile(
@@ -145,11 +294,13 @@ class EpubFallbackParser {
 
       final mediaType =
           item.getAttribute('media-type') ?? item.getAttribute('mediaType');
+      final properties = item.getAttribute('properties');
 
       items[id] = _ManifestItem(
         id: id,
         href: href,
         mediaType: mediaType,
+        properties: properties,
       );
     }
 
@@ -269,10 +420,12 @@ class _ManifestItem {
   final String id;
   final String href;
   final String? mediaType;
+  final String? properties;
 
   const _ManifestItem({
     required this.id,
     required this.href,
     required this.mediaType,
+    this.properties,
   });
 }

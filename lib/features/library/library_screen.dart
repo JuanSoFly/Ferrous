@@ -8,6 +8,8 @@ import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
+import 'package:reader_app/core/widgets/delete_book_dialog.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/split_reader_screen.dart';
 import 'package:reader_app/data/services/saf_service.dart';
@@ -19,7 +21,11 @@ class LibraryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StateNotifierProvider<LibraryController, LibraryState>(
-      create: (context) => LibraryController(context.read<BookRepository>()),
+      create: (context) => LibraryController(
+        context.read<BookRepository>(),
+        collectionRepository: context.read<CollectionRepository>(),
+        annotationRepository: context.read<AnnotationRepository>(),
+      ),
       child: const _LibraryView(),
     );
   }
@@ -311,7 +317,7 @@ class _LibraryViewState extends State<_LibraryView> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Generating covers…',
+                        'Generating coversâ€¦',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w500,
@@ -1010,15 +1016,34 @@ class _BookCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    book.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.1,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          book.title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.1,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _showBookOptionsMenu(context, controller),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
+                          child: Icon(
+                            Icons.more_vert,
+                            size: 18,
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -1074,43 +1099,112 @@ class _BookCard extends StatelessWidget {
     final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(2),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            leading: Icon(Icons.vertical_split, color: theme.colorScheme.primary),
-            title: const Text('Open in Split View'),
-            subtitle: const Text('Select another book to open both side-by-side'),
-            onTap: () {
-              Navigator.pop(ctx);
-              controller.setSplitPendingBook(book);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Tap another book to open in split view')),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.collections_bookmark, color: theme.colorScheme.primary),
-            title: const Text('Add to Collection'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _showAddToCollectionDialog(context);
-            },
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      book.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 16),
+            ListTile(
+              leading: Icon(Icons.vertical_split, color: theme.colorScheme.primary),
+              title: const Text('Open in Split View'),
+              subtitle: const Text('Select another book to open both side-by-side'),
+              onTap: () {
+                Navigator.pop(ctx);
+                controller.setSplitPendingBook(book);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Tap another book to open in split view')),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.collections_bookmark, color: theme.colorScheme.primary),
+              title: const Text('Add to Collection'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAddToCollectionDialog(context);
+              },
+            ),
+            const Divider(height: 8),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+              title: Text(
+                'Delete Book',
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                'Remove from library',
+                style: TextStyle(
+                  color: theme.colorScheme.error.withValues(alpha: 0.7),
+                  fontSize: 12,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteBook(context, controller);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteBook(BuildContext context, LibraryController controller) async {
+    final result = await showDeleteBookDialog(
+      context: context,
+      book: book,
+    );
+
+    if (result != null && result.confirmed && context.mounted) {
+      await controller.deleteBook(book.id, deleteFile: result.deletePhysicalFile);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deleted "${book.title}" from library'),
+            action: SnackBarAction(
+              label: 'Dismiss',
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
+    }
   }
   
   Future<void> _showAddToCollectionDialog(BuildContext context) async {

@@ -38,6 +38,12 @@ class ReaderThemeConfig {
   @HiveField(10)
   final int fontWeight;
 
+  @HiveField(11)
+  final String paperTexture;
+
+  @HiveField(12)
+  final bool showBookSpine;
+
   const ReaderThemeConfig({
     this.fontSize = 14.0,
     this.fontFamily = 'Merriweather',
@@ -45,11 +51,13 @@ class ReaderThemeConfig {
     this.paragraphSpacing = 10.0,
     this.textAlign = 'justify',
     this.pageMargins = true,
-    this.pageFlip = false,
+    this.pageFlip = true,
     this.wordSpacing = 0.0,
     this.paragraphIndent = false,
     this.hyphenation = false,
     this.fontWeight = 400,
+    this.paperTexture = 'natural',
+    this.showBookSpine = true,
   });
 
   ReaderThemeConfig copyWith({
@@ -64,6 +72,8 @@ class ReaderThemeConfig {
     bool? paragraphIndent,
     bool? hyphenation,
     int? fontWeight,
+    String? paperTexture,
+    bool? showBookSpine,
   }) {
     return ReaderThemeConfig(
       fontSize: fontSize ?? this.fontSize,
@@ -77,6 +87,8 @@ class ReaderThemeConfig {
       paragraphIndent: paragraphIndent ?? this.paragraphIndent,
       hyphenation: hyphenation ?? this.hyphenation,
       fontWeight: fontWeight ?? this.fontWeight,
+      paperTexture: paperTexture ?? this.paperTexture,
+      showBookSpine: showBookSpine ?? this.showBookSpine,
     );
   }
 }

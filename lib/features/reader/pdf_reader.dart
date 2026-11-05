@@ -10,6 +10,7 @@ import 'controllers/pdf_page_controller.dart';
 import 'controllers/pdf_tts_controller.dart';
 import 'controllers/reader_chrome_controller.dart';
 import 'controllers/reader_mode_controller.dart';
+import 'widgets/book_background_texture.dart';
 import 'widgets/pdf_page_viewer.dart';
 import 'widgets/pdf_reader_top_bar.dart';
 import 'widgets/pdf_page_controls.dart';
@@ -154,15 +155,19 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     return Scaffold(
       body: Stack(
         children: [
-          // Content layer - only rebuilds when page or TTS overlay needs update
+          // Content layer wrapped in physical book background
           Positioned.fill(
-            child: PdfPageViewer(
-              pageController: _pageController,
-              ttsController: _ttsController,
-              chromeController: _chromeController,
-              modeController: _modeController,
-              transformController: _pdfTransformController,
-              pageImageKey: _pageImageKey,
+            child: RealBookBackground(
+              textureId: themeRepo.config.paperTexture,
+              showSpine: themeRepo.config.showBookSpine,
+              child: PdfPageViewer(
+                pageController: _pageController,
+                ttsController: _ttsController,
+                chromeController: _chromeController,
+                modeController: _modeController,
+                transformController: _pdfTransformController,
+                pageImageKey: _pageImageKey,
+              ),
             ),
           ),
 

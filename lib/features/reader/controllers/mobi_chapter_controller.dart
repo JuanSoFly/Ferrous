@@ -60,6 +60,7 @@ class MobiChapterController extends ChangeNotifier {
   bool _isRestoringPosition = false;
   int _restoreGeneration = 0;
   bool _isProgrammaticScroll = false;
+  DateTime _lastScrollCheckTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Trackers from book model
   late int _lastReadingSentenceStart;
@@ -137,17 +138,43 @@ class MobiChapterController extends ChangeNotifier {
     final contents = <String>[];
     final plainTexts = <String>[];
     final sentenceSpans = <List<SentenceSpan>>[];
+    String? previousContent;
 
-    for (final rawChapter in rawChapters) {
-      final title = rawChapter.title;
+    for (var i = 0; i < rawChapters.length; i++) {
+      final rawChapter = rawChapters[i];
+      var title = rawChapter.title.trim();
       final content = rawChapter.htmlContent;
+      final trimmed = content.trim();
+      if (trimmed.isEmpty) continue;
+      if (trimmed == previousContent) continue;
+      previousContent = trimmed;
       
       final doc = html_parser.parse(content);
+      if (title.isEmpty) {
+        final heading = doc.querySelector('h1, h2, h3, h4, title')?.text.trim();
+        if (heading != null && heading.isNotEmpty) {
+          title = heading;
+        } else {
+          title = 'Section ${i + 1}';
+        }
+      }
+
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
 
       chapters.add(MobiChapterInfo(title: title));
       contents.add(content);
+      plainTexts.add(plainText);
+      sentenceSpans.add(spans);
+    }
+
+    if (chapters.isEmpty && rawChapters.isNotEmpty) {
+      final first = rawChapters.first;
+      final doc = html_parser.parse(first.htmlContent);
+      final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
+      final spans = splitIntoSentences(plainText);
+      chapters.add(MobiChapterInfo(title: first.title));
+      contents.add(first.htmlContent);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
     }
@@ -173,17 +200,18 @@ class MobiChapterController extends ChangeNotifier {
     notifyListeners();
 
     SentenceSpan? resetSpan;
+    if (_currentPlainText.trim().isNotEmpty) {
+      resetSpan = _sentenceSpans.isNotEmpty
+          ? _sentenceSpans.first
+          : SentenceSpan(0, _currentPlainText.length);
+      _lastReadingSentenceStart = resetSpan.start;
+      _lastReadingSentenceEnd = resetSpan.end;
+    } else {
+      _lastReadingSentenceStart = -1;
+      _lastReadingSentenceEnd = -1;
+    }
     if (userInitiated) {
-      if (_currentPlainText.trim().isNotEmpty) {
-        resetSpan = _sentenceSpans.isNotEmpty
-            ? _sentenceSpans.first
-            : SentenceSpan(0, _currentPlainText.length);
-        _lastReadingSentenceStart = resetSpan.start;
-        _lastReadingSentenceEnd = resetSpan.end;
-      } else {
-        _lastReadingSentenceStart = -1;
-        _lastReadingSentenceEnd = -1;
-      }
+      _lastScrollPosition = 0.0;
     }
 
     unawaited(repository.updateReadingProgress(
@@ -191,8 +219,8 @@ class MobiChapterController extends ChangeNotifier {
       sectionIndex: index,
       totalPages: _chapters!.length,
       scrollPosition: userInitiated ? 0.0 : null,
-      lastReadingSentenceStart: resetSpan?.start ?? (userInitiated ? -1 : null),
-      lastReadingSentenceEnd: resetSpan?.end ?? (userInitiated ? -1 : null),
+      lastReadingSentenceStart: resetSpan?.start ?? -1,
+      lastReadingSentenceEnd: resetSpan?.end ?? -1,
     ));
 
     if (userInitiated && _chapterKeys.isNotEmpty) {
@@ -275,9 +303,15 @@ class MobiChapterController extends ChangeNotifier {
     });
   }
 
-  void updateCurrentChapterFromScroll(BuildContext context) {
+  void updateCurrentChapterFromScroll(BuildContext context, {bool force = false}) {
     if (_isProgrammaticScroll || _isRestoringPosition) return;
     if (_chapterKeys.isEmpty || !_scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    if (!force && now.difference(_lastScrollCheckTime).inMilliseconds < 150) {
+      return;
+    }
+    _lastScrollCheckTime = now;
 
     final viewportTop = _scrollController.offset;
     final viewportMiddle = viewportTop + MediaQuery.of(context).size.height / 2;

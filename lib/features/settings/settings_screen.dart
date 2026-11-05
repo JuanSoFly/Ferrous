@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
+import 'package:reader_app/features/settings/library_locations/library_locations_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -41,7 +42,11 @@ class SettingsScreen extends StatelessWidget {
                   title: 'Library Locations',
                   subtitle: 'Configure book scan directories',
                   onTap: () {
-                    // Can be extended or left placeholder
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const LibraryLocationsScreen(),
+                      ),
+                    );
                   },
                   showChevron: true,
                 ),

@@ -3,7 +3,7 @@ name: Build and Release APKs
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
 
 env:
   FLUTTER_VERSION: '3.44.0'
@@ -155,7 +155,7 @@ jobs:
             build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
             build/app/outputs/flutter-apk/ferrous-v${{ steps.version.outputs.VERSION }}-x86_64.apk
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

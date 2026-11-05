@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 
 class AnnotationDialog extends StatefulWidget {
   final String selectedText;
+  final String? initialNote;
+  final int? initialColor;
 
-  const AnnotationDialog({super.key, required this.selectedText});
+  const AnnotationDialog({
+    super.key,
+    required this.selectedText,
+    this.initialNote,
+    this.initialColor,
+  });
 
   @override
   State<AnnotationDialog> createState() => _AnnotationDialogState();
 }
 
 class _AnnotationDialogState extends State<AnnotationDialog> {
-  final TextEditingController _noteController = TextEditingController();
-  int _selectedColor = 0xFFFFF176;
+  late final TextEditingController _noteController;
+  late int _selectedColor;
 
-  final List<int> _colors = [
+  final List<int> _colors = const [
     0xFFFFF176, // Yellow
     0xFFFF8A80, // Red
     0xFF81C784, // Green
@@ -22,15 +29,24 @@ class _AnnotationDialogState extends State<AnnotationDialog> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _noteController = TextEditingController(text: widget.initialNote ?? '');
+    _selectedColor = widget.initialColor ?? _colors.first;
+  }
+
+  @override
   void dispose() {
     _noteController.dispose();
     super.dispose();
   }
 
+  bool get _isEditing => widget.initialNote != null || widget.initialColor != null;
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Annotation'),
+      title: Text(_isEditing ? 'Edit Annotation' : 'Add Annotation'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -51,6 +67,7 @@ class _AnnotationDialogState extends State<AnnotationDialog> {
             ),
             const SizedBox(height: 16),
             const Text('Note (Optional)'),
+            const SizedBox(height: 8),
             TextField(
               controller: _noteController,
               decoration: const InputDecoration(
@@ -78,7 +95,7 @@ class _AnnotationDialogState extends State<AnnotationDialog> {
                       color: Color(color),
                       shape: BoxShape.circle,
                       border: _selectedColor == color
-                          ? Border.all(color: Colors.black, width: 2)
+                          ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2)
                           : null,
                     ),
                   ),
@@ -100,7 +117,7 @@ class _AnnotationDialogState extends State<AnnotationDialog> {
               'color': _selectedColor,
             });
           },
-          child: const Text('Save'),
+          child: Text(_isEditing ? 'Update' : 'Save'),
         ),
       ],
     );

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:reader_app/core/models/book.dart';
@@ -5,6 +6,31 @@ import 'package:reader_app/core/errors/exceptions.dart';
 
 
 enum SafStorageMode { linked, imported }
+
+class SafFolderInfo {
+  final String uri;
+  final String displayName;
+  final SafStorageMode mode;
+  final bool isValid;
+
+  const SafFolderInfo({
+    required this.uri,
+    required this.displayName,
+    required this.mode,
+    this.isValid = true,
+  });
+
+  factory SafFolderInfo.fromMap(Map<dynamic, dynamic> map) {
+    final modeStr = map['mode'] as String?;
+    final mode = modeStr == 'imported' ? SafStorageMode.imported : SafStorageMode.linked;
+    return SafFolderInfo(
+      uri: (map['uri'] as String?) ?? '',
+      displayName: (map['displayName'] as String?) ?? '',
+      mode: mode,
+      isValid: (map['isValid'] as bool?) ?? true,
+    );
+  }
+}
 
 class SafBookRef {
   final BookSourceType sourceType;
@@ -36,7 +62,7 @@ class SafBookRef {
     return SafBookRef(
       sourceType: sourceType,
       filePath: map['filePath'] as String?,
-      sourceUri: map['uri'] as String?,
+      sourceUri: (map['sourceUri'] as String?) ?? (map['uri'] as String?),
       displayName: displayName,
       format: rawFormat.toLowerCase(),
       size: _toInt(map['size']),
@@ -71,6 +97,7 @@ class SafService {
   /// Returns a list of book references for either linked (URI) or imported (file path) files.
   /// Returns empty list if user cancels or no supported files found.
   Future<List<SafBookRef>> pickFolder({required SafStorageMode mode}) async {
+    if (!Platform.isAndroid) return [];
     try {
       final result = await _channel.invokeMethod<List<dynamic>>('pickFolder', {
         'mode': mode.name,
@@ -91,6 +118,7 @@ class SafService {
   ///
   /// Returns list of book references for any newly discovered files.
   Future<List<SafBookRef>> rescanPersistedFolders() async {
+    if (!Platform.isAndroid) return [];
     try {
       final result = await _channel.invokeMethod<List<dynamic>>('rescanFolders');
       final list = result ?? const [];
@@ -106,11 +134,71 @@ class SafService {
   ///
   /// Returns the content:// URIs of folders the user has previously granted access to.
   Future<List<String>> getPersistedFolders() async {
+    if (!Platform.isAndroid) return [];
     try {
       final result = await _channel.invokeMethod<List<dynamic>>('getPersistedFolders');
       return result?.cast<String>() ?? [];
     } on PlatformException catch (e) {
       throw SafException('Failed to get persisted folders: ${e.message}');
+    }
+  }
+
+  /// Gets rich details for all persisted folders, including display names,
+  /// storage mode (linked vs imported), and permission validity.
+  Future<List<SafFolderInfo>> getPersistedFolderDetails() async {
+    if (!Platform.isAndroid) return [];
+    try {
+      final result = await _channel.invokeMethod<List<dynamic>>('getPersistedFolderDetails');
+      if (result != null) {
+        return result
+            .map((item) => SafFolderInfo.fromMap(Map<dynamic, dynamic>.from(item as Map)))
+            .toList();
+      }
+    } on PlatformException catch (e) {
+      debugPrint('getPersistedFolderDetails platform exception: ${e.message}');
+    } catch (e) {
+      debugPrint('getPersistedFolderDetails fallback error: $e');
+    }
+
+    // Fallback using getPersistedFolders
+    try {
+      final uris = await getPersistedFolders();
+      return uris.map((u) => SafFolderInfo(
+        uri: u,
+        displayName: '',
+        mode: SafStorageMode.linked,
+        isValid: true,
+      )).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Rescans a specific folder URI for books.
+  Future<List<SafBookRef>> rescanFolder({required String uri, SafStorageMode? mode}) async {
+    try {
+      final result = await _channel.invokeMethod<List<dynamic>>('rescanFolder', {
+        'uri': uri,
+        if (mode != null) 'mode': mode.name,
+      });
+      final list = result ?? const [];
+      return list
+          .map((item) => SafBookRef.fromMap(Map<dynamic, dynamic>.from(item as Map)))
+          .toList();
+    } on PlatformException catch (e) {
+      throw SafException('Failed to rescan folder: ${e.message}');
+    }
+  }
+
+  /// Updates the storage mode of a persisted folder URI.
+  Future<void> updateFolderMode({required String uri, required SafStorageMode mode}) async {
+    try {
+      await _channel.invokeMethod('updateFolderMode', {
+        'uri': uri,
+        'mode': mode.name,
+      });
+    } on PlatformException catch (e) {
+      throw SafException('Failed to update folder mode: ${e.message}');
     }
   }
 

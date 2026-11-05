@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:reader_app/core/constants/book_textures.dart';
+import 'package:reader_app/core/models/annotation.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/data/services/tts_service.dart';
+import 'package:reader_app/features/annotations/annotation_detail_sheet.dart';
+import 'package:reader_app/features/reader/annotation_highlight_helper.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
@@ -46,13 +52,18 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     required List<TagExtension> extensions,
     required double horizontalMargin,
     required ReaderThemeConfig themeConfig,
+    List<Annotation> annotations = const [],
   }) {
     final key = _cacheKey(hyphenation, paragraphIndent);
 
     // Cache hit: render synchronously, no FutureBuilder
     if (_processedHtmlCache.containsKey(key)) {
+      final base = _processedHtmlCache[key]!;
+      final display = annotations.isNotEmpty
+          ? AnnotationHighlightHelper.applyHighlights(base, annotations)
+          : base;
       return _buildHtmlWidget(
-        _processedHtmlCache[key]!,
+        display,
         extensions: extensions,
         horizontalMargin: horizontalMargin,
         themeConfig: themeConfig,
@@ -64,8 +75,12 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       future: _getProcessedHtml(key, content, hyphenation, paragraphIndent),
       initialData: content,
       builder: (context, snapshot) {
+        final base = snapshot.data ?? content;
+        final display = annotations.isNotEmpty
+            ? AnnotationHighlightHelper.applyHighlights(base, annotations)
+            : base;
         return _buildHtmlWidget(
-          snapshot.data ?? content,
+          display,
           extensions: extensions,
           horizontalMargin: horizontalMargin,
           themeConfig: themeConfig,
@@ -91,6 +106,9 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         'paragraphIndent': paragraphIndent,
       },
     );
+    if (_processedHtmlCache.length > 50) {
+      _processedHtmlCache.remove(_processedHtmlCache.keys.first);
+    }
     _processedHtmlCache[key] = processed;
     return processed;
   }
@@ -127,6 +145,11 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       }
     }
 
+    final textureInfo = BookTextures.getById(themeConfig.paperTexture);
+    final effectiveTextColor = themeConfig.paperTexture != BookTextures.none
+        ? textureInfo.textColor
+        : null;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
       child: Html(
@@ -142,6 +165,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
                 (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
             textAlign: parseTextAlign(themeConfig.textAlign),
             letterSpacing: themeConfig.wordSpacing,
+            color: effectiveTextColor,
             padding: HtmlPaddings.zero,
             margin: Margins.zero,
           ),
@@ -154,10 +178,35 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
           "p": Style(
             margin: Margins.only(bottom: themeConfig.paragraphSpacing),
             textAlign: parseTextAlign(themeConfig.textAlign),
+            color: effectiveTextColor,
           ),
           "img": Style(
             width: Width(100, Unit.percent),
             margin: Margins.only(bottom: 24.0),
+          ),
+          "table": Style(
+            width: Width(100, Unit.percent),
+            margin: Margins.symmetric(vertical: 16.0),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 1.0,
+            ),
+          ),
+          "th": Style(
+            padding: HtmlPaddings.all(10.0),
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+            fontWeight: FontWeight.bold,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 0.5,
+            ),
+          ),
+          "td": Style(
+            padding: HtmlPaddings.all(8.0),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 0.5,
+            ),
           ),
         },
       ),
@@ -167,6 +216,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
   @override
   Widget build(BuildContext context) {
     final themeRepo = context.watch<ReaderThemeRepository>();
+    final annotationRepo = context.watch<AnnotationRepository>();
     final themeConfig = themeRepo.config;
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
     final isTtsActive = widget.ttsController.showTtsControls ||
@@ -174,7 +224,13 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final isCurrentChapter =
         widget.chapterIndex == widget.chapterController.currentChapterIndex;
 
+    final chapterAnnotations = annotationRepo
+        .getAnnotationsForBook(widget.chapterController.book.id)
+        .where((a) => a.chapterIndex == widget.chapterIndex)
+        .toList();
+
     final extensions = [
+      const TableHtmlExtension(),
       TagExtension(
         tagsToExtend: {'tts-highlight'},
         builder: (context) {
@@ -191,6 +247,31 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
           );
         },
       ),
+      TagExtension(
+        tagsToExtend: {AnnotationHighlightHelper.highlightTag},
+        builder: (ctx) {
+          final text = ctx.node.text ?? '';
+          final id = ctx.attributes['data-id'] ?? '';
+          final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
+          final style = ctx.style?.generateTextStyle() ?? const TextStyle();
+          return _AnnotationHighlightSpan(
+            annotationId: id,
+            text: text,
+            color: Color(colorVal),
+            textStyle: style,
+            onTap: () {
+              final all = annotationRepo.getAllAnnotations();
+              final target = all.cast<Annotation?>().firstWhere(
+                    (a) => a?.id == id,
+                    orElse: () => null,
+                  );
+              if (target != null) {
+                showAnnotationDetailSheet(context, target);
+              }
+            },
+          );
+        },
+      ),
     ];
 
     if (isTtsActive && isCurrentChapter) {
@@ -199,9 +280,23 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         builder: (context, _) {
           widget.ttsController.highlightKeyAssigned = false;
           final key = _cacheKey(themeConfig.hyphenation, themeConfig.paragraphIndent);
+          if (!_processedHtmlCache.containsKey(key) &&
+              (themeConfig.hyphenation || themeConfig.paragraphIndent)) {
+            _getProcessedHtml(
+              key,
+              widget.htmlContent,
+              themeConfig.hyphenation,
+              themeConfig.paragraphIndent,
+            ).then((_) {
+              if (mounted) setState(() {});
+            });
+          }
           final processedHtml = _processedHtmlCache[key] ?? widget.htmlContent;
-          final content = widget.ttsController
+          String content = widget.ttsController
               .buildTtsHighlightedHtml(processedHtml);
+          if (chapterAnnotations.isNotEmpty) {
+            content = AnnotationHighlightHelper.applyHighlights(content, chapterAnnotations);
+          }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             widget.ttsController.maybeEnsureHighlightVisible();
           });
@@ -221,6 +316,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         extensions: extensions,
         horizontalMargin: horizontalMargin,
         themeConfig: themeConfig,
+        annotations: chapterAnnotations,
       );
     }
   }
@@ -304,3 +400,48 @@ class _TtsHighlightSpan extends StatelessWidget {
     );
   }
 }
+
+class _AnnotationHighlightSpan extends StatelessWidget {
+  final String annotationId;
+  final String text;
+  final Color color;
+  final TextStyle textStyle;
+  final VoidCallback onTap;
+
+  const _AnnotationHighlightSpan({
+    required this.annotationId,
+    required this.text,
+    required this.color,
+    required this.textStyle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(3),
+          border: Border(
+            bottom: BorderSide(
+              color: color,
+              width: 2.0,
+            ),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        child: Text(
+          text,
+          style: textStyle.copyWith(
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+

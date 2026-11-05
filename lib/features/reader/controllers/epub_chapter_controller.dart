@@ -61,6 +61,7 @@ class EpubChapterController extends ChangeNotifier {
   bool _isRestoringPosition = false;
   int _restoreGeneration = 0;
   bool _isProgrammaticScroll = false;
+  DateTime _lastScrollCheckTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Trackers from book model
   late int _lastReadingSentenceStart;
@@ -130,32 +131,63 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   static Future<ParsedEpubBook> _parseEpubIsolated(List<int> bytes) async {
-    List<EpubChapter> rawChapters;
-    try {
-      final book = await EpubReader.readBook(bytes);
-      rawChapters = _flattenChaptersStatic(book.Chapters ?? []);
+    List<EpubChapter> rawChapters = [];
 
-      if (rawChapters.isEmpty) {
-        rawChapters = EpubFallbackParser.parseChapters(bytes);
-      }
+    // 1. Primary: Use the spine-based parser which strictly follows the EPUB
+    // reading order and eliminates duplicate chapters from TOC subchapters.
+    try {
+      rawChapters = EpubFallbackParser.parseChapters(bytes);
     } catch (e) {
+      debugPrint('Spine parser failed: $e. Falling back to epubx...');
+    }
+
+    // 2. Fallback: If spine parsing failed or produced no chapters, try epubx with deduplication.
+    if (rawChapters.isEmpty) {
       try {
-        rawChapters = EpubFallbackParser.parseChapters(bytes);
+        final book = await EpubReader.readBook(bytes);
+        rawChapters = _flattenAndDeduplicateChapters(book.Chapters ?? []);
       } catch (fallbackError) {
-        throw Exception('EPUB parsing failed: $e. Fallback also failed: $fallbackError');
+        throw Exception('EPUB parsing failed. Fallback also failed: $fallbackError');
       }
     }
+
+    if (rawChapters.isEmpty) {
+      throw Exception('No chapters found in EPUB');
+    }
+
+    // 3. Final deduplication safety pass: ensure no consecutive chapters have identical content.
+    final deduplicatedChapters = <EpubChapter>[];
+    String? lastContent;
+    for (final ch in rawChapters) {
+      final content = ch.HtmlContent?.trim() ?? '';
+      if (content.isEmpty) continue;
+      if (content == lastContent) continue;
+      lastContent = content;
+      deduplicatedChapters.add(ch);
+    }
+
+    final finalChapters = deduplicatedChapters.isNotEmpty ? deduplicatedChapters : rawChapters;
 
     final chapters = <EpubChapterInfo>[];
     final contents = <String>[];
     final plainTexts = <String>[];
     final sentenceSpans = <List<SentenceSpan>>[];
 
-    for (final rawChapter in rawChapters) {
-      final title = rawChapter.Title;
+    for (var i = 0; i < finalChapters.length; i++) {
+      final rawChapter = finalChapters[i];
+      var title = rawChapter.Title?.trim();
       final content = rawChapter.HtmlContent ?? '';
       
       final doc = html_parser.parse(content);
+      if (title == null || title.isEmpty) {
+        final heading = doc.querySelector('h1, h2, h3, h4, title')?.text.trim();
+        if (heading != null && heading.isNotEmpty) {
+          title = heading;
+        } else {
+          title = 'Chapter ${i + 1}';
+        }
+      }
+
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
 
@@ -184,6 +216,36 @@ class EpubChapterController extends ChangeNotifier {
     return result;
   }
 
+  static List<EpubChapter> _flattenAndDeduplicateChapters(List<EpubChapter> chapters) {
+    final flattened = _flattenChaptersStatic(chapters);
+    final result = <EpubChapter>[];
+    final seenPaths = <String>{};
+    final seenContents = <String>{};
+
+    for (final chapter in flattened) {
+      final fileName = (chapter.ContentFileName ?? '')
+          .toLowerCase()
+          .split('#')
+          .first
+          .trim();
+      final content = chapter.HtmlContent?.trim() ?? '';
+      if (content.isEmpty) continue;
+
+      if (fileName.isNotEmpty && seenPaths.contains(fileName)) {
+        continue;
+      }
+      if (seenContents.contains(content)) {
+        continue;
+      }
+
+      if (fileName.isNotEmpty) seenPaths.add(fileName);
+      seenContents.add(content);
+      result.add(chapter);
+    }
+
+    return result;
+  }
+
   Future<ParsedEpubBook> _readChaptersWithFallback(List<int> bytes) async {
     return await compute(_parseEpubIsolated, bytes);
   }
@@ -201,17 +263,18 @@ class EpubChapterController extends ChangeNotifier {
     notifyListeners();
 
     SentenceSpan? resetSpan;
+    if (_currentPlainText.trim().isNotEmpty) {
+      resetSpan = _sentenceSpans.isNotEmpty
+          ? _sentenceSpans.first
+          : SentenceSpan(0, _currentPlainText.length);
+      _lastReadingSentenceStart = resetSpan.start;
+      _lastReadingSentenceEnd = resetSpan.end;
+    } else {
+      _lastReadingSentenceStart = -1;
+      _lastReadingSentenceEnd = -1;
+    }
     if (userInitiated) {
-      if (_currentPlainText.trim().isNotEmpty) {
-        resetSpan = _sentenceSpans.isNotEmpty
-            ? _sentenceSpans.first
-            : SentenceSpan(0, _currentPlainText.length);
-        _lastReadingSentenceStart = resetSpan.start;
-        _lastReadingSentenceEnd = resetSpan.end;
-      } else {
-        _lastReadingSentenceStart = -1;
-        _lastReadingSentenceEnd = -1;
-      }
+      _lastScrollPosition = 0.0;
     }
 
     unawaited(repository.updateReadingProgress(
@@ -219,8 +282,8 @@ class EpubChapterController extends ChangeNotifier {
       sectionIndex: index,
       totalPages: _chapters!.length,
       scrollPosition: userInitiated ? 0.0 : null,
-      lastReadingSentenceStart: resetSpan?.start ?? (userInitiated ? -1 : null),
-      lastReadingSentenceEnd: resetSpan?.end ?? (userInitiated ? -1 : null),
+      lastReadingSentenceStart: resetSpan?.start ?? -1,
+      lastReadingSentenceEnd: resetSpan?.end ?? -1,
     ));
 
     if (userInitiated && _chapterKeys.isNotEmpty) {
@@ -304,9 +367,15 @@ class EpubChapterController extends ChangeNotifier {
     });
   }
 
-  void updateCurrentChapterFromScroll(BuildContext context) {
+  void updateCurrentChapterFromScroll(BuildContext context, {bool force = false}) {
     if (_isProgrammaticScroll || _isRestoringPosition) return;
     if (_chapterKeys.isEmpty || !_scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    if (!force && now.difference(_lastScrollCheckTime).inMilliseconds < 150) {
+      return;
+    }
+    _lastScrollCheckTime = now;
 
     final viewportTop = _scrollController.offset;
     final viewportMiddle = viewportTop + MediaQuery.of(context).size.height / 2;

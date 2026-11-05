@@ -23,18 +23,20 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
       paragraphSpacing: fields[3] as double? ?? 10.0,
       textAlign: fields[4] as String? ?? 'justify',
       pageMargins: fields[5] as bool? ?? true,
-      pageFlip: fields[6] as bool? ?? false,
+      pageFlip: fields[6] as bool? ?? true,
       wordSpacing: fields[7] as double? ?? 0.0,
       paragraphIndent: fields[8] as bool? ?? false,
       hyphenation: fields[9] as bool? ?? false,
       fontWeight: fields[10] as int? ?? 400,
+      paperTexture: fields[11] as String? ?? 'natural',
+      showBookSpine: fields[12] as bool? ?? true,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReaderThemeConfig obj) {
     writer
-      ..writeByte(11) // number of fields
+      ..writeByte(13) // number of fields
       ..writeByte(0)
       ..write(obj.fontSize)
       ..writeByte(1)
@@ -56,7 +58,11 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
       ..writeByte(9)
       ..write(obj.hyphenation)
       ..writeByte(10)
-      ..write(obj.fontWeight);
+      ..write(obj.fontWeight)
+      ..writeByte(11)
+      ..write(obj.paperTexture)
+      ..writeByte(12)
+      ..write(obj.showBookSpine);
   }
 
   @override

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0-alpha.1] - 2026-11-06
+
+### Added
+- Experimental Apple Books style page curl animation and gesture interaction.
+- Custom book background textures and reader themes.
+- Library locations management with custom folder scanning.
+- Annotation details bottom sheet with highlight management and notes.
+- Delete book confirmation dialog with optional physical storage cleanup.
+- Configured ProGuard rules for optimized Android release APK builds.
+
+### Changed
+- Improved reader TTS controllers and sentence boundary tracking.
+- Optimized library state management and book repository operations.
+
 ## [1.1.0] - 2026-06-01
 
 ### Added

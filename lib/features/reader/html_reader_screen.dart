@@ -2,11 +2,19 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:uuid/uuid.dart';
+import 'package:reader_app/core/models/annotation.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
+import 'package:reader_app/features/annotations/annotation_dialog.dart';
+import 'package:reader_app/features/annotations/annotation_detail_sheet.dart';
+import 'package:reader_app/features/reader/annotation_highlight_helper.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
@@ -20,9 +28,26 @@ import 'package:reader_app/features/reader/controllers/html_tts_controller.dart'
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:reader_app/core/constants/book_textures.dart';
+import 'package:reader_app/features/reader/widgets/book_background_texture.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Shared base class for HTML-based text readers (DOCX, MOBI).
+/// Represents a Table of Contents entry extracted from an HTML document.
+class HtmlTocEntry {
+  final String title;
+  final int level;
+  final String? anchor;
+  final double estimatedFraction;
 
+  const HtmlTocEntry({
+    required this.title,
+    required this.level,
+    this.anchor,
+    required this.estimatedFraction,
+  });
+}
+
+/// Shared base class for HTML-based text readers (DOCX, MOBI, TXT).
 abstract class HtmlReaderScreen extends StatefulWidget {
   final Book book;
   final BookRepository repository;
@@ -70,19 +95,23 @@ class HtmlReaderConfig {
 abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T>
     with WidgetsBindingObserver {
   String? _htmlContent;
-  String? _hyphenatedHtml;
+  String? _processedHtml;
+  bool _processedWithHyphenation = false;
+  bool _processedWithIndent = false;
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
   ResolvedBookFile? _resolvedFile;
   String _plainText = '';
   List<SentenceSpan> _sentenceSpans = const [];
+  List<HtmlTocEntry> _tocEntries = const [];
   late ReadingMode _readingMode;
   late double _lastScrollPosition;
 
   // Shared chrome controller for UI visibility and lock mode
   final ReaderChromeController _chromeController = ReaderChromeController();
   Offset? _lastDoubleTapDown;
+  SelectedContent? _selectedContent;
 
   // Font preloading
   String _lastLoadedFontFamily = '';
@@ -102,6 +131,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HyphenationHelper.init();
     _readingMode = widget.book.readingMode;
     _lastScrollPosition = widget.book.scrollPosition;
     _chromeController.addListener(_onChromeChanged);
@@ -156,16 +186,23 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final sentenceSpansFuture = plainTextFuture.then(
         (plainText) => compute(splitIntoSentences, plainText),
       );
+      final tocEntriesFuture = compute(_htmlToTocStatic, html);
 
       // Precompute hyphenation in background if enabled.
-      // Uses processHtmlIsolated which calls init() inside the isolate
-      // so the hyphenator is available in the background isolate's static field.
       final shouldHyphenate = themeRepo.config.hyphenation;
-      Future<String?> hyphenationFuture;
-      if (shouldHyphenate) {
-        hyphenationFuture = compute(HyphenationHelper.processHtmlIsolated, html);
+      final shouldIndent = themeRepo.config.paragraphIndent;
+      Future<String?> processedHtmlFuture;
+      if (shouldHyphenate || shouldIndent) {
+        processedHtmlFuture = compute(
+          HyphenationHelper.processHtmlAndIndentIsolated,
+          {
+            'html': html,
+            'hyphenation': shouldHyphenate,
+            'paragraphIndent': shouldIndent,
+          },
+        );
       } else {
-        hyphenationFuture = Future.value(null);
+        processedHtmlFuture = Future.value(null);
       }
 
       // Preload the current font family before rendering
@@ -175,13 +212,17 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
       final plainText = await plainTextFuture;
       final sentenceSpans = await sentenceSpansFuture;
-      final hyphenatedHtml = await hyphenationFuture;
+      final processedHtml = await processedHtmlFuture;
+      final tocEntries = await tocEntriesFuture;
 
       setState(() {
         _htmlContent = html;
         _plainText = plainText;
         _sentenceSpans = sentenceSpans;
-        _hyphenatedHtml = hyphenatedHtml;
+        _processedHtml = processedHtml;
+        _processedWithHyphenation = shouldHyphenate;
+        _processedWithIndent = shouldIndent;
+        _tocEntries = tocEntries;
         _isLoading = false;
       });
 
@@ -211,16 +252,37 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       });
     }
 
-    // Handle hyphenation toggle at runtime
+    // Handle hyphenation and paragraph indent toggles at runtime
     if (_htmlContent != null) {
-      if (themeConfig.hyphenation && _hyphenatedHtml == null) {
-        // Hyphenation was just enabled — compute in background
-        compute(HyphenationHelper.processHtmlIsolated, _htmlContent!).then((result) {
-          if (mounted) setState(() => _hyphenatedHtml = result);
-        });
-      } else if (!themeConfig.hyphenation && _hyphenatedHtml != null) {
-        // Hyphenation was just disabled — clear cache
-        setState(() => _hyphenatedHtml = null);
+      final shouldHyphenate = themeConfig.hyphenation;
+      final shouldIndent = themeConfig.paragraphIndent;
+
+      if (shouldHyphenate != _processedWithHyphenation ||
+          shouldIndent != _processedWithIndent) {
+        if (!shouldHyphenate && !shouldIndent) {
+          setState(() {
+            _processedHtml = null;
+            _processedWithHyphenation = false;
+            _processedWithIndent = false;
+          });
+        } else {
+          compute(
+            HyphenationHelper.processHtmlAndIndentIsolated,
+            {
+              'html': _htmlContent!,
+              'hyphenation': shouldHyphenate,
+              'paragraphIndent': shouldIndent,
+            },
+          ).then((result) {
+            if (mounted) {
+              setState(() {
+                _processedHtml = result;
+                _processedWithHyphenation = shouldHyphenate;
+                _processedWithIndent = shouldIndent;
+              });
+            }
+          });
+        }
       }
     }
   }
@@ -355,11 +417,277 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     );
   }
 
+  void _scrollToFraction(double fraction) {
+    if (!_scrollController.hasClients) return;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final target = (fraction * maxExtent).clamp(0.0, maxExtent);
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollToAnchor(String anchor) {
+    final cleanAnchor = anchor.replaceAll('#', '').toLowerCase();
+    if (cleanAnchor.isEmpty) return;
+
+    for (final entry in _tocEntries) {
+      if (entry.anchor?.toLowerCase() == cleanAnchor) {
+        _scrollToFraction(entry.estimatedFraction);
+        return;
+      }
+    }
+
+    final html = _htmlContent;
+    if (html != null && _scrollController.hasClients) {
+      final matchPatterns = [
+        'id="$cleanAnchor"',
+        "id='$cleanAnchor'",
+        'name="$cleanAnchor"',
+        "name='$cleanAnchor'",
+      ];
+      int targetIdx = -1;
+      final lowerHtml = html.toLowerCase();
+      for (final pat in matchPatterns) {
+        final pos = lowerHtml.indexOf(pat);
+        if (pos != -1) {
+          targetIdx = pos;
+          break;
+        }
+      }
+      if (targetIdx != -1) {
+        final fraction = (targetIdx / html.length).clamp(0.0, 1.0);
+        _scrollToFraction(fraction);
+      }
+    }
+  }
+
+  void _showTocSheet() {
+    if (_tocEntries.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, sheetScrollController) {
+            final theme = Theme.of(context);
+            return Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.list, size: 24),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Table of Contents',
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.pop(sheetContext),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: sheetScrollController,
+                      itemCount: _tocEntries.length,
+                      itemBuilder: (context, index) {
+                        final entry = _tocEntries[index];
+                        final indent = ((entry.level - 1).clamp(0, 4)) * 16.0;
+                        final isH1 = entry.level == 1;
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.only(
+                            left: 16.0 + indent,
+                            right: 16.0,
+                          ),
+                          title: Text(
+                            entry.title,
+                            style: TextStyle(
+                              fontWeight: isH1 ? FontWeight.bold : FontWeight.normal,
+                              fontSize: isH1 ? 15.0 : 14.0,
+                            ),
+                          ),
+                          trailing: entry.estimatedFraction > 0.0
+                              ? Text(
+                                  '${(entry.estimatedFraction * 100).toStringAsFixed(0)}%',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                              : null,
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _scrollToFraction(entry.estimatedFraction);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showAnnotationDialog(String selectedText) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AnnotationDialog(selectedText: selectedText),
+    );
+
+    if (result != null && mounted) {
+      final note = (result['note'] as String?)?.trim();
+      final color = result['color'] as int? ?? 0xFFFFF176;
+
+      int start = _plainText.indexOf(selectedText);
+      int end = start != -1 ? start + selectedText.length : selectedText.length;
+      if (start == -1) start = 0;
+
+      final annotation = Annotation(
+        id: const Uuid().v4(),
+        bookId: widget.book.id,
+        selectedText: selectedText,
+        note: note != null && note.isNotEmpty ? note : null,
+        chapterIndex: widget.book.sectionIndex,
+        startOffset: start,
+        endOffset: end,
+        color: color,
+        createdAt: DateTime.now(),
+      );
+
+      await context.read<AnnotationRepository>().addAnnotation(annotation);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Annotation saved'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   static String _htmlToPlainTextStatic(String html) {
     if (html.trim().isEmpty) return '';
     final document = html_parser.parse(html);
     document.querySelectorAll('script,style,noscript').forEach((e) => e.remove());
     return DomTextUtils.extractPlainText(document.body ?? document.documentElement);
+  }
+
+  static List<HtmlTocEntry> _htmlToTocStatic(String html) {
+    if (html.trim().isEmpty) return const [];
+    final document = html_parser.parse(html);
+    final totalLength = html.length;
+    if (totalLength == 0) return const [];
+
+    final entries = <HtmlTocEntry>[];
+    final seenTitles = <String>{};
+
+    // 1. Look for explicit TOC elements / links (from DOCX <a class="toc-link">, <p class="toc-entry">)
+    final tocElements = document.querySelectorAll('.toc-entry, .toc-link');
+    if (tocElements.isNotEmpty) {
+      for (final elem in tocElements) {
+        final text = elem.text.trim();
+        if (text.isEmpty || seenTitles.contains(text)) continue;
+
+        var level = 1;
+        final className = elem.className.toLowerCase();
+        if (className.contains('level-2') || className.contains('toc2') || className.contains('toc-2')) {
+          level = 2;
+        } else if (className.contains('level-3') || className.contains('toc3') || className.contains('toc-3')) {
+          level = 3;
+        } else if (className.contains('level-4') || className.contains('toc4') || className.contains('toc-4')) {
+          level = 4;
+        }
+
+        final anchor = elem.attributes['href']?.replaceAll('#', '') ??
+            elem.querySelector('a')?.attributes['href']?.replaceAll('#', '');
+
+        double fraction = 0.0;
+        if (anchor != null && anchor.isNotEmpty) {
+          final targetIndex = html.indexOf(anchor);
+          if (targetIndex != -1) {
+            fraction = (targetIndex / totalLength).clamp(0.0, 1.0);
+          }
+        }
+        if (fraction == 0.0) {
+          final textIndex = html.indexOf(text);
+          if (textIndex != -1) {
+            fraction = (textIndex / totalLength).clamp(0.0, 1.0);
+          }
+        }
+
+        seenTitles.add(text);
+        entries.add(HtmlTocEntry(
+          title: text,
+          level: level,
+          anchor: anchor,
+          estimatedFraction: fraction,
+        ));
+      }
+    }
+
+    // 2. Document Headings (h1, h2, h3, h4, h5, h6)
+    final headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (final h in headings) {
+      final text = h.text.trim();
+      if (text.isEmpty || seenTitles.contains(text)) continue;
+      if (h.className.contains('toc-heading')) continue; // Skip TOC title block
+
+      final tagName = h.localName?.toLowerCase() ?? 'h1';
+      final level = int.tryParse(tagName.replaceAll('h', '')) ?? 1;
+
+      final anchor = h.id.isNotEmpty
+          ? h.id
+          : (h.querySelector('a[id]')?.attributes['id'] ??
+              h.previousElementSibling?.attributes['id']);
+
+      double fraction = 0.0;
+      final indexInHtml = html.indexOf(h.outerHtml);
+      if (indexInHtml != -1) {
+        fraction = (indexInHtml / totalLength).clamp(0.0, 1.0);
+      } else {
+        final textIndex = html.indexOf(text);
+        if (textIndex != -1) {
+          fraction = (textIndex / totalLength).clamp(0.0, 1.0);
+        }
+      }
+
+      seenTitles.add(text);
+      entries.add(HtmlTocEntry(
+        title: text,
+        level: level,
+        anchor: anchor,
+        estimatedFraction: fraction,
+      ));
+    }
+
+    // Keep chronological document order
+    entries.sort((a, b) => a.estimatedFraction.compareTo(b.estimatedFraction));
+    return entries;
   }
 
   @override
@@ -390,7 +718,11 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     onTapUp: _handleTapUp,
                     onDoubleTapDown: _handleDoubleTapDown,
                     onDoubleTap: _handleDoubleTap,
-                    child: _buildBody(),
+                    child: RealBookBackground(
+                      textureId: themeRepo.config.paperTexture,
+                      showSpine: themeRepo.config.showBookSpine,
+                      child: _buildBody(),
+                    ),
                   ),
                 ),
                 if (showChrome) _buildTopBar(),
@@ -459,37 +791,92 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         }
         return true;
       },
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16.0),
-        child: Consumer<ReaderThemeRepository>(
-          builder: (context, themeRepo, _) {
-            final themeConfig = themeRepo.config;
-            final spacing = themeConfig.paragraphSpacing; 
-            
-            // Margins
-            final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
-
-            final baseHtml = themeConfig.hyphenation
-                ? (_hyphenatedHtml ?? _htmlContent ?? '')
-                : (_htmlContent ?? '');
-
-            final extensions = [
-              TagExtension(
-                tagsToExtend: {'tts-highlight'},
-                builder: (ctx) {
-                  final text = ctx.node.text ?? '';
-                  final style =
-                      ctx.style?.generateTextStyle() ?? const TextStyle();
-                  return _TtsHighlightSpan(
-                    key: _ttsController.ttsHighlightKey,
-                    text: text,
-                    textStyle: style,
-                    highlightStyle: themeRepo.highlightStyle,
-                  );
+      child: SelectionArea(
+        onSelectionChanged: (content) {
+          _selectedContent = content;
+        },
+        contextMenuBuilder: (context, selectableRegionState) {
+          return AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: selectableRegionState.contextMenuAnchors,
+            buttonItems: [
+              ContextMenuButtonItem(
+                label: 'Annotate',
+                onPressed: () {
+                  final text = _selectedContent?.plainText.trim() ?? '';
+                  selectableRegionState.hideToolbar();
+                  if (text.isNotEmpty) {
+                    _showAnnotationDialog(text);
+                  }
                 },
               ),
-            ];
+              ...selectableRegionState.contextMenuButtonItems,
+            ],
+          );
+        },
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16.0),
+          child: Consumer<ReaderThemeRepository>(
+            builder: (context, themeRepo, _) {
+              final themeConfig = themeRepo.config;
+              final annotationRepo = context.watch<AnnotationRepository>();
+              final bookAnnotations = annotationRepo.getAnnotationsForBook(widget.book.id);
+              final spacing = themeConfig.paragraphSpacing;
+
+              // Margins
+              final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
+
+              final baseHtml = (themeConfig.hyphenation || themeConfig.paragraphIndent)
+                  ? (_processedHtml ?? _htmlContent ?? '')
+                  : (_htmlContent ?? '');
+
+              final extensions = [
+                const TableHtmlExtension(),
+                TagExtension(
+                  tagsToExtend: {'tts-highlight'},
+                  builder: (ctx) {
+                    final text = ctx.node.text ?? '';
+                    final style =
+                        ctx.style?.generateTextStyle() ?? const TextStyle();
+                    return _TtsHighlightSpan(
+                      key: _ttsController.ttsHighlightKey,
+                      text: text,
+                      textStyle: style,
+                      highlightStyle: themeRepo.highlightStyle,
+                    );
+                  },
+                ),
+                TagExtension(
+                  tagsToExtend: {AnnotationHighlightHelper.highlightTag},
+                  builder: (ctx) {
+                    final text = ctx.node.text ?? '';
+                    final id = ctx.attributes['data-id'] ?? '';
+                    final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
+                    final style = ctx.style?.generateTextStyle() ?? const TextStyle();
+                    return _AnnotationHighlightSpan(
+                      annotationId: id,
+                      text: text,
+                      color: Color(colorVal),
+                      textStyle: style,
+                      onTap: () {
+                        final all = annotationRepo.getAllAnnotations();
+                        final target = all.cast<Annotation?>().firstWhere(
+                              (a) => a?.id == id,
+                              orElse: () => null,
+                            );
+                        if (target != null) {
+                          showAnnotationDetailSheet(context, target);
+                        }
+                      },
+                    );
+                  },
+                ),
+              ];
+
+            final textureInfo = BookTextures.getById(themeConfig.paperTexture);
+            final effectiveTextColor = themeConfig.paperTexture != BookTextures.none
+                ? textureInfo.textColor
+                : Theme.of(context).textTheme.bodyLarge?.color;
 
             Widget buildHtmlWidget(String displayContent) {
               return Padding(
@@ -497,6 +884,17 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                 child: Html(
                   data: displayContent,
                   extensions: extensions,
+                  onLinkTap: (url, attributes, element) async {
+                    if (url == null || url.isEmpty) return;
+                    if (url.startsWith('#')) {
+                      _scrollToAnchor(url);
+                    } else {
+                      final uri = Uri.tryParse(url);
+                      if (uri != null && await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    }
+                  },
                   style: {
                     "body": Style(
                       fontSize: FontSize(themeConfig.fontSize),
@@ -504,11 +902,15 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       textAlign: _parseTextAlign(themeConfig.textAlign),
                       letterSpacing: themeConfig.wordSpacing,
                       padding: HtmlPaddings.zero,
                       margin: Margins.zero,
+                    ),
+                    "a": Style(
+                      color: Theme.of(context).colorScheme.primary,
+                      textDecoration: TextDecoration.none,
                     ),
                     "tts-highlight": Style(
                       backgroundColor: Theme.of(context)
@@ -522,6 +924,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                         top: 0,
                       ),
                       textAlign: _parseTextAlign(themeConfig.textAlign),
+                      color: effectiveTextColor,
                     ),
                     "img": Style(
                       width: Width(100, Unit.percent),
@@ -532,7 +935,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(top: 24, bottom: 12),
                     ),
                     "h2": Style(
@@ -540,7 +943,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(top: 20, bottom: 10),
                     ),
                     "h3": Style(
@@ -548,7 +951,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(top: 18, bottom: 8),
                     ),
                     "h4": Style(
@@ -556,7 +959,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(top: 16, bottom: 8),
                     ),
                     "ul": Style(
@@ -627,6 +1030,22 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       color: Theme.of(context).textTheme.bodyLarge?.color,
                       margin: Margins.only(bottom: 6),
                     ),
+                    ".toc-entry": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 0.95),
+                      lineHeight: LineHeight(themeConfig.lineHeight),
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(bottom: 6),
+                    ),
+                    ".toc-heading": Style(
+                      fontSize: FontSize(themeConfig.fontSize * 1.3),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
+                      fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      margin: Margins.only(top: 20, bottom: 12),
+                    ),
                   },
                 ),
               );
@@ -638,18 +1057,25 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                 builder: (context, _) {
                   _ttsController.highlightKeyAssigned = false;
                   final content = _ttsController.buildTtsHighlightedHtml(baseHtml);
+                  final displayContent = bookAnnotations.isNotEmpty
+                      ? AnnotationHighlightHelper.applyHighlights(content, bookAnnotations)
+                      : content;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     _ttsController.maybeEnsureHighlightVisible();
                   });
-                  return buildHtmlWidget(content);
+                  return buildHtmlWidget(displayContent);
                 },
               );
             } else {
-              return buildHtmlWidget(baseHtml);
+              final displayContent = bookAnnotations.isNotEmpty
+                  ? AnnotationHighlightHelper.applyHighlights(baseHtml, bookAnnotations)
+                  : baseHtml;
+              return buildHtmlWidget(displayContent);
             }
           },
         ),
       ),
+    ),
     );
   }
 
@@ -684,6 +1110,12 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   tooltip: _chromeController.isLocked ? 'Unlock' : 'Lock',
                   onPressed: _toggleLockModeWithFeedback,
                 ),
+                if (_tocEntries.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.list),
+                    tooltip: 'Table of Contents',
+                    onPressed: _showTocSheet,
+                  ),
                 IconButton(
                   icon: Icon(_ttsController.showTtsControls ? Icons.volume_up : Icons.volume_mute),
                   tooltip: 'Read Aloud',
@@ -804,6 +1236,50 @@ class _TtsHighlightSpan extends StatelessWidget {
       child: Text(
         text,
         style: highlightedTextStyle,
+      ),
+    );
+  }
+}
+
+class _AnnotationHighlightSpan extends StatelessWidget {
+  final String annotationId;
+  final String text;
+  final Color color;
+  final TextStyle textStyle;
+  final VoidCallback onTap;
+
+  const _AnnotationHighlightSpan({
+    required this.annotationId,
+    required this.text,
+    required this.color,
+    required this.textStyle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(3),
+          border: Border(
+            bottom: BorderSide(
+              color: color,
+              width: 2.0,
+            ),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        child: Text(
+          text,
+          style: textStyle.copyWith(
+            decoration: TextDecoration.none,
+          ),
+        ),
       ),
     );
   }

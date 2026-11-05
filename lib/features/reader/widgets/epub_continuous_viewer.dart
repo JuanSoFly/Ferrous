@@ -33,7 +33,11 @@ class EpubContinuousViewer extends StatelessWidget {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        if (notification is ScrollUpdateNotification) {
+        if (notification is ScrollEndNotification ||
+            (notification is UserScrollNotification &&
+                notification.direction == ScrollDirection.idle)) {
+          chapterController.updateCurrentChapterFromScroll(context, force: true);
+        } else if (notification is ScrollUpdateNotification) {
           chapterController.updateCurrentChapterFromScroll(context);
         }
         return false;
@@ -43,26 +47,29 @@ class EpubContinuousViewer extends StatelessWidget {
         onTapUp: onTapUp,
         child: ListView.builder(
           controller: chapterController.scrollController,
-          scrollCacheExtent: const ScrollCacheExtent.pixels(1500.0),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
+          addRepaintBoundaries: true,
           itemCount: chapterController.chapters!.length,
           itemBuilder: (context, index) {
             final isFirst = index == 0;
             final isLast = index == chapterController.chapters!.length - 1;
             final htmlContent = chapterController.allChapterContents[index];
 
-            return Container(
+            return RepaintBoundary(
               key: chapterController.chapterKeys[index],
-              padding: EdgeInsets.only(
-                left: 16.0,
-                right: 16.0,
-                top: isFirst ? topPadding : chapterSpacing,
-                bottom: isLast ? bottomPadding : 0.0,
-              ),
-              child: EpubContentViewer(
-                chapterIndex: index,
-                htmlContent: htmlContent,
-                chapterController: chapterController,
-                ttsController: ttsController,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16.0,
+                  right: 16.0,
+                  top: isFirst ? topPadding : chapterSpacing,
+                  bottom: isLast ? bottomPadding : 0.0,
+                ),
+                child: EpubContentViewer(
+                  chapterIndex: index,
+                  htmlContent: htmlContent,
+                  chapterController: chapterController,
+                  ttsController: ttsController,
+                ),
               ),
             );
           },

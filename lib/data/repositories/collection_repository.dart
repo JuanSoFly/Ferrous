@@ -56,6 +56,20 @@ class CollectionRepository extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> removeBookFromAllCollections(String bookId) async {
+    bool changed = false;
+    for (final collection in box.values) {
+      if (collection.bookIds.contains(bookId)) {
+        collection.bookIds.remove(bookId);
+        await collection.save();
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+    }
+  }
   
   Collection? getCollection(String id) {
     return box.get(id);

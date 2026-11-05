@@ -10,6 +10,7 @@ import '../controllers/reader_mode_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'apple_books_page_curl.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;
@@ -156,6 +157,35 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   }
 
   Widget _buildPagedView() {
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final useAppleCurl = !widget.modeController.useVerticalSwipe &&
+        themeRepo.config.pageFlip &&
+        _canSwipe();
+
+    if (useAppleCurl) {
+      return AppleBooksPageCurl(
+        pageCount: widget.pageController.pageCount,
+        currentPage: widget.pageController.pageIndex,
+        textureId: themeRepo.config.paperTexture,
+        showSpine: themeRepo.config.showBookSpine,
+        onPageChanged: _onPageViewChanged,
+        onToggleChrome: () => widget.chromeController.toggleChrome(),
+        onTapUp: (details) => _handleTapUp(context, details),
+        pageBuilder: (context, index) {
+          return InteractiveViewer(
+            transformationController: widget.transformController,
+            minScale: 1.0,
+            maxScale: 5.0,
+            panEnabled: true,
+            scaleEnabled: true,
+            child: Center(
+              child: _buildPageLayer(context, index),
+            ),
+          );
+        },
+      );
+    }
+
     return PageView.builder(
       controller: _viewPageController,
       scrollDirection: widget.modeController.useVerticalSwipe
@@ -206,11 +236,8 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => SizedBox(height: spacing),
         itemBuilder: (context, index) {
-          return InteractiveViewer(
-            maxScale: 5.0,
-            child: Center(
-              child: _buildPageLayer(context, index),
-            ),
+          return Center(
+            child: _buildPageLayer(context, index),
           );
         },
       ),
@@ -241,11 +268,8 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
-          return InteractiveViewer(
-            maxScale: 5.0,
-            child: Center(
-              child: _buildPageLayer(context, index),
-            ),
+          return Center(
+            child: _buildPageLayer(context, index),
           );
         },
       ),
@@ -334,7 +358,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
                 listenable: ttsController,
                 builder: (context, _) {
                   if (!ttsController.showTtsControls ||
-                      ttsController.ttsHighlightRects.isEmpty ||
+                       ttsController.ttsHighlightRects.isEmpty ||
                       ttsController.highlightPageIndex != index) {
                     return const SizedBox.shrink();
                   }

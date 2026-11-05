@@ -10,6 +10,7 @@ import 'package:reader_app/data/models/collection_adapter.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
+import 'package:reader_app/data/repositories/library_location_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
@@ -55,6 +56,15 @@ Future<void> main() async {
     // Repository will use its default config
   }
 
+  final libraryLocationRepository = LibraryLocationRepository(
+    bookRepository: bookRepository,
+  );
+  try {
+    await libraryLocationRepository.init();
+  } catch (e) {
+    debugPrint('LibraryLocationRepository init failed: $e');
+  }
+
   // Initialize Rust library
   String? initError;
   try {
@@ -82,6 +92,7 @@ Future<void> main() async {
     annotationRepository: annotationRepository,
     collectionRepository: collectionRepository,
     readerThemeRepository: readerThemeRepository,
+    libraryLocationRepository: libraryLocationRepository,
   ));
 }
 
@@ -111,6 +122,7 @@ class ReaderApp extends StatelessWidget {
   final AnnotationRepository annotationRepository;
   final CollectionRepository collectionRepository;
   final ReaderThemeRepository readerThemeRepository;
+  final LibraryLocationRepository libraryLocationRepository;
 
   const ReaderApp({
     super.key, 
@@ -119,6 +131,7 @@ class ReaderApp extends StatelessWidget {
     required this.annotationRepository,
     required this.collectionRepository,
     required this.readerThemeRepository,
+    required this.libraryLocationRepository,
   });
 
 
@@ -129,6 +142,7 @@ class ReaderApp extends StatelessWidget {
         ChangeNotifierProvider<BookRepository>.value(value: bookRepository),
         ChangeNotifierProvider<AnnotationRepository>.value(value: annotationRepository),
         ChangeNotifierProvider<CollectionRepository>.value(value: collectionRepository),
+        ChangeNotifierProvider<LibraryLocationRepository>.value(value: libraryLocationRepository),
         StateNotifierProvider<ThemeController, AppTheme>(
           create: (_) => ThemeController(),
         ),

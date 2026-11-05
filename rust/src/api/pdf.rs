@@ -196,9 +196,12 @@ pub fn render_pdf_page(path: String, page_index: u32, width: u32, height: u32) -
             // Convert RGBA to RGB for JPEG compatibility (as JPEG doesn't support alpha channel)
             let rgb_image = dynamic_image.into_rgb8();
             let mut jpeg_bytes = Vec::new();
-            rgb_image.write_to(
-                &mut std::io::Cursor::new(&mut jpeg_bytes),
-                image::ImageFormat::Jpeg,
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 85);
+            encoder.encode(
+                rgb_image.as_raw(),
+                actual_width,
+                actual_height,
+                image::ColorType::Rgb8.into(),
             )?;
             
             Ok(PdfPageRenderResult {

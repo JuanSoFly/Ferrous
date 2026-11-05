@@ -1,74 +1,338 @@
-# Ferrous Reader
+<p align="center">
+  <img src="assets/ic_launcher.png" width="120" height="120" alt="Ferrous Reader Logo" />
+</p>
 
-**A Next-Generation Offline Reading Architecture: Flutter + Rust Hybrid**
+<h1 align="center">Ferrous Reader</h1>
 
-> *This project is a work in progress. Features and APIs are subject to change.*
+<p align="center">
+  <strong>A high-performance offline document and book reader for Android, built with Flutter and Rust.</strong>
+</p>
 
-> [> ] **High-Performance** | [Safe] **Memory Safe** | [Mobile] **Android 7.0+**
+<p align="center">
+  <a href="https://github.com/JuanSoFly/Ferrous/releases/latest"><img src="https://img.shields.io/github/v/release/JuanSoFly/Ferrous?style=flat-square&color=8C1D18" alt="Latest Release" /></a>
+  <img src="https://img.shields.io/badge/Platform-Android%207.0%2B%20(API%2024%2B)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform" />
+  <img src="https://img.shields.io/badge/Flutter-3.24%2B-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
+  <img src="https://img.shields.io/badge/Rust-1.80%2B-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust" />
+  <img src="https://img.shields.io/badge/Architecture-Flutter_Rust_Bridge_v2-black?style=flat-square" alt="FRB v2" />
+</p>
 
-> **[Download New Release](https://github.com/JuanSoFly/Ferrous/releases/latest)**
+<p align="center">
+  <a href="https://github.com/JuanSoFly/Ferrous/releases/latest">
+    <img src="https://img.shields.io/badge/Download_APK-Latest_Release-8C1D18?style=for-the-badge&logo=android&logoColor=white" alt="Download Latest Release" height="38" />
+  </a>
+</p>
 
-Ferrous Reader is a modern mobile document reader that leverages a hybrid architecture to deliver the best of both worlds: the smooth, reactive UI of **Flutter** and the raw performance and safety of **Rust**.
+<p align="center">
+  <a href="#download">Download</a> •
+  <a href="#overview">Overview</a> •
+  <a href="#key-features">Key Features</a> •
+  <a href="#supported-formats">Supported Formats</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#technical-specifications">Technical Specifications</a> •
+  <a href="#prerequisites">Prerequisites</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#building-releases">Building Releases</a> •
+  <a href="#project-structure">Project Structure</a> •
+  <a href="#troubleshooting">Troubleshooting</a>
+</p>
 
-By delegating computationally intensive tasks like PDF rendering and filesystem scanning to a Rust backend, Ferrous ensures your reading experience remains buttery smooth (120Hz) while maintaining a lightweight memory footprint.
+---
 
-## * Key Features
+## Download
 
-### + Supported Formats
-*   **PDF**: Powered by the **Rust** `pdfium-render` crate. This bypasses the standard Android PDF renderer, offering high-speed, thread-safe rendering directly to Flutter textures.
-*   **EPUB**: Native widget-based rendering via `epubx` and `flutter_html`. This allows for full control over typography and themes without the limitations of a WebView.
-*   **CBZ/ZIP**: Direct stream decompression for comic book archives.
-*   **File Scanning**: Blisteringly fast scanning of the entire device storage using Rust's `walkdir` crate, capable of filtering thousands of files in seconds.
+Precompiled Android packages (APKs) are available on the [GitHub Releases](https://github.com/JuanSoFly/Ferrous/releases/latest) page:
 
-### ~ Hybrid Architecture
-Ferrous is built on the **flutter_rust_bridge** (FRB) 2.0 protocol, allowing seamless communication between the Dart frontend and Rust backend.
-
-*   **Rust (Backend)**: Handles heavy lifting:
-    *   **PDF Rendering**: `pdfium-render` via FFI.
-    *   **I/O**: Efficient recursive directory scanning (`walkdir`) to build your library.
-    *   **Concurrency**: All Rust operations run on a `tokio` thread pool, causing zero jank on the main UI thread.
-*   **Dart (Frontend)**: Handles the presentation:
-    *   **UI**: Material 3 design with `flutter_html` for reflowable content.
-    *   **State Management**: `Bloc` / `Provider` pattern.
-    *   **Persistence**: **Hive** (NoSQL) for fast, lightweight metadata storage.
-
-## # Technical Specifications
-
-| Component | Technology | Implementation Details |
+| Architecture | Target Devices | Release Asset |
 | :--- | :--- | :--- |
-| **PDF Engine** | Rust (`pdfium-render`) | Zero-copy rendering. Bitmaps are generated in Rust and passed to Dart as `Uint8List`. |
-| **Library Scanner** | Rust (`walkdir`) | Parallelized file walking for instant library updates. |
-| **EPUB Engine** | Dart (`epubx`) | Pure Dart parsing. Content is rendered as a tree of native Flutter Widgets. |
-| **Database** | Dart (`hive`) | Fast, key-value storage for book metadata and reading progress. |
-| **Bridge** | `flutter_rust_bridge` | Automatic generation of Type-safe FFI bindings. |
+| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | [`ferrous-v1.1.0-arm64-v8a.apk`](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`armeabi-v7a`** | Legacy 32-bit Android devices | [`ferrous-v1.1.0-armeabi-v7a.apk`](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`x86_64`** | Android emulators & ChromeOS | [`ferrous-v1.1.0-x86_64.apk`](https://github.com/JuanSoFly/Ferrous/releases/latest) |
 
-## [] Tech Stack
+> [!TIP]
+> If you are unsure which build your phone requires, choose **`arm64-v8a`**, which works on virtually all modern Android devices.
 
-*   **Languages**: Dart 3.5+, Rust 1.80+
-*   **Framework**: Flutter 3.24+
-*   **Core Rust Crates**: `pdfium-render`, `walkdir`, `image`, `tokio`, `anyhow`
-*   **Core Dart Packages**: `hive`, `epubx`, `flutter_html`, `archive`, `provider`
+---
 
-## -> Getting Started
+## Overview
 
-### Prerequisites
-*   Flutter SDK (3.24+)
-*   Rust Toolchain (latest stable)
-*   Android NDK (r26b recommended)
+Ferrous Reader is an open-source, offline-first mobile reading application designed for speed, low memory overhead, and typography control. By combining a reactive **Flutter** front-end with an asynchronous **Rust** backend via `flutter_rust_bridge` (v2), Ferrous offloads computationally intensive workloads—such as PDF parsing, full-storage indexing, archive decompression, and text tokenization—to background native threads, keeping UI animations and page interactions fluid at 120Hz.
 
-### Setup & Build
-1.  **Install dependencies**:
-    ```bash
-    flutter pub get
-    ```
-2.  **Generate Bridge Code**:
-    ```bash
-    flutter_rust_bridge_codegen generate
-    ```
-3.  **Install PDFium (required for PDF support)**:
-    - Run `bash scripts/setup-pdfium-android.sh`, or follow `docs/pdfium-setup.md`.
-    - If you develop on an Android emulator, include `x86_64` when installing PDFium (the script supports this).
-4.  **Run on Android**:
-    ```bash
-    flutter run
-    ```
+> [!NOTE]
+> Ferrous is fully offline. It operates with zero telemetry, zero analytics, and persists all library metadata, reading locations, and annotations locally on the device using Hive.
+
+---
+
+## Key Features
+
+- **Blazing Fast File Indexing**: Scans device storage and Storage Access Framework (SAF) trees in seconds via parallel directory traversal in Rust (`walkdir`).
+- **Smooth 120Hz UI**: Heavy I/O and document decoding run asynchronously outside the UI isolate on a Rust thread pool (`tokio`), avoiding frame drops.
+- **Hardware-Accelerated PDF Rendering**: Powered by Google PDFium via `pdfium-render`, generating thread-safe bitmaps directly for Flutter textures.
+- **Native Non-WebView EPUB Engine**: Renders reflowable book content directly into a native Flutter widget tree with hyphenation and full typography control.
+- **Synchronized Text-to-Speech (TTS)**: Integrated TTS with dynamic word and sentence highlighting across page boundaries and chapters.
+- **Granular Library Management**: Multi-directory library location support via Android Storage Access Framework (SAF), collection grouping, advanced sorting, and format filtering.
+- **Material 3 Design**: Dynamic color palette adaptation, customizable themes, reading progress persistence, and animated shimmer placeholders.
+
+---
+
+## Supported Formats
+
+| Format | Parsing Engine | Rendering Pipeline | Capabilities |
+| :--- | :--- | :--- | :--- |
+| **PDF** (`.pdf`) | Rust (`pdfium-render`) | Native texture bitmaps | Fast page flipping, text selection, TTS extraction, continuous scroll |
+| **EPUB** (`.epub`) | Dart (`epubx`) + Rust cover extractor | Native Flutter widgets (`flutter_html`) | Custom typography, margins, line-height, hyphenation, CSS themes |
+| **MOBI / AZW / AZW3** (`.mobi`, `.azw`, `.azw3`) | Rust (`mobi`) | HTML parser & native widgets | Chapter navigation, embedded images, metadata extraction |
+| **Comic Archives** (`.cbz`, `.zip`) | Rust (`zip`) | Canvas image stream | Direct archive stream extraction, pinch-to-zoom, page spread |
+| **Plain Text** (`.txt`) | Rust (`txt`) | Rich HTML & layout widgets | Formatted indentation, lists, checkboxes, and Mermaid diagram rendering |
+| **Word Documents** (`.docx`) | Rust (`docx-rs`) | Structured HTML widgets | Document flow, paragraph formatting, and styled table layouts |
+
+---
+
+## Architecture
+
+Ferrous utilizes a hybrid boundary model where Flutter handles UI composition and state presentation, while Rust manages high-throughput, latency-critical operations.
+
+```mermaid
+flowchart TD
+    subgraph UI ["Flutter / Dart Frontend (UI Isolate)"]
+        A[Material 3 UI & Readers]
+        B[State Management: Provider & Notifiers]
+        C[Local Metadata Cache: Hive NoSQL]
+    end
+
+    subgraph FFI ["flutter_rust_bridge (v2) FFI Boundary"]
+        D[Type-Safe Code Generation & Zero-Copy Byte Transfers]
+    end
+
+    subgraph Backend ["Rust Backend (tokio Thread Pool)"]
+        E[PDF Engine: pdfium-render]
+        F[Storage Scanner: walkdir]
+        G[Format Parsers: mobi, zip, docx-rs]
+        H[TTS Segmentation & Text Processing]
+    end
+
+    A <--> B
+    B <--> C
+    B <--> D
+    D <--> E
+    D <--> F
+    D <--> G
+    D <--> H
+```
+
+### Separation of Concerns
+
+- **Flutter (Frontend)**:
+  - Material 3 user interface with dynamic theme switching and smooth gesture interactions.
+  - Responsive reading screens for both paginated and continuous scroll modes.
+  - Hive NoSQL database for instant bookmarking, reading progress tracking, and collection management.
+- **Rust (Backend)**:
+  - Multi-threaded, non-blocking I/O operations powered by `tokio`.
+  - PDFium binding management with safe, asynchronous document loading and page caching.
+  - Archive reading (`zip`) for fast on-the-fly cover extraction without writing temporary files to disk.
+  - Text segmentation and tokenization for sentence-level TTS highlighting.
+
+---
+
+## Technical Specifications
+
+| Component | Technology | Role & Details |
+| :--- | :--- | :--- |
+| **Target OS** | Android 7.0+ (API Level 24+) | Supports `arm64-v8a`, `armeabi-v7a`, `x86_64` |
+| **Frontend Framework** | Flutter 3.24+ (Dart 3.5+) | Material 3 UI, custom renderers, gesture recognizers |
+| **Backend Language** | Rust 1.80+ (2021 Edition) | High-performance compute engine and file I/O |
+| **FFI Layer** | `flutter_rust_bridge` 2.11.1 | Auto-generated, type-safe foreign function interface |
+| **PDF Renderer** | Google PDFium (`pdfium-render`) | Native C++ rendering via dynamic binary loading |
+| **Database** | Hive (`hive_flutter`) | Fast, lightweight embedded key-value document store |
+| **Concurrency** | `tokio` (Rust) | Multi-worker thread pool executing off the UI isolate |
+| **File Access** | Android SAF + Rust `walkdir` | Scoped storage compliance with rapid recursive traversal |
+
+---
+
+## Prerequisites
+
+Before building Ferrous, ensure the following tools are installed on your host system:
+
+- **Flutter SDK**: `3.24.0` or higher ([Installation Guide](https://docs.flutter.dev/get-started/install))
+- **Rust Toolchain**: `1.80.0` or higher (`stable`)
+  ```bash
+  rustup default stable
+  ```
+- **Android Targets for Rust**:
+  ```bash
+  rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+  ```
+- **Android NDK**: Version `r26d` or `r26b` (configured via `ANDROID_NDK_HOME`)
+- **JDK**: Java Development Kit 17 (Temurin recommended)
+- **flutter_rust_bridge_codegen**:
+  ```bash
+  cargo install flutter_rust_bridge_codegen --version 2.11.1
+  ```
+
+---
+
+## Getting Started
+
+Follow these steps to set up the development environment, compile dependencies, and run Ferrous on an Android device or emulator.
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/JuanSoFly/Ferrous.git
+cd Ferrous
+```
+
+### 2. Configure Environment (Optional)
+
+If you use local tool paths, you can source the environment helper:
+
+```bash
+source ./setup_env.sh
+```
+
+### 3. Fetch Flutter Dependencies
+
+```bash
+flutter pub get
+```
+
+### 4. Generate Bridge Bindings
+
+Generate the type-safe FFI glue code between Dart and Rust:
+
+```bash
+flutter_rust_bridge_codegen generate
+```
+
+### 5. Install PDFium Binaries
+
+Ferrous requires `libpdfium.so` for each targeted Android architecture. An automated helper script is provided to download and place prebuilt binaries:
+
+```bash
+# Default installs arm64-v8a and armeabi-v7a
+bash scripts/setup-pdfium-android.sh
+```
+
+> [!TIP]
+> If developing on an Android emulator, include `x86_64`:
+> ```bash
+> PDFIUM_ABIS="arm64-v8a,x86_64" bash scripts/setup-pdfium-android.sh
+> ```
+> For offline manual setup instructions, refer to [docs/pdfium-setup.md](docs/pdfium-setup.md).
+
+### 6. Run the App
+
+Connect an Android device with USB debugging enabled (or start an emulator) and execute:
+
+```bash
+flutter run
+```
+
+---
+
+## Building Releases
+
+To generate optimized Android production packages:
+
+### Split APKs (Recommended)
+
+Generating separate APKs per ABI significantly reduces download sizes:
+
+```bash
+flutter build apk --split-per-abi --release
+```
+
+Outputs are generated in:
+`build/app/outputs/flutter-apk/`
+- `app-arm64-v8a-release.apk` (modern 64-bit devices)
+- `app-armeabi-v7a-release.apk` (legacy 32-bit devices)
+- `app-x86_64-release.apk` (emulators & ChromeOS)
+
+### Android App Bundle (AAB)
+
+For distribution through Google Play:
+
+```bash
+flutter build appbundle --release
+```
+
+Output:
+`build/app/outputs/bundle/release/app-release.aab`
+
+---
+
+## Project Structure
+
+```text
+Ferrous/
+├── .github/workflows/       # CI/CD automated release pipelines
+├── android/                 # Android native project & SAF integration
+│   └── app/src/main/jniLibs # Target ABI native libraries (libpdfium.so)
+├── assets/                  # Application launcher icons & visual assets
+├── docs/                    # Technical guides (PDFium setup, architecture notes)
+├── lib/                     # Flutter / Dart presentation layer
+│   ├── app/                 # Application shell & routing
+│   ├── core/                # Models, utilities, constants, and widgets
+│   ├── data/                # Repositories & Hive database services
+│   ├── features/            # Feature modules (library, reader, collections, settings)
+│   └── src/rust/            # Generated Dart FFI bridge code
+├── rust/                    # Native Rust compute crate
+│   ├── Cargo.toml           # Rust crate dependencies & release profiles
+│   └── src/api/             # Rust exposed API modules (PDF, MOBI, CBZ, TXT, DOCX, scanning)
+├── rust_builder/            # Cargokit integration layer for cross-compiling Rust
+└── scripts/                 # Automation scripts (setup-pdfium-android.sh)
+```
+
+---
+
+## Troubleshooting
+
+### Missing PDFium Library (`dlopen failed`)
+
+> [!IMPORTANT]
+> If the app crashes on opening a PDF with `Failed to bind to pdfium library: dlopen failed: library "libpdfium.so" not found`, ensure that `scripts/setup-pdfium-android.sh` has been executed for your target device's ABI, and verify that `android/app/src/main/jniLibs/<abi>/libpdfium.so` exists before running `flutter run`.
+
+### Out-of-Sync FFI Bindings
+
+If you modify files under `rust/src/api/`, re-run the code generator to update the Dart bindings:
+
+```bash
+flutter_rust_bridge_codegen generate
+```
+
+---
+
+<div align="center">
+
+```text
+        ▄▄                                         ▄▄       
+        █████▄▄▄▄                           ▄▄▄▄█████       
+        ████████████▄▄▄               ▄▄▄████████████       
+   ▄█▄  ██████████████████▄       ▄██████████████████  ▄█▄  
+   ███  ████████████████████▄   ▄████████████████████  ███  
+   ███  ██████████████████████ ██████████████████████  ███  
+   ███  ██████████  ▀▀▀███████ ██████████████████████  ███  
+   ███  ██████████        ▀▀▀▀ ██████████████████████  ███  
+   ███  ██████████▄▄▄          ██████████████████████  ███  
+   ███  ████████████████▄▄▄▄   ██████████████████████  ███  
+   ███  █████████████████████  ██████████████████████  ███  
+   ███  █████████████████████  ██████████████████████  ███  
+   ███  ██████████   ▀▀▀█████  ██████████████████████  ███  
+   ███  ██████████         ▀▀  ██████████████████████  ███  
+   ███  ▀█████████             █████████████████████▀  ███  
+   ████▄  ▀▀▀█████             █████████████████▀▀▀  ▄████  
+   ▀██████▄▄▄▄  ▀▀             ██████████▀▀▀▀  ▄▄▄██████▀   
+        ▀▀▀▀█████▄▄▄▄          ██████▀▀  ▄▄▄▄█████▀▀▀▀      
+                ▀▀▀▀███▄▄      ██▀  ▄▄███▀▀▀▀               
+                        ▀▀▀▄ ▄▀▀▀                           
+
+                 ______                                     
+                / ____/___  ______________  __  _______     
+               / /_  / __ \/ ___/ ___/ __ \/ / / / ___/     
+              / __/ / /_/ / /  / /  / /_/ / /_/ (__  )      
+             /_/    \____/_/  /_/   \____/\__,_/____/       
+
+             Offline Mobile Reader • Built with Flutter & Rust
+```
+
+</div>
+

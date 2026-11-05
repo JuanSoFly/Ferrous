@@ -47,6 +47,9 @@ class PerfLogger {
     required int durationMs,
     Map<String, dynamic>? metadata,
   }) async {
+    // In release mode, disable disk profiling logs to maximize 60/120fps scrolling smoothness
+    if (kReleaseMode) return;
+
     await _init();
     if (_logFile == null) return;
 
@@ -61,7 +64,7 @@ class PerfLogger {
       await _logFile!.writeAsString(
         '${jsonEncode(entry)}\n',
         mode: FileMode.append,
-        flush: true,
+        flush: false,
       );
     } catch (e) {
       debugPrint('Failed to write perf log: $e');

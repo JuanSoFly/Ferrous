@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:uuid/uuid.dart';
+import 'package:reader_app/core/models/annotation.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:reader_app/features/annotations/annotation_dialog.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
@@ -13,6 +18,7 @@ import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.d
 import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
+import 'package:reader_app/features/reader/widgets/book_background_texture.dart';
 import 'package:reader_app/features/reader/widgets/mobi_continuous_viewer.dart';
 import 'package:reader_app/features/reader/widgets/mobi_paged_viewer.dart';
 import 'package:reader_app/features/reader/widgets/mobi_reader_top_bar.dart';
@@ -47,8 +53,11 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
   bool _hasRestoredPosition = false;
+  bool _wasLoading = true;
+  String? _lastError;
 
   TapDetectionResult? _pendingTapResult;
+  SelectedContent? _selectedContent;
 
   @override
   void initState() {
@@ -105,6 +114,11 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _onChapterControllerChanged() {
+    if (mounted && (_chapterController.isLoading != _wasLoading || _chapterController.error != _lastError)) {
+      _wasLoading = _chapterController.isLoading;
+      _lastError = _chapterController.error;
+      setState(() {});
+    }
     if (!_chapterController.isLoading && !_hasRestoredPosition) {
       _hasRestoredPosition = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -324,151 +338,225 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     );
   }
 
+  Future<void> _showAnnotationDialog(String selectedText) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AnnotationDialog(selectedText: selectedText),
+    );
+
+    if (result != null && mounted) {
+      final note = (result['note'] as String?)?.trim();
+      final color = result['color'] as int? ?? 0xFFFFF176;
+
+      final plainText = _chapterController.currentPlainText;
+      int start = plainText.indexOf(selectedText);
+      int end = start != -1 ? start + selectedText.length : selectedText.length;
+      if (start == -1) start = 0;
+
+      final annotation = Annotation(
+        id: const Uuid().v4(),
+        bookId: widget.book.id,
+        selectedText: selectedText,
+        note: note != null && note.isNotEmpty ? note : null,
+        chapterIndex: _chapterController.currentChapterIndex,
+        startOffset: start,
+        endOffset: end,
+        color: color,
+        createdAt: DateTime.now(),
+      );
+
+      await context.read<AnnotationRepository>().addAnnotation(annotation);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Annotation saved'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeRepo = context.watch<ReaderThemeRepository>();
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        _chapterController,
-        _ttsController,
-        _chromeController,
-      ]),
-      builder: (context, _) {
-        if (_chapterController.isLoading) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
 
-        if (_chapterController.error != null) {
-          return Scaffold(
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text("Error loading book:", style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    Text(_chapterController.error!, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    const SizedBox(height: 24),
-                    ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back")),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
+    if (_chapterController.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-        return Scaffold(
-          body: PopScope(
-            canPop: true,
-            onPopInvokedWithResult: (didPop, result) {
-              if (didPop) {
-                _chapterController.saveReadingPositionForMode(_readingMode, context: context);
-                _ttsController.saveCurrentTtsSentence();
-              }
-            },
-            child: GestureDetector(
-              onDoubleTapDown: _handleDoubleTapDown,
-              onDoubleTap: _handleDoubleTap,
-              child: SelectionArea(
-                onSelectionChanged: (value) {},
-                child: Stack(
-                  children: [
-                    if (_modeController.isPagedMode)
-                      MobiPagedViewer(
-                        chapterController: _chapterController,
-                        ttsController: _ttsController,
-                        pageController: _pageController,
-                        readingMode: _readingMode,
-                        onToggleChrome: _toggleAllUi,
-                        onTapUp: _handleTapUpForTts,
-                      )
-                    else
-                      MobiContinuousViewer(
-                        chapterController: _chapterController,
-                        ttsController: _ttsController,
-                        modeController: _modeController,
-                        onToggleChrome: _toggleAllUi,
-                        onTapUp: _handleTapUpForTts,
-                      ),
-
-                  if (_chromeController.showChrome && !_chromeController.isLocked) ...[
-                    MobiReaderTopBar(
-                      book: widget.book,
-                      lockMode: _chromeController.isLocked,
-                      showTtsControls: _ttsController.showTtsControls,
-                      onBack: () => Navigator.of(context).maybePop(),
-                      onToggleLock: () {
-                        final isLocked = _chromeController.toggleLockMode();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(isLocked ? 'Lock mode on.' : 'Lock mode off.')),
-                        );
-                      },
-                      onShowSettings: _showSettingsSheet,
-                      onShowReadingMode: _showReadingModePicker,
-                      onToggleTts: () => _ttsController.toggleTts(modeController: _modeController),
-                      onShowSearch: _showSearchDialog,
-                      onShowChapters: _showChapterList,
-                    ),
-                    if (!_ttsController.showTtsControls)
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: MobiReaderBottomControls(
-                          currentChapterIndex: _chapterController.currentChapterIndex,
-                          totalChapters: _chapterController.chapters?.length ?? 0,
-                          onLoadChapter: (index) {
-                            _chapterController.loadChapter(index, userInitiated: true);
-                            if (_modeController.isPagedMode && _pageController.hasClients) {
-                              _pageController.jumpToPage(index);
-                            }
-                          },
-                        ),
-                      ),
-                  ],
-
-                  if (_pendingTapResult != null)
-                    TapSelectionOverlay(
-                      word: _pendingTapResult!.word,
-                      position: _pendingTapResult!.tapPosition,
-                      onConfirm: _confirmTapSelection,
-                      onCancel: _cancelTapSelection,
-                    ),
-
-                  if (_ttsController.showTtsControls)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: TtsControlsSheet(
-                        ttsService: _ttsController.ttsService,
-                        textToSpeak: '', 
-                        resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
-                        onStart: () async {
-                          final text = _ttsController.resolveTtsText(modeController: _modeController);
-                          if (text.trim().isNotEmpty) {
-                            await _ttsController.ttsService.speak(text);
-                          }
-                        },
-                        isContinuous: _ttsController.ttsContinuous,
-                        isFollowMode: _ttsController.ttsFollowMode,
-                        isTapToStart: _ttsController.tapToStartEnabled,
-                        onContinuousChanged: _ttsController.setTtsContinuous,
-                        onFollowModeChanged: _ttsController.setTtsFollowMode,
-                        onTapToStartChanged: _ttsController.setTapToStartEnabled,
-                        onClose: _ttsController.closeTtsControls,
-                        highlightStyle: themeRepo.highlightStyle,
-                        onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    if (_chapterController.error != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                Text("Error loading book:", style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text(_chapterController.error!, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                const SizedBox(height: 24),
+                ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back")),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: PopScope(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) {
+            _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+            _ttsController.saveCurrentTtsSentence();
+          }
+        },
+        child: GestureDetector(
+          onDoubleTapDown: _handleDoubleTapDown,
+          onDoubleTap: _handleDoubleTap,
+          child: SelectionArea(
+            onSelectionChanged: (content) {
+              _selectedContent = content;
+            },
+            contextMenuBuilder: (context, selectableRegionState) {
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: selectableRegionState.contextMenuAnchors,
+                buttonItems: [
+                  ContextMenuButtonItem(
+                    label: 'Annotate',
+                    onPressed: () {
+                      final text = _selectedContent?.plainText.trim() ?? '';
+                      selectableRegionState.hideToolbar();
+                      if (text.isNotEmpty) {
+                        _showAnnotationDialog(text);
+                      }
+                    },
+                  ),
+                  ...selectableRegionState.contextMenuButtonItems,
+                ],
+              );
+            },
+            child: Stack(
+              children: [
+                // Reader Viewers wrapped in physical book background (NOT rebuilt on chrome/tts/chapter ticks!)
+                Positioned.fill(
+                  child: RealBookBackground(
+                    textureId: themeRepo.config.paperTexture,
+                    showSpine: themeRepo.config.showBookSpine,
+                    child: _modeController.isPagedMode
+                        ? MobiPagedViewer(
+                            chapterController: _chapterController,
+                            ttsController: _ttsController,
+                            pageController: _pageController,
+                            readingMode: _readingMode,
+                            onToggleChrome: _toggleAllUi,
+                            onTapUp: _handleTapUpForTts,
+                          )
+                        : MobiContinuousViewer(
+                            chapterController: _chapterController,
+                            ttsController: _ttsController,
+                            modeController: _modeController,
+                            onToggleChrome: _toggleAllUi,
+                            onTapUp: _handleTapUpForTts,
+                          ),
+                  ),
+                ),
+
+                // Chrome and HUD layers - only rebuild when chrome, TTS controls, or chapter changes
+                ListenableBuilder(
+                  listenable: Listenable.merge([
+                    _chapterController,
+                    _ttsController,
+                    _chromeController,
+                  ]),
+                  builder: (context, _) {
+                    final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+                    final showBottomControls = showChrome && !_ttsController.showTtsControls;
+
+                    return Stack(
+                      children: [
+                        if (showChrome)
+                          MobiReaderTopBar(
+                            book: widget.book,
+                            lockMode: _chromeController.isLocked,
+                            showTtsControls: _ttsController.showTtsControls,
+                            onBack: () => Navigator.of(context).maybePop(),
+                            onToggleLock: () {
+                              final isLocked = _chromeController.toggleLockMode();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(isLocked ? 'Lock mode on.' : 'Lock mode off.')),
+                              );
+                            },
+                            onShowSettings: _showSettingsSheet,
+                            onShowReadingMode: _showReadingModePicker,
+                            onToggleTts: () => _ttsController.toggleTts(modeController: _modeController),
+                            onShowSearch: _showSearchDialog,
+                            onShowChapters: _showChapterList,
+                          ),
+                        if (showBottomControls)
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: MobiReaderBottomControls(
+                              currentChapterIndex: _chapterController.currentChapterIndex,
+                              totalChapters: _chapterController.chapters?.length ?? 0,
+                              onLoadChapter: (index) {
+                                _chapterController.loadChapter(index, userInitiated: true);
+                                if (_modeController.isPagedMode && _pageController.hasClients) {
+                                  _pageController.jumpToPage(index);
+                                }
+                              },
+                            ),
+                          ),
+
+                        if (_pendingTapResult != null)
+                          TapSelectionOverlay(
+                            word: _pendingTapResult!.word,
+                            position: _pendingTapResult!.tapPosition,
+                            onConfirm: _confirmTapSelection,
+                            onCancel: _cancelTapSelection,
+                          ),
+
+                        if (_ttsController.showTtsControls)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: TtsControlsSheet(
+                              ttsService: _ttsController.ttsService,
+                              textToSpeak: '', 
+                              resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
+                              onStart: () async {
+                                final text = _ttsController.resolveTtsText(modeController: _modeController);
+                                if (text.trim().isNotEmpty) {
+                                  await _ttsController.ttsService.speak(text);
+                                }
+                              },
+                              isContinuous: _ttsController.ttsContinuous,
+                              isFollowMode: _ttsController.ttsFollowMode,
+                              isTapToStart: _ttsController.tapToStartEnabled,
+                              onContinuousChanged: _ttsController.setTtsContinuous,
+                              onFollowModeChanged: _ttsController.setTtsFollowMode,
+                              onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                              onClose: _ttsController.closeTtsControls,
+                              highlightStyle: themeRepo.highlightStyle,
+                              onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -19,7 +19,7 @@ class CbzCacheController {
   CbzCacheController({
     required this.archivePath,
     required this.pageNames,
-    this.maxCacheSize = 8,
+    this.maxCacheSize = 10,
   });
 
   String _getCacheKey(int index, int maxWidth) {
@@ -87,15 +87,11 @@ class CbzCacheController {
     }
   }
 
-  /// Preload next 3 pages and 1 page behind.
+  /// Preload adjacent pages (1 ahead, 1 behind) to keep scroll fluid without saturating memory
   void preloadAround(int index, int maxWidth) {
-    // Next 3 pages
-    for (var i = 1; i <= 3; i++) {
-      final nextIdx = index + i;
-      if (nextIdx >= pageNames.length) break;
-      _preloadOne(nextIdx, maxWidth);
+    if (index + 1 < pageNames.length) {
+      _preloadOne(index + 1, maxWidth);
     }
-    // Previous page
     if (index > 0) {
       _preloadOne(index - 1, maxWidth);
     }

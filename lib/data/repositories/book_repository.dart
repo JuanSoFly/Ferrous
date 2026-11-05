@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
@@ -47,7 +48,42 @@ class BookRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteBook(String id) async {
+  Future<void> deleteBook(String id, {bool deleteFile = false}) async {
+    final book = getBook(id);
+    if (book != null) {
+      if (deleteFile && book.filePath.isNotEmpty) {
+        try {
+          final file = File(book.filePath);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint('Error deleting book file at ${book.filePath}: $e');
+        }
+      }
+
+      final coverPath = book.coverPath;
+      if (coverPath != null && coverPath.isNotEmpty) {
+        try {
+          final coverFile = File(coverPath);
+          if (await coverFile.exists()) {
+            await coverFile.delete();
+          }
+        } catch (e) {
+          debugPrint('Error deleting cover file at $coverPath: $e');
+        }
+      }
+
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final defaultCover = File('${appDir.path}/covers/$id.png');
+        if (await defaultCover.exists()) {
+          await defaultCover.delete();
+        }
+      } catch (e) {
+        debugPrint('Error deleting default cover for $id: $e');
+      }
+    }
     await box.delete(id);
     notifyListeners();
   }

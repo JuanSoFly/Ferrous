@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
 import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+import 'package:reader_app/features/reader/widgets/book_background_texture.dart';
 
 import 'controllers/cbz_page_controller.dart';
 import 'widgets/cbz_page_viewer.dart';
@@ -117,16 +120,21 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    final themeRepo = context.watch<ReaderThemeRepository>();
     return Scaffold(
       body: Stack(
         children: [
-          // Content layer
+          // Content layer wrapped in physical book background
           Positioned.fill(
-            child: CbzPageViewer(
-              pageController: _pageController,
-              chromeController: _chromeController,
-              modeController: _modeController,
-              transformController: _imageTransformController,
+            child: RealBookBackground(
+              textureId: themeRepo.config.paperTexture,
+              showSpine: themeRepo.config.showBookSpine,
+              child: CbzPageViewer(
+                pageController: _pageController,
+                chromeController: _chromeController,
+                modeController: _modeController,
+                transformController: _imageTransformController,
+              ),
             ),
           ),
 
