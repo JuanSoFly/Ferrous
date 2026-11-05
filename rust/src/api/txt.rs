@@ -91,7 +91,7 @@ pub fn read_txt_to_html(path: String) -> Result<String> {
 
         // Check for bullet list items
         if trimmed.starts_with('•') || trimmed.starts_with('*') || (trimmed.starts_with('-') && !trimmed.starts_with("--")) {
-            let content_start = trimmed.char_indices().nth(1).map(|(i, _)| i).unwrap_or(0);
+            let content_start = trimmed.char_indices().nth(1).map_or(0, |(i, _)| i);
             let content = trimmed[content_start..].trim();
             html_output.push_str(&format!(
                 "<p class='list-item' style='margin-left: {}px; text-indent: -16px; padding-left: 16px;'>• &nbsp;{}</p>",
@@ -113,11 +113,11 @@ pub fn read_txt_to_html(path: String) -> Result<String> {
         }
 
         // Check for numbered lists
-        let is_numbered = trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) && trimmed.contains('.');
+        let is_numbered = trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) && trimmed.contains('.');
         if is_numbered {
             if let Some(dot_idx) = trimmed.find('.') {
                 let prefix = &trimmed[..=dot_idx];
-                let content = &trimmed[dot_idx + 1..].trim();
+                let content = trimmed[dot_idx + 1..].trim();
                 html_output.push_str(&format!(
                     "<p class='list-item' style='margin-left: {}px; text-indent: -20px; padding-left: 20px;'>{} &nbsp;{}</p>",
                     indent_px + 16,

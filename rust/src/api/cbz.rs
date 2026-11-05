@@ -59,14 +59,13 @@ fn is_image_file(name: &str) -> bool {
 fn get_image_entries(archive: &mut ZipArchive<BufReader<File>>) -> Vec<String> {
     let mut entries: Vec<String> = (0..archive.len())
         .filter_map(|i| {
-            archive.by_index(i).ok().and_then(|entry| {
-                let name = entry.name().to_string();
-                if !entry.is_dir() && is_image_file(&name) {
-                    Some(name)
-                } else {
-                    None
-                }
-            })
+            let entry = archive.by_index(i).ok()?;
+            let name = entry.name().to_string();
+            if !entry.is_dir() && is_image_file(&name) {
+                Some(name)
+            } else {
+                None
+            }
         })
         .collect();
     entries.sort();

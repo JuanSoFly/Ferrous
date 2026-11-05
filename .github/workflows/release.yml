@@ -23,6 +23,10 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # ===== sccache Setup (Rust Compilation Cache) =====
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -151,11 +155,34 @@ jobs:
           mv app-arm64-v8a-release.apk ferrous-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
           mv app-x86_64-release.apk ferrous-v${{ steps.version.outputs.VERSION }}-x86_64.apk
 
-      # ===== Extract Release Notes from CHANGELOG =====
-      - name: Extract release notes from CHANGELOG
+      # ===== Prepare Release Notes from CHANGELOG and Download Guide =====
+      - name: Prepare Release Notes
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
+          REPO="${{ github.repository }}"
+
+          cat << 'EOF' > /tmp/release_notes.md
+          ### Which APK should I install?
+
+          | File | Architecture | Target Devices | Notes |
+          | :--- | :--- | :--- | :--- |
+          EOF
+
+          echo "| [**ferrous-v${VERSION}-arm64-v8a.apk**](https://github.com/${REPO}/releases/download/v${VERSION}/ferrous-v${VERSION}-arm64-v8a.apk) | arm64-v8a | Modern phones and tablets | Recommended (most devices) |" >> /tmp/release_notes.md
+          echo "| [**ferrous-v${VERSION}-armeabi-v7a.apk**](https://github.com/${REPO}/releases/download/v${VERSION}/ferrous-v${VERSION}-armeabi-v7a.apk) | armeabi-v7a | Older 32-bit Android phones | Devices from 2016 or earlier / 32-bit |" >> /tmp/release_notes.md
+          echo "| [**ferrous-v${VERSION}-x86_64.apk**](https://github.com/${REPO}/releases/download/v${VERSION}/ferrous-v${VERSION}-x86_64.apk) | x86_64 | Emulators and ChromeOS | PC emulators (BlueStacks, LDPlayer) |" >> /tmp/release_notes.md
+
+          cat << 'EOF' >> /tmp/release_notes.md
+
+          > **Note:** If you are unsure which build your device requires, choose **arm64-v8a**.
+
+          ---
+
+          ### Changelog
+
+          EOF
+
           # Extract content between this version header and the next version header (or end)
           NOTES=$(awk -v ver="$VERSION" '
             /^## \[/ { 
@@ -171,8 +198,8 @@ jobs:
             NOTES="Release v$VERSION"
           fi
           
-          # Save to file to preserve multiline content
-          echo "$NOTES" > /tmp/release_notes.md
+          # Append notes to release notes file
+          echo "$NOTES" >> /tmp/release_notes.md
 
       # ===== Create GitHub Release =====
       - name: Create GitHub Release

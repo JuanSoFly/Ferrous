@@ -83,15 +83,13 @@ fn split_large_html(html: &str, target_chunk_size: usize) -> Vec<String> {
         if let Some(idx) = split_index {
             chunks.push(remaining[..idx].to_string());
             current_start += idx;
+        } else if let Some(space_idx) = remaining[search_start..].find(' ') {
+            let idx = search_start + space_idx + 1;
+            chunks.push(remaining[..idx].to_string());
+            current_start += idx;
         } else {
-            if let Some(space_idx) = remaining[search_start..].find(' ') {
-                let idx = search_start + space_idx + 1;
-                chunks.push(remaining[..idx].to_string());
-                current_start += idx;
-            } else {
-                chunks.push(remaining.to_string());
-                break;
-            }
+            chunks.push(remaining.to_string());
+            break;
         }
     }
     

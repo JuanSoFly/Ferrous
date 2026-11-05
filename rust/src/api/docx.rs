@@ -251,11 +251,11 @@ fn parse_paragraph_to_html(
                 let mut close_tags = String::new();
                 let props = &run.run_property;
 
-                if props.bold.as_ref().is_some_and(|bold| bold == &Bold::new()) {
+                if props.bold.as_ref().is_some_and(|bold| *bold == Bold::new()) {
                     open_tags.push_str("<b>");
                     close_tags.insert_str(0, "</b>");
                 }
-                if props.italic.as_ref().is_some_and(|italic| italic == &Italic::new()) {
+                if props.italic.as_ref().is_some_and(|italic| *italic == Italic::new()) {
                     open_tags.push_str("<i>");
                     close_tags.insert_str(0, "</i>");
                 }
@@ -398,7 +398,7 @@ fn convert_paragraph_to_html_block(
     if let Some(num_prop) = &paragraph.property.numbering_property {
         is_list = true;
         extra_class.push_str(" list-item");
-        let level = num_prop.level.as_ref().map(|l| l.val).unwrap_or(0);
+        let level = num_prop.level.as_ref().map_or(0, |l| l.val);
         let indent = 24 * (level + 1);
         extra_style.push_str(&format!(
             " margin-left: {}px; text-indent: -16px; padding-left: 16px; margin-top: 4px; margin-bottom: 4px;",

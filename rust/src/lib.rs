@@ -1,5 +1,6 @@
 pub mod api;
 
+#[allow(clippy::all, unused)]
 mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge */
 
 #[macro_export]

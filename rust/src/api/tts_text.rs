@@ -111,12 +111,11 @@ pub fn find_sentence_for_offset(
     sentences: &[SentenceSpan],
     offset: u32,
 ) -> Option<SentenceSpan> {
-    for sentence in sentences {
-        if offset >= sentence.start && offset < sentence.end {
-            return Some(sentence.clone());
-        }
-    }
-    sentences.last().cloned()
+    sentences
+        .iter()
+        .find(|sentence| offset >= sentence.start && offset < sentence.end)
+        .cloned()
+        .or_else(|| sentences.last().cloned())
 }
 
 pub fn insert_html_highlight(
@@ -141,7 +140,6 @@ pub fn insert_html_highlight(
     
     // Build mapping from normalized offset to raw offset
     let _text_regex = get_whitespace_regex();
-    let _raw_text = extract_text_from_html(&html);
     let start = highlight_start as usize;
     let end = highlight_end.min(normalized.len() as u32) as usize;
     

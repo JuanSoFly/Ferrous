@@ -7,7 +7,7 @@ pub struct BookMetadata {
 }
 
 pub fn scan_library(root_path: String) -> Vec<BookMetadata> {
-    let supported_extensions = vec!["pdf", "epub", "cbz", "docx", "txt", "mobi", "azw", "azw3"];
+    const SUPPORTED_EXTENSIONS: &[&str] = &["pdf", "epub", "cbz", "docx", "txt", "mobi", "azw", "azw3"];
     
     let mut books = Vec::new();
     
@@ -18,7 +18,7 @@ pub fn scan_library(root_path: String) -> Vec<BookMetadata> {
         let path = entry.path();
         if path.is_file() {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if supported_extensions.contains(&ext.to_lowercase().as_str()) {
+                if SUPPORTED_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
                     let title = path.file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Unknown Title")
