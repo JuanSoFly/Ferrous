@@ -368,17 +368,18 @@ class MobiChapterController extends ChangeNotifier {
   }
 
   ScrollController chapterScrollController(int index) {
-    var controller = _chapterScrollControllers[index];
-    if (controller == null) {
-      final initialOffset = _chapterScrollOffsets[index] ?? 0.0;
-      controller = ScrollController(initialScrollOffset: initialOffset);
-      controller.addListener(() {
-        if (controller.hasClients) {
-          _chapterScrollOffsets[index] = controller.offset;
-        }
-      });
-      _chapterScrollControllers[index] = controller;
+    final existing = _chapterScrollControllers[index];
+    if (existing != null) {
+      return existing;
     }
+    final initialOffset = _chapterScrollOffsets[index] ?? 0.0;
+    final controller = ScrollController(initialScrollOffset: initialOffset);
+    controller.addListener(() {
+      if (controller.hasClients) {
+        _chapterScrollOffsets[index] = controller.offset;
+      }
+    });
+    _chapterScrollControllers[index] = controller;
     return controller;
   }
 
