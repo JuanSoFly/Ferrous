@@ -45,16 +45,16 @@ class ReaderThemeConfig {
   final bool showBookSpine;
 
   const ReaderThemeConfig({
-    this.fontSize = 14.0,
+    this.fontSize = 12.0,
     this.fontFamily = 'Merriweather',
     this.lineHeight = 1.5,
-    this.paragraphSpacing = 10.0,
+    this.paragraphSpacing = 20.0,
     this.textAlign = 'justify',
     this.pageMargins = true,
     this.pageFlip = true,
     this.wordSpacing = 0.0,
-    this.paragraphIndent = false,
-    this.hyphenation = false,
+    this.paragraphIndent = true,
+    this.hyphenation = true,
     this.fontWeight = 400,
     this.paperTexture = 'natural',
     this.showBookSpine = true,

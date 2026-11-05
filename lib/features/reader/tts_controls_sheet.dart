@@ -294,7 +294,7 @@ class TtsControlsSheet extends StatelessWidget {
                               child: _buildCompactToggle(
                                 context,
                                 icon: Icons.touch_app,
-                                label: 'Tap to Speak',
+                                label: 'Double Tap',
                                 value: isTapToStart,
                                 onChanged: onTapToStartChanged!,
                               ),

@@ -57,7 +57,12 @@ class PdfReaderTopBar extends StatelessWidget {
                 IconButton(
                   icon: Icon(chromeController.isLocked ? Icons.lock : Icons.lock_open),
                   tooltip: chromeController.isLocked ? 'Unlock' : 'Lock',
-                  onPressed: () => chromeController.toggleLockMode(),
+                  onPressed: () {
+                    final isLocked = chromeController.toggleLockMode();
+                    if (isLocked) {
+                      ttsController.setTtsControlsVisible(false);
+                    }
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.view_carousel),

@@ -6,8 +6,8 @@ import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
-import 'apple_books_page_curl.dart';
 import 'cbz_page_image.dart';
+import 'realistic_page_turn.dart';
 
 class CbzPageViewer extends StatefulWidget {
   final CbzPageController pageController;
@@ -28,7 +28,7 @@ class CbzPageViewer extends StatefulWidget {
 }
 
 class _CbzPageViewerState extends State<CbzPageViewer> {
-  late final PageController _viewPageController;
+  late PageController _viewPageController;
   bool _syncing = false;
 
   @override
@@ -73,6 +73,17 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     }
   }
 
+  PageController _getOrUpdatePageController() {
+    final target = widget.pageController.pageIndex;
+    if (!_viewPageController.hasClients) {
+      if (_viewPageController.initialPage != target) {
+        _viewPageController.dispose();
+        _viewPageController = PageController(initialPage: target);
+      }
+    }
+    return _viewPageController;
+  }
+
   void _onTransformChanged() {
     // Force rebuild to update scroll physics based on zoom scale
     setState(() {});
@@ -85,6 +96,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
 
   void _onPageViewChanged(int index) {
     if (_syncing) return;
+    if (widget.pageController.pageIndex == index) return;
     _syncing = true;
     widget.pageController.jumpToPage(index);
     widget.transformController.value = Matrix4.identity();
@@ -156,12 +168,12 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final maxWidth = (size.width * devicePixelRatio).round();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final useAppleCurl = !widget.modeController.useVerticalSwipe &&
+    final useRealisticCurl = !widget.modeController.useVerticalSwipe &&
         themeRepo.config.pageFlip &&
         _canSwipePages();
 
-    if (useAppleCurl) {
-      return AppleBooksPageCurl(
+    if (useRealisticCurl) {
+      return RealisticPageTurn(
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
@@ -179,7 +191,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     }
 
     return PageView.builder(
-      controller: _viewPageController,
+      controller: _getOrUpdatePageController(),
       scrollDirection: widget.modeController.useVerticalSwipe
           ? Axis.vertical
           : Axis.horizontal,
@@ -222,12 +234,15 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
+          widget.pageController.updateCurrentPageFromScroll(context, force: true);
           widget.pageController.flushContinuousProgressSave();
+        } else if (notification is ScrollUpdateNotification) {
+          widget.pageController.updateCurrentPageFromScroll(context);
         }
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.height),
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.height * 2),
         controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
@@ -237,12 +252,18 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => SizedBox(height: spacing),
         itemBuilder: (context, index) {
-          return CbzPageImage(
-            pageIndex: index,
-            pageName: widget.pageController.pageNames[index],
-            fit: BoxFit.contain,
-            maxWidth: maxWidth,
-            cacheController: widget.pageController.cacheController!,
+          final key = index < widget.pageController.pageKeys.length
+              ? widget.pageController.pageKeys[index]
+              : null;
+          return RepaintBoundary(
+            key: key,
+            child: CbzPageImage(
+              pageIndex: index,
+              pageName: widget.pageController.pageNames[index],
+              fit: BoxFit.contain,
+              maxWidth: maxWidth,
+              cacheController: widget.pageController.cacheController!,
+            ),
           );
         },
       ),
@@ -259,12 +280,15 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
+          widget.pageController.updateCurrentPageFromScroll(context, force: true);
           widget.pageController.flushContinuousProgressSave();
+        } else if (notification is ScrollUpdateNotification) {
+          widget.pageController.updateCurrentPageFromScroll(context);
         }
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.width),
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.width * 2),
         controller: widget.pageController.scrollController,
         key: PageStorageKey(
             'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
@@ -275,12 +299,18 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
-          return CbzPageImage(
-            pageIndex: index,
-            pageName: widget.pageController.pageNames[index],
-            fit: BoxFit.contain,
-            maxWidth: maxWidth,
-            cacheController: widget.pageController.cacheController!,
+          final key = index < widget.pageController.pageKeys.length
+              ? widget.pageController.pageKeys[index]
+              : null;
+          return RepaintBoundary(
+            key: key,
+            child: CbzPageImage(
+              pageIndex: index,
+              pageName: widget.pageController.pageNames[index],
+              fit: BoxFit.contain,
+              maxWidth: maxWidth,
+              cacheController: widget.pageController.cacheController!,
+            ),
           );
         },
       ),

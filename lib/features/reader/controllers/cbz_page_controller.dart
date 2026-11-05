@@ -33,7 +33,7 @@ class CbzPageController extends ChangeNotifier {
   ResolvedBookFile? _resolvedFile;
   ResolvedBookFile? get resolvedFile => _resolvedFile;
   
-  final ScrollController scrollController = ScrollController();
+  late final ScrollController scrollController;
   Timer? _progressSaveTimer;
   bool isRestoringScroll = false;
   
@@ -41,9 +41,16 @@ class CbzPageController extends ChangeNotifier {
   ReadingMode get readingMode => _readingMode;
   
   double _lastScrollPosition;
+  double get scrollPosition => scrollController.hasClients ? scrollController.offset : _lastScrollPosition;
   
   CbzCacheController? _cacheController;
   CbzCacheController? get cacheController => _cacheController;
+
+  List<GlobalKey> _pageKeys = [];
+  List<GlobalKey> get pageKeys => _pageKeys;
+
+  final Map<int, double> _pageExtents = {};
+  DateTime _lastScrollCheckTime = DateTime.now();
 
   CbzPageController({
     required this.book,
@@ -51,6 +58,11 @@ class CbzPageController extends ChangeNotifier {
   }) : _currentPage = book.currentPage,
        _readingMode = book.readingMode,
        _lastScrollPosition = book.scrollPosition {
+    final isContinuous = _readingMode == ReadingMode.verticalContinuous ||
+        _readingMode == ReadingMode.webtoon ||
+        _readingMode == ReadingMode.horizontalContinuous;
+    final initialOffset = (isContinuous && _lastScrollPosition > 0) ? _lastScrollPosition : 0.0;
+    scrollController = ScrollController(initialScrollOffset: initialOffset);
     scrollController.addListener(_handleScrollUpdate);
   }
 
@@ -79,6 +91,7 @@ class CbzPageController extends ChangeNotifier {
         
         _pageNames = names;
         _pageCount = names.length;
+        _pageKeys = List.generate(names.length, (_) => GlobalKey());
         
         _cacheController = CbzCacheController(
           archivePath: resolved.path,
@@ -91,7 +104,12 @@ class CbzPageController extends ChangeNotifier {
 
         _isLoading = false;
         notifyListeners();
-        
+
+        if (isContinuousMode) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            restoreContinuousScroll();
+          });
+        }
       } catch (e) {
         _error = e.toString();
         _isLoading = false;
@@ -123,77 +141,235 @@ class CbzPageController extends ChangeNotifier {
     saveContinuousProgress();
   }
 
+  void recordPageExtent(int index, double extent) {
+    if (extent > 0) {
+      _pageExtents[index] = extent;
+    }
+  }
+
+  void updateCurrentPageFromScroll(BuildContext context, {bool force = false}) {
+    if (isRestoringScroll) return;
+    if (_pageKeys.isEmpty || !scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    if (!force && now.difference(_lastScrollCheckTime).inMilliseconds < 100) {
+      return;
+    }
+    _lastScrollCheckTime = now;
+
+    final viewportBox = context.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) return;
+
+    final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+    final viewportDimension = isHorizontal ? viewportBox.size.width : viewportBox.size.height;
+    final focusPoint = viewportDimension * 0.35;
+
+    int? bestIndex;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < _pageKeys.length; i++) {
+      final key = _pageKeys[i];
+      final ctx = key.currentContext;
+      if (ctx == null) continue;
+
+      final renderBox = ctx.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) continue;
+
+      final itemExtent = isHorizontal ? renderBox.size.width : renderBox.size.height;
+      if (itemExtent > 0) {
+        _pageExtents[i] = itemExtent;
+      }
+
+      final itemStart = isHorizontal
+          ? renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx
+          : renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+      final itemEnd = itemStart + itemExtent;
+
+      // If the focus point is inside this page, this is the current page
+      if (itemStart <= focusPoint && itemEnd > focusPoint) {
+        bestIndex = i;
+        break;
+      }
+
+      final distance = (itemStart - focusPoint).abs();
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex != null && bestIndex != _currentPage) {
+      _currentPage = bestIndex;
+      book.currentPage = bestIndex;
+      notifyListeners();
+    }
+  }
+
   void saveContinuousProgress() {
     if (!scrollController.hasClients) return;
     if (_pageCount == 0) return;
-    
+    if (isRestoringScroll) return;
+
     final offset = scrollController.offset;
-    final viewport = scrollController.position.viewportDimension;
-    final approxIndex = viewport <= 0
-        ? 0
-        : (offset / viewport).round().clamp(0, _pageCount - 1);
-        
     _lastScrollPosition = offset;
-    _currentPage = approxIndex;
-    
+    book.scrollPosition = offset;
+    book.currentPage = _currentPage;
+    book.readingMode = _readingMode;
+
     repository.updateReadingProgress(
       book.id,
-      currentPage: approxIndex,
+      currentPage: _currentPage,
       totalPages: _pageCount,
       scrollPosition: offset,
+      readingMode: _readingMode,
     );
-    
-    // We don't notifyListeners here to avoid jumps during scrolling
   }
 
-  void restoreContinuousScroll() {
-    if (!scrollController.hasClients) return;
-    if (_lastScrollPosition <= 0 && _currentPage <= 0) return;
+  void restoreContinuousScroll({int attempt = 0}) {
+    if (!isContinuousMode) return;
+    if (_pageCount == 0) return;
+    if (_currentPage <= 0 && _lastScrollPosition <= 0) return;
+
+    if (!scrollController.hasClients) {
+      if (attempt < 12) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          restoreContinuousScroll(attempt: attempt + 1);
+        });
+      }
+      return;
+    }
 
     isRestoringScroll = true;
-    var attempts = 0;
 
-    void tryRestore() {
+    if (_lastScrollPosition > 0) {
+      final position = scrollController.position;
+      final maxExtent = position.maxScrollExtent;
+      final target = (_lastScrollPosition > maxExtent && maxExtent > 0)
+          ? maxExtent
+          : _lastScrollPosition;
+
+      if ((position.pixels - target).abs() > 1.0) {
+        scrollController.jumpTo(target);
+      }
+
+      if (_lastScrollPosition > maxExtent && attempt < 15) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          restoreContinuousScroll(attempt: attempt + 1);
+        });
+        return;
+      }
+
+      isRestoringScroll = false;
+    } else if (_currentPage > 0) {
+      scrollToPage(_currentPage);
+    } else {
+      isRestoringScroll = false;
+    }
+  }
+
+  void scrollToPage(int targetPage, {int attempt = 0}) {
+    if (targetPage < 0 || targetPage >= _pageCount) return;
+    if (!scrollController.hasClients) {
+      if (attempt < 12) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          scrollToPage(targetPage, attempt: attempt + 1);
+        });
+      }
+      return;
+    }
+
+    isRestoringScroll = true;
+
+    // Check if target page already has a mounted context in viewport/cache
+    final key = targetPage < _pageKeys.length ? _pageKeys[targetPage] : null;
+    final targetContext = key?.currentContext;
+    if (targetContext != null) {
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: Duration.zero,
+        alignment: 0.0,
+      ).then((_) {
+        isRestoringScroll = false;
+        _currentPage = targetPage;
+        book.currentPage = targetPage;
+        notifyListeners();
+      });
+      return;
+    }
+
+    // Estimate offset to target page
+    final position = scrollController.position;
+    final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+    final isWebtoon = _readingMode == ReadingMode.webtoon;
+    final spacing = isWebtoon ? 1.0 : 12.0;
+
+    double avgExtent;
+    if (_pageExtents.isNotEmpty) {
+      avgExtent = _pageExtents.values.reduce((a, b) => a + b) / _pageExtents.length;
+    } else if (_cacheController != null && _cacheController!.getEstimatedAspectRatio(targetPage) != null) {
+      final ar = _cacheController!.getEstimatedAspectRatio(targetPage)!;
+      avgExtent = isHorizontal ? position.viewportDimension * ar : position.viewportDimension / ar;
+    } else {
+      avgExtent = position.viewportDimension > 0
+          ? (isHorizontal ? position.viewportDimension * 0.7 : position.viewportDimension * 0.85)
+          : 600.0;
+    }
+
+    double estimatedOffset = 0.0;
+    for (int i = 0; i < targetPage; i++) {
+      estimatedOffset += (_pageExtents[i] ?? avgExtent) + spacing;
+    }
+
+    final maxExtent = position.maxScrollExtent;
+    final targetJump = (maxExtent > 0 && estimatedOffset > maxExtent)
+        ? maxExtent
+        : estimatedOffset;
+
+    if ((position.pixels - targetJump).abs() > 1.0) {
+      scrollController.jumpTo(targetJump);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!scrollController.hasClients) {
         isRestoringScroll = false;
         return;
       }
-
-      final position = scrollController.position;
-      if (!position.hasContentDimensions) {
-        attempts++;
-        if (attempts < 5) {
-          Future.delayed(const Duration(milliseconds: 50), tryRestore);
-        } else {
+      final newContext = targetPage < _pageKeys.length ? _pageKeys[targetPage].currentContext : null;
+      if (newContext != null) {
+        Scrollable.ensureVisible(
+          newContext,
+          duration: Duration.zero,
+          alignment: 0.0,
+        ).then((_) {
           isRestoringScroll = false;
-        }
-        return;
+          _currentPage = targetPage;
+          book.currentPage = targetPage;
+          notifyListeners();
+        });
+      } else if (attempt < 20) {
+        scrollToPage(targetPage, attempt: attempt + 1);
+      } else {
+        isRestoringScroll = false;
       }
-
-      final baseOffset = _lastScrollPosition > 0
-          ? _lastScrollPosition
-          : position.viewportDimension * _currentPage;
-      final clamped = baseOffset.clamp(0.0, position.maxScrollExtent);
-      
-      if ((position.pixels - clamped).abs() > 1.0) {
-        scrollController.jumpTo(clamped);
-      }
-
-      isRestoringScroll = false;
-    }
-
-    tryRestore();
+    });
   }
 
   void jumpToPage(int page) {
     if (page < 0 || page >= _pageCount) return;
     _currentPage = page;
-    notifyListeners();
-    
+    book.currentPage = page;
+
+    if (isContinuousMode) {
+      scrollToPage(page);
+    } else {
+      notifyListeners();
+    }
+
     repository.updateReadingProgress(
       book.id,
       currentPage: page,
       totalPages: _pageCount,
+      readingMode: _readingMode,
     );
   }
 
@@ -201,33 +377,43 @@ class CbzPageController extends ChangeNotifier {
     jumpToPage(_currentPage + delta);
   }
 
-  void updateReadingMode(ReadingMode mode) {
+  void updateReadingMode(ReadingMode mode, {BuildContext? context}) {
     if (_readingMode == mode) return;
-    
-    // Save progress before switching
+
+    // 1. Accurately save progress in current mode BEFORE switching
     if (isContinuousMode) {
+      if (context != null) {
+        updateCurrentPageFromScroll(context, force: true);
+      }
       saveContinuousProgress();
     } else {
+      book.currentPage = _currentPage;
       repository.updateReadingProgress(
         book.id,
         currentPage: _currentPage,
         totalPages: _pageCount,
+        readingMode: mode,
       );
     }
-    
+
+    final oldMode = _readingMode;
     _readingMode = mode;
+    book.readingMode = mode;
     repository.updateReadingProgress(book.id, readingMode: mode);
-    
-    // If switching to continuous, handle scroll position
-    if (isContinuousMode) {
-       Future.delayed(const Duration(milliseconds: 50), () {
-          if (!scrollController.hasClients) return;
-          final viewport = scrollController.position.viewportDimension;
-          final targetScroll = _currentPage * viewport;
-          scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
-       });
+
+    final nowContinuous = mode == ReadingMode.verticalContinuous ||
+        mode == ReadingMode.webtoon ||
+        mode == ReadingMode.horizontalContinuous;
+
+    if (nowContinuous) {
+      _lastScrollPosition = 0.0;
+      book.scrollPosition = 0.0;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        scrollToPage(_currentPage);
+      });
     }
-    
+
     notifyListeners();
   }
 
@@ -235,10 +421,13 @@ class CbzPageController extends ChangeNotifier {
     if (isContinuousMode) {
       saveContinuousProgress();
     } else if (_pageCount > 0) {
+      book.currentPage = _currentPage;
+      book.readingMode = _readingMode;
       repository.updateReadingProgress(
         book.id,
         currentPage: _currentPage,
         totalPages: _pageCount,
+        readingMode: _readingMode,
       );
     }
   }

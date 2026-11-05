@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
+import 'package:reader_app/features/reader/widgets/html_table_viewer.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:uuid/uuid.dart';
 import 'package:reader_app/core/models/annotation.dart';
@@ -30,6 +31,7 @@ import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'package:reader_app/core/constants/book_textures.dart';
 import 'package:reader_app/features/reader/widgets/book_background_texture.dart';
+import 'package:reader_app/features/reader/widgets/book_cover_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Represents a Table of Contents entry extracted from an HTML document.
@@ -68,25 +70,25 @@ class HtmlReaderConfig {
   final String errorPrefix;
 
   const HtmlReaderConfig({
-    this.fontSize = 16.0,
+    this.fontSize = 12.0,
     this.lineHeight = 1.5,
-    this.paragraphSpacing = 12.0,
+    this.paragraphSpacing = 20.0,
     this.webtoonSpacing = 28.0,
     this.errorPrefix = 'Error',
   });
 
   static const docx = HtmlReaderConfig(
-    fontSize: 16.0,
+    fontSize: 12.0,
     lineHeight: 1.5,
-    paragraphSpacing: 12.0,
+    paragraphSpacing: 20.0,
     webtoonSpacing: 28.0,
     errorPrefix: 'Error loading DOCX',
   );
 
   static const mobi = HtmlReaderConfig(
-    fontSize: 18.0,
+    fontSize: 12.0,
     lineHeight: 1.8,
-    paragraphSpacing: 16.0,
+    paragraphSpacing: 20.0,
     webtoonSpacing: 28.0,
     errorPrefix: 'Error',
   );
@@ -321,7 +323,9 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
       _chromeController.toggleChrome();
-      _ttsController.setTtsControlsVisible(_chromeController.showChrome);
+      if (!_chromeController.showChrome) {
+        _ttsController.setTtsControlsVisible(false);
+      }
     }
   }
 
@@ -341,6 +345,9 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
   void _toggleLockModeWithFeedback() {
     final isLocked = _chromeController.toggleLockMode();
+    if (isLocked) {
+      _ttsController.setTtsControlsVisible(false);
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -700,6 +707,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       ]),
       builder: (context, _) {
         final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+        final showTtsControls = showChrome && _ttsController.showTtsControls;
 
         return Scaffold(
           body: PopScope(
@@ -726,7 +734,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   ),
                 ),
                 if (showChrome) _buildTopBar(),
-                if (_ttsController.showTtsControls)
+                if (showTtsControls)
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -831,6 +839,10 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   : (_htmlContent ?? '');
 
               final extensions = [
+                TagWrapExtension(
+                  tagsToWrap: {'table'},
+                  builder: (child) => HtmlTableViewer(child: child),
+                ),
                 const TableHtmlExtension(),
                 TagExtension(
                   tagsToExtend: {'tts-highlight'},
@@ -926,6 +938,14 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       textAlign: _parseTextAlign(themeConfig.textAlign),
                       color: effectiveTextColor,
                     ),
+                    "div": Style(
+                      margin: Margins.only(
+                        bottom: spacing,
+                        top: 0,
+                      ),
+                      textAlign: _parseTextAlign(themeConfig.textAlign),
+                      color: effectiveTextColor,
+                    ),
                     "img": Style(
                       width: Width(100, Unit.percent),
                       margin: Margins.only(bottom: 24.0),
@@ -979,18 +999,24 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       margin: Margins.only(bottom: 6),
                     ),
                     "table": Style(
-                      width: Width(100, Unit.percent),
-                      margin: Margins.symmetric(vertical: 16.0),
+                      minWidth: Width(100, Unit.percent),
+                      margin: Margins.symmetric(vertical: 14.0),
                       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 1.0),
                     ),
                     "th": Style(
-                      padding: HtmlPaddings.all(10.0),
+                      padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 6.0),
                       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                       fontWeight: FontWeight.bold,
+                      fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
+                      lineHeight: LineHeight(1.25),
+                      color: effectiveTextColor,
                       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
                     ),
                     "td": Style(
-                      padding: HtmlPaddings.all(8.0),
+                      padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 5.0),
+                      fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
+                      lineHeight: LineHeight(1.25),
+                      color: effectiveTextColor,
                       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
                     ),
                     "blockquote": Style(
@@ -1051,6 +1077,16 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
               );
             }
 
+            Widget wrapWithCover(Widget contentWidget) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  BookCoverPage(book: widget.book, isContinuous: true),
+                  contentWidget,
+                ],
+              );
+            }
+
             if (isTtsActive) {
               return ListenableBuilder(
                 listenable: _ttsController,
@@ -1063,14 +1099,14 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     _ttsController.maybeEnsureHighlightVisible();
                   });
-                  return buildHtmlWidget(displayContent);
+                  return wrapWithCover(buildHtmlWidget(displayContent));
                 },
               );
             } else {
               final displayContent = bookAnnotations.isNotEmpty
                   ? AnnotationHighlightHelper.applyHighlights(baseHtml, bookAnnotations)
                   : baseHtml;
-              return buildHtmlWidget(displayContent);
+              return wrapWithCover(buildHtmlWidget(displayContent));
             }
           },
         ),
@@ -1117,7 +1153,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     onPressed: _showTocSheet,
                   ),
                 IconButton(
-                  icon: Icon(_ttsController.showTtsControls ? Icons.volume_up : Icons.volume_mute),
+                  icon: Icon(_ttsController.showTtsControls ? Icons.volume_off : Icons.volume_up),
                   tooltip: 'Read Aloud',
                   onPressed: () => _ttsController.toggleTts(),
                 ),

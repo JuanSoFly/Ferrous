@@ -14,93 +14,208 @@ class TapSelectionOverlay extends StatelessWidget {
     required this.onCancel,
   });
 
+  String get _cleanWord {
+    var trimmed = word.trim();
+    trimmed = trimmed.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
+    if (trimmed.isEmpty) return word.trim();
+    return trimmed;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final displayWord = word.length > 20 ? '${word.substring(0, 17)}...' : word;
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final safeTop = mediaQuery.padding.top;
+    final safeBottom = mediaQuery.padding.bottom;
 
-    return Positioned(
-      left: position.dx - 60,
-      top: position.dy - 70,
-      child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? Colors.grey.shade800 : Colors.white,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          constraints: const BoxConstraints(maxWidth: 200),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Selected word display
-              Flexible(
-                child: Text(
-                  '"$displayWord"',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontStyle: FontStyle.italic,
+    const overlayWidth = 230.0;
+    const overlayHeight = 52.0;
+
+    // Center horizontally over tap position, clamped within screen margins
+    final left = (position.dx - (overlayWidth / 2)).clamp(16.0, (screenSize.width - overlayWidth - 16.0).clamp(16.0, double.infinity));
+
+    // Position above the tap point by default; flip below if too close to the top
+    final bool placeBelow = (position.dy - overlayHeight - 16.0) < (safeTop + 56.0);
+    final top = (placeBelow
+            ? position.dy + 20.0
+            : position.dy - overlayHeight - 14.0)
+        .clamp(safeTop + 8.0, (screenSize.height - safeBottom - overlayHeight - 8.0).clamp(safeTop + 8.0, double.infinity));
+
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: onCancel,
+        child: Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {}, // Prevent taps on the card from triggering backdrop dismiss
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animVal, child) {
+                    return Transform.scale(
+                      scale: 0.88 + 0.12 * animVal,
+                      alignment: placeBelow ? Alignment.topCenter : Alignment.bottomCenter,
+                      child: Opacity(
+                        opacity: animVal,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: overlayWidth,
+                      height: overlayHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
+                            spreadRadius: -2,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.06),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // Speech indicator badge
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.14),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.volume_up_rounded,
+                              size: 16,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Target word display
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'READ FROM',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.8,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                                Text(
+                                  '"$_cleanWord"',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: colorScheme.onSurface,
+                                    height: 1.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Vertical divider
+                          Container(
+                            height: 22,
+                            width: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 6),
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+                          ),
+
+                          // Confirm button (Check)
+                          Tooltip(
+                            message: 'Start reading here',
+                            child: InkWell(
+                              onTap: onConfirm,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: colorScheme.primary.withValues(alpha: 0.35),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.check_rounded,
+                                  size: 18,
+                                  color: colorScheme.onPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+
+                          // Cancel button (X)
+                          Tooltip(
+                            message: 'Cancel',
+                            child: InkWell(
+                              onTap: onCancel,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHigh,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 16,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
                 ),
               ),
-              const SizedBox(width: 8),
-              // Confirm button
-              _ActionButton(
-                icon: Icons.check,
-                color: Colors.green,
-                onTap: onConfirm,
-                tooltip: 'Start here',
-              ),
-              const SizedBox(width: 4),
-              // Cancel button
-              _ActionButton(
-                icon: Icons.close,
-                color: Colors.red,
-                onTap: onCancel,
-                tooltip: 'Cancel',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  final String tooltip;
-
-  const _ActionButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-    required this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: color,
-          ),
+            ),
+          ],
         ),
       ),
     );

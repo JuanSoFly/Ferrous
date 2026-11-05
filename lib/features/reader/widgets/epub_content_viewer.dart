@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
+import 'package:reader_app/features/reader/widgets/html_table_viewer.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/core/constants/book_textures.dart';
@@ -39,10 +40,34 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
   // Static cache keyed by bookId:chapterIndex:hyphenation:paragraphIndent
   // Theme changes like font size, font family, etc. do NOT invalidate this cache.
   static final Map<String, String> _processedHtmlCache = {};
+  Future<String>? _processedFuture;
+  String? _loadedKey;
 
   String _cacheKey(bool hyphenation, bool paragraphIndent) {
     final bookId = widget.chapterController.book.id;
     return '$bookId:${widget.chapterIndex}:$hyphenation:$paragraphIndent';
+  }
+
+  @override
+  void didUpdateWidget(EpubContentViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.htmlContent != widget.htmlContent ||
+        oldWidget.chapterIndex != widget.chapterIndex) {
+      _loadedKey = null;
+      _processedFuture = null;
+    }
+  }
+
+  void _ensureFuture(String key, String content, bool hyphenation, bool paragraphIndent) {
+    if (_loadedKey == key) return;
+    _loadedKey = key;
+    if (_processedHtmlCache.containsKey(key)) {
+      _processedFuture = null;
+    } else if (hyphenation || paragraphIndent) {
+      _processedFuture = _getProcessedHtml(key, content, hyphenation, paragraphIndent);
+    } else {
+      _processedFuture = null;
+    }
   }
 
   Widget _buildHtmlContent(
@@ -70,9 +95,11 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       );
     }
 
+    _ensureFuture(key, content, hyphenation, paragraphIndent);
+
     // Cache miss: process in background isolate, show raw content immediately
     return FutureBuilder<String>(
-      future: _getProcessedHtml(key, content, hyphenation, paragraphIndent),
+      future: _processedFuture,
       initialData: content,
       builder: (context, snapshot) {
         final base = snapshot.data ?? content;
@@ -110,6 +137,9 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       _processedHtmlCache.remove(_processedHtmlCache.keys.first);
     }
     _processedHtmlCache[key] = processed;
+    if (mounted) {
+      setState(() {});
+    }
     return processed;
   }
 
@@ -180,29 +210,40 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
           ),
+          "div": Style(
+            margin: Margins.only(bottom: themeConfig.paragraphSpacing),
+            textAlign: parseTextAlign(themeConfig.textAlign),
+            color: effectiveTextColor,
+          ),
           "img": Style(
             width: Width(100, Unit.percent),
             margin: Margins.only(bottom: 24.0),
           ),
           "table": Style(
-            width: Width(100, Unit.percent),
-            margin: Margins.symmetric(vertical: 16.0),
+            minWidth: Width(100, Unit.percent),
+            margin: Margins.symmetric(vertical: 14.0),
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
               width: 1.0,
             ),
           ),
           "th": Style(
-            padding: HtmlPaddings.all(10.0),
+            padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 6.0),
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
             fontWeight: FontWeight.bold,
+            fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
+            lineHeight: LineHeight(1.25),
+            color: effectiveTextColor,
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
               width: 0.5,
             ),
           ),
           "td": Style(
-            padding: HtmlPaddings.all(8.0),
+            padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 5.0),
+            fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
+            lineHeight: LineHeight(1.25),
+            color: effectiveTextColor,
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
               width: 0.5,
@@ -230,6 +271,10 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         .toList();
 
     final extensions = [
+      TagWrapExtension(
+        tagsToWrap: {'table'},
+        builder: (child) => HtmlTableViewer(child: child),
+      ),
       const TableHtmlExtension(),
       TagExtension(
         tagsToExtend: {'tts-highlight'},

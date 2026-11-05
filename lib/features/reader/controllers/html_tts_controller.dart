@@ -171,6 +171,13 @@ class HtmlTtsController extends ChangeNotifier {
     return highlighted;
   }
 
+  static bool _matchesWord(String a, String b) {
+    if (a.toLowerCase() == b.toLowerCase()) return true;
+    final normA = a.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+    final normB = b.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+    return normA == normB;
+  }
+
   String _buildHighlightedHtmlAround(String html, int rawStart, int rawEnd) {
     if (rawStart < 0 || rawEnd <= rawStart) return html;
 
@@ -181,19 +188,38 @@ class HtmlTtsController extends ChangeNotifier {
     final textNodes = DomTextUtils.collectTextNodes(root);
     if (textNodes.isEmpty) return html;
 
+    // Determine target word to highlight
+    String? expectedWord = _ttsService.currentWord?.trim();
+    if (expectedWord == null || expectedWord.isEmpty) {
+      final rawText = getPlainText();
+      if (rawStart >= 0 && rawEnd <= rawText.length) {
+        expectedWord = rawText.substring(rawStart, rawEnd).trim();
+      }
+    }
+    final strippedWord = expectedWord?.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
+    final query = (strippedWord != null && strippedWord.isNotEmpty) ? strippedWord : expectedWord;
+
     var offset = 0;
     for (final node in textNodes) {
       final nodeText = node.data;
       final cleanToProcessed = <int>[];
       int processedIdx = 0;
+      int indentLen = 0;
 
-      if (nodeText.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
-        processedIdx = 4;
+      // Skip leading paragraph indent characters (em-spaces U+2003 or non-breaking spaces U+00A0)
+      while (processedIdx < nodeText.length) {
+        final cu = nodeText.codeUnitAt(processedIdx);
+        if (cu == 0x2003 || cu == 0x00A0) {
+          processedIdx++;
+          indentLen++;
+        } else {
+          break;
+        }
       }
 
       while (processedIdx < nodeText.length) {
         final codeUnit = nodeText.codeUnitAt(processedIdx);
-        if (codeUnit == 0x00AD) {
+        if (codeUnit == 0x00AD) { // Soft hyphen
           processedIdx++;
           continue;
         }
@@ -202,23 +228,84 @@ class HtmlTtsController extends ChangeNotifier {
       }
 
       final nodeStart = offset;
-      final nodeEnd = offset + cleanToProcessed.length;
+      // Account for the leading newline stripped by paragraph indentation in raw text space
+      final rawEquivalentLen = cleanToProcessed.length + (indentLen > 0 ? 1 : 0);
+      final nodeEnd = offset + rawEquivalentLen;
       offset = nodeEnd;
 
+      // Skip nodes that don't overlap with highlight range
       if (rawEnd <= nodeStart || rawStart >= nodeEnd) continue;
       if (node.parent == null) continue;
 
-      final localCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
-      final localCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
+      // Calculate local positions in clean text space
+      int exactCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
+      int exactCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
 
-      if (localCleanStart >= localCleanEnd) continue;
+      // Verify and correct word alignment in clean text space
+      if (query != null && query.isNotEmpty && cleanToProcessed.isNotEmpty) {
+        final cleanText = cleanToProcessed.map((i) => nodeText[i]).join();
+        int matchIdx = -1;
 
-      final localStart = localCleanStart < cleanToProcessed.length
-          ? cleanToProcessed[localCleanStart]
+        // 1. Check exact position first
+        if (exactCleanStart + query.length <= cleanText.length &&
+            _matchesWord(cleanText.substring(exactCleanStart, exactCleanStart + query.length), query)) {
+          matchIdx = exactCleanStart;
+        } else {
+          // 2. Check backwards for 1-4 char offset shifts caused by stripped leading whitespace
+          for (var delta = -1; delta >= -4; delta--) {
+            final testPos = exactCleanStart + delta;
+            if (testPos >= 0 && testPos + query.length <= cleanText.length) {
+              if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
+                matchIdx = testPos;
+                break;
+              }
+            }
+          }
+
+          // 3. Check forwards if rawStart was slightly earlier
+          if (matchIdx < 0) {
+            for (var delta = 1; delta <= 4; delta++) {
+              final testPos = exactCleanStart + delta;
+              if (testPos >= 0 && testPos + query.length <= cleanText.length) {
+                if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
+                  matchIdx = testPos;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 4. Fallback search in surrounding window
+          if (matchIdx < 0) {
+            const window = 12;
+            final searchStart = (exactCleanStart - window).clamp(0, cleanText.length);
+            final searchEnd = (exactCleanStart + query.length + window).clamp(0, cleanText.length);
+            final region = cleanText.substring(searchStart, searchEnd);
+
+            final normRegion = region.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+            final normQuery = query.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+            final localIdx = normRegion.indexOf(normQuery);
+            if (localIdx >= 0) {
+              matchIdx = searchStart + localIdx;
+            }
+          }
+        }
+
+        if (matchIdx >= 0 && matchIdx < cleanToProcessed.length) {
+          exactCleanStart = matchIdx;
+          exactCleanEnd = (matchIdx + query.length).clamp(exactCleanStart + 1, cleanToProcessed.length);
+        }
+      }
+
+      if (exactCleanStart >= exactCleanEnd) continue;
+
+      // Map clean indices back to processed indices in nodeText
+      final localStart = exactCleanStart < cleanToProcessed.length
+          ? cleanToProcessed[exactCleanStart]
           : nodeText.length;
-      final localEnd = localCleanEnd < cleanToProcessed.length
-          ? cleanToProcessed[localCleanEnd]
-          : nodeText.length;
+      final localEnd = exactCleanEnd < cleanToProcessed.length
+          ? cleanToProcessed[exactCleanEnd]
+          : (cleanToProcessed.isNotEmpty ? cleanToProcessed.last + 1 : nodeText.length);
 
       if (localStart >= localEnd) continue;
 

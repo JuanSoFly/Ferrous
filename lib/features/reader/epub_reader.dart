@@ -48,16 +48,19 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   late ReaderModeController _modeController;
   late PageController _pageController;
 
-  ReadingMode _readingMode = ReadingMode.vertical;
+  ReadingMode _readingMode = ReadingMode.leftToRight;
   Offset? _lastDoubleTapDown;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
   bool _hasRestoredPosition = false;
   bool _wasLoading = true;
   String? _lastError;
+  int _lastChapterIndex = -1;
 
   // Tap-to-start confirmation state
   TapDetectionResult? _pendingTapResult;
+  DateTime? _lastWordTapTime;
+  TapDetectionResult? _lastWordTapResult;
   SelectedContent? _selectedContent;
 
   @override
@@ -86,7 +89,12 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     );
 
     _chromeController = ReaderChromeController();
-    _pageController = PageController(initialPage: widget.book.sectionIndex);
+    final isFirstOpen = widget.book.sectionIndex == 0 &&
+        widget.book.scrollPosition == 0.0 &&
+        widget.book.lastReadingSentenceStart == -1;
+    _pageController = PageController(
+      initialPage: isFirstOpen ? 0 : widget.book.sectionIndex + 1,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -117,9 +125,15 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _onChapterControllerChanged() {
-    if (mounted && (_chapterController.isLoading != _wasLoading || _chapterController.error != _lastError)) {
+    if (!mounted) return;
+    final isLoadingChanged = _chapterController.isLoading != _wasLoading;
+    final errorChanged = _chapterController.error != _lastError;
+    final chapterChanged = _chapterController.currentChapterIndex != _lastChapterIndex;
+
+    if (isLoadingChanged || errorChanged || chapterChanged) {
       _wasLoading = _chapterController.isLoading;
       _lastError = _chapterController.error;
+      _lastChapterIndex = _chapterController.currentChapterIndex;
       setState(() {});
     }
     if (!_chapterController.isLoading && !_hasRestoredPosition) {
@@ -172,6 +186,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     
     if (_chromeController.isCenterTap(position, MediaQuery.of(context).size)) {
       final isLocked = _chromeController.toggleLockMode();
+      if (isLocked) {
+        _ttsController.setTtsControlsVisible(false);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -183,12 +200,16 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     }
   }
 
-  /// TTS continues playing in background when hidden.
+  /// Toggle reader chrome. TTS controls are closed when hiding chrome
+  /// and remain hidden by default until the user explicitly taps the TTS icon.
   void _toggleAllUi() {
     _chromeController.toggleChrome();
-    
-    // Sync TTS controls visibility with chrome (without stopping TTS)
-    _ttsController.setTtsControlsVisible(_chromeController.showChrome);
+    if (!_chromeController.showChrome) {
+      _ttsController.setTtsControlsVisible(false);
+    }
+    if (_pendingTapResult != null) {
+      setState(() => _pendingTapResult = null);
+    }
   }
 
   Future<void> _showReadingModePicker() async {
@@ -234,25 +255,54 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     );
   }
 
+  void _goToChapter(int index) {
+    if (_chapterController.chapters == null) return;
+    if (index < 0 || index >= _chapterController.chapters!.length) return;
+
+    _chapterController.loadChapter(index, userInitiated: true);
+
+    if (_modeController.isPagedMode) {
+      final targetPage = index + 1;
+      if (_pageController.hasClients && _pageController.page?.round() != targetPage) {
+        _pageController.jumpToPage(targetPage);
+      }
+    }
+  }
+
   void _showChapterList() {
     final chapters = _chapterController.chapters;
     if (chapters == null) return;
 
+    final initialIndex = _chapterController.currentChapterIndex.clamp(0, chapters.length - 1);
+    final scrollController = ScrollController(
+      initialScrollOffset: (initialIndex * 56.0).clamp(0.0, double.infinity),
+    );
+
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
+      showDragHandle: true,
       builder: (context) => ListView.builder(
+        controller: scrollController,
         itemCount: chapters.length,
         itemBuilder: (context, index) {
           final chapter = chapters[index];
+          final isSelected = index == _chapterController.currentChapterIndex;
           return ListTile(
-            title: Text(chapter.Title ?? 'Chapter ${index + 1}'),
-            selected: index == _chapterController.currentChapterIndex,
+            title: Text(
+              chapter.Title ?? 'Chapter ${index + 1}',
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            selected: isSelected,
+            selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+            trailing: isSelected
+                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                : null,
             onTap: () {
               Navigator.pop(context);
-              _chapterController.loadChapter(index, userInitiated: true);
-              if (_modeController.isPagedMode && _pageController.hasClients) {
-                _pageController.jumpToPage(index);
-              }
+              _goToChapter(index);
             },
           );
         },
@@ -261,39 +311,69 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _handleTapUpForTts(TapUpDetails details) {
-    // Do nothing if TTS is not active - let onTap handle UI toggle
-    if (!_ttsController.showTtsControls) {
+    // Only active when TTS controls are visible and Double Tap is enabled
+    if (!_ttsController.showTtsControls || !_ttsController.tapToStartEnabled) {
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
       return;
     }
 
     // Ignore center taps - those are for toggling chrome UI
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
       return;
     }
 
-    // If tap-to-start is disabled, use immediate TTS start
-    if (!_ttsController.tapToStartEnabled) {
-      _ttsController.startTtsFromTap(
-        details,
-        modeController: _modeController,
-        context: context,
-      );
-      return;
-    }
-
-    // Detect word and show confirmation overlay
+    // Detect word at tap position
     final result = _ttsController.detectWordAtTap(
       details,
       modeController: _modeController,
       context: context,
     );
 
-    if (result != null) {
+    if (result == null) {
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
+      _lastWordTapResult = null;
+      _lastWordTapTime = null;
+      return;
+    }
+
+    final now = DateTime.now();
+    final isDoubleTap = _lastWordTapResult != null &&
+        _lastWordTapTime != null &&
+        now.difference(_lastWordTapTime!) < const Duration(milliseconds: 650) &&
+        _isSameTargetWord(_lastWordTapResult!, result);
+
+    if (isDoubleTap) {
+      _lastWordTapResult = null;
+      _lastWordTapTime = null;
       setState(() {
         _pendingTapResult = result;
       });
+    } else {
+      // First tap on this word - record it and dismiss any previous overlay
+      _lastWordTapResult = result;
+      _lastWordTapTime = now;
+      if (_pendingTapResult != null) {
+        setState(() {
+          _pendingTapResult = null;
+        });
+      }
     }
+  }
+
+  bool _isSameTargetWord(TapDetectionResult a, TapDetectionResult b) {
+    if (a.chapterIndex != b.chapterIndex) return false;
+    if (a.offset == b.offset) return true;
+    final dist = (a.tapPosition - b.tapPosition).distance;
+    if (dist < 48) return true;
+    return a.word.trim().toLowerCase() == b.word.trim().toLowerCase() && dist < 120;
   }
 
   /// Confirm the pending tap selection and start TTS.
@@ -301,6 +381,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     final result = _pendingTapResult;
     if (result == null) return;
 
+    _lastWordTapResult = null;
+    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -313,6 +395,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   /// Cancel the pending tap selection.
   void _cancelTapSelection() {
+    _lastWordTapResult = null;
+    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -489,6 +573,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                   ]),
                   builder: (context, _) {
                     final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+                    final showTtsControls = showChrome && _ttsController.showTtsControls;
                     final showBottomControls = showChrome && !_ttsController.showTtsControls;
 
                     return Stack(
@@ -501,6 +586,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                             onBack: () => Navigator.of(context).maybePop(),
                             onToggleLock: () {
                               final isLocked = _chromeController.toggleLockMode();
+                              if (isLocked) {
+                                _ttsController.setTtsControlsVisible(false);
+                              }
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text(isLocked ? 'Lock mode on.' : 'Lock mode off.')),
                               );
@@ -517,12 +605,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                             child: EpubReaderBottomControls(
                               currentChapterIndex: _chapterController.currentChapterIndex,
                               totalChapters: _chapterController.chapters?.length ?? 0,
-                              onLoadChapter: (index) {
-                                _chapterController.loadChapter(index, userInitiated: true);
-                                if (_modeController.isPagedMode && _pageController.hasClients) {
-                                  _pageController.jumpToPage(index);
-                                }
-                              },
+                              onShowChapters: _showChapterList,
+                              onLoadChapter: _goToChapter,
                             ),
                           ),
 
@@ -536,7 +620,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                           ),
 
                         // TTS Controls
-                        if (_ttsController.showTtsControls)
+                        if (showTtsControls)
                           Positioned(
                             bottom: 0,
                             left: 0,

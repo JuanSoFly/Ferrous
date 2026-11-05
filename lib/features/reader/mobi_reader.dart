@@ -48,15 +48,18 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   late ReaderModeController _modeController;
   late PageController _pageController;
 
-  ReadingMode _readingMode = ReadingMode.vertical;
+  ReadingMode _readingMode = ReadingMode.leftToRight;
   Offset? _lastDoubleTapDown;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
   bool _hasRestoredPosition = false;
   bool _wasLoading = true;
   String? _lastError;
+  int _lastChapterIndex = -1;
 
   TapDetectionResult? _pendingTapResult;
+  DateTime? _lastWordTapTime;
+  TapDetectionResult? _lastWordTapResult;
   SelectedContent? _selectedContent;
 
   @override
@@ -84,7 +87,12 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     );
 
     _chromeController = ReaderChromeController();
-    _pageController = PageController(initialPage: widget.book.sectionIndex);
+    final isFirstOpen = widget.book.sectionIndex == 0 &&
+        widget.book.scrollPosition == 0.0 &&
+        widget.book.lastReadingSentenceStart == -1;
+    _pageController = PageController(
+      initialPage: isFirstOpen ? 0 : widget.book.sectionIndex + 1,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -114,9 +122,15 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _onChapterControllerChanged() {
-    if (mounted && (_chapterController.isLoading != _wasLoading || _chapterController.error != _lastError)) {
+    if (!mounted) return;
+    final isLoadingChanged = _chapterController.isLoading != _wasLoading;
+    final errorChanged = _chapterController.error != _lastError;
+    final chapterChanged = _chapterController.currentChapterIndex != _lastChapterIndex;
+
+    if (isLoadingChanged || errorChanged || chapterChanged) {
       _wasLoading = _chapterController.isLoading;
       _lastError = _chapterController.error;
+      _lastChapterIndex = _chapterController.currentChapterIndex;
       setState(() {});
     }
     if (!_chapterController.isLoading && !_hasRestoredPosition) {
@@ -169,6 +183,9 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     
     if (_chromeController.isCenterTap(position, MediaQuery.of(context).size)) {
       final isLocked = _chromeController.toggleLockMode();
+      if (isLocked) {
+        _ttsController.setTtsControlsVisible(false);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -182,7 +199,12 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
 
   void _toggleAllUi() {
     _chromeController.toggleChrome();
-    _ttsController.setTtsControlsVisible(_chromeController.showChrome);
+    if (!_chromeController.showChrome) {
+      _ttsController.setTtsControlsVisible(false);
+    }
+    if (_pendingTapResult != null) {
+      setState(() => _pendingTapResult = null);
+    }
   }
 
   Future<void> _showReadingModePicker() async {
@@ -228,25 +250,54 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     );
   }
 
+  void _goToChapter(int index) {
+    if (_chapterController.chapters == null) return;
+    if (index < 0 || index >= _chapterController.chapters!.length) return;
+
+    _chapterController.loadChapter(index, userInitiated: true);
+
+    if (_modeController.isPagedMode) {
+      final targetPage = index + 1;
+      if (_pageController.hasClients && _pageController.page?.round() != targetPage) {
+        _pageController.jumpToPage(targetPage);
+      }
+    }
+  }
+
   void _showChapterList() {
     final chapters = _chapterController.chapters;
     if (chapters == null) return;
 
+    final initialIndex = _chapterController.currentChapterIndex.clamp(0, chapters.length - 1);
+    final scrollController = ScrollController(
+      initialScrollOffset: (initialIndex * 56.0).clamp(0.0, double.infinity),
+    );
+
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
+      showDragHandle: true,
       builder: (context) => ListView.builder(
+        controller: scrollController,
         itemCount: chapters.length,
         itemBuilder: (context, index) {
           final chapter = chapters[index];
+          final isSelected = index == _chapterController.currentChapterIndex;
           return ListTile(
-            title: Text(chapter.Title ?? 'Section ${index + 1}'),
-            selected: index == _chapterController.currentChapterIndex,
+            title: Text(
+              chapter.Title ?? 'Section ${index + 1}',
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            selected: isSelected,
+            selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+            trailing: isSelected
+                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                : null,
             onTap: () {
               Navigator.pop(context);
-              _chapterController.loadChapter(index, userInitiated: true);
-              if (_modeController.isPagedMode && _pageController.hasClients) {
-                _pageController.jumpToPage(index);
-              }
+              _goToChapter(index);
             },
           );
         },
@@ -255,21 +306,19 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _handleTapUpForTts(TapUpDetails details) {
-    if (!_ttsController.showTtsControls) {
+    // Only active when TTS controls are visible and Double Tap is enabled
+    if (!_ttsController.showTtsControls || !_ttsController.tapToStartEnabled) {
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
       return;
     }
 
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
-      return;
-    }
-
-    if (!_ttsController.tapToStartEnabled) {
-      _ttsController.startTtsFromTap(
-        details,
-        modeController: _modeController,
-        context: context,
-      );
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
       return;
     }
 
@@ -279,17 +328,53 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       context: context,
     );
 
-    if (result != null) {
+    if (result == null) {
+      if (_pendingTapResult != null) {
+        setState(() => _pendingTapResult = null);
+      }
+      _lastWordTapResult = null;
+      _lastWordTapTime = null;
+      return;
+    }
+
+    final now = DateTime.now();
+    final isDoubleTap = _lastWordTapResult != null &&
+        _lastWordTapTime != null &&
+        now.difference(_lastWordTapTime!) < const Duration(milliseconds: 650) &&
+        _isSameTargetWord(_lastWordTapResult!, result);
+
+    if (isDoubleTap) {
+      _lastWordTapResult = null;
+      _lastWordTapTime = null;
       setState(() {
         _pendingTapResult = result;
       });
+    } else {
+      // First tap on this word - record it and dismiss any previous overlay
+      _lastWordTapResult = result;
+      _lastWordTapTime = now;
+      if (_pendingTapResult != null) {
+        setState(() {
+          _pendingTapResult = null;
+        });
+      }
     }
+  }
+
+  bool _isSameTargetWord(TapDetectionResult a, TapDetectionResult b) {
+    if (a.chapterIndex != b.chapterIndex) return false;
+    if (a.offset == b.offset) return true;
+    final dist = (a.tapPosition - b.tapPosition).distance;
+    if (dist < 48) return true;
+    return a.word.trim().toLowerCase() == b.word.trim().toLowerCase() && dist < 120;
   }
 
   void _confirmTapSelection() {
     final result = _pendingTapResult;
     if (result == null) return;
 
+    _lastWordTapResult = null;
+    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -301,6 +386,8 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _cancelTapSelection() {
+    _lastWordTapResult = null;
+    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -477,6 +564,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                   ]),
                   builder: (context, _) {
                     final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+                    final showTtsControls = showChrome && _ttsController.showTtsControls;
                     final showBottomControls = showChrome && !_ttsController.showTtsControls;
 
                     return Stack(
@@ -489,6 +577,9 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                             onBack: () => Navigator.of(context).maybePop(),
                             onToggleLock: () {
                               final isLocked = _chromeController.toggleLockMode();
+                              if (isLocked) {
+                                _ttsController.setTtsControlsVisible(false);
+                              }
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text(isLocked ? 'Lock mode on.' : 'Lock mode off.')),
                               );
@@ -505,12 +596,8 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                             child: MobiReaderBottomControls(
                               currentChapterIndex: _chapterController.currentChapterIndex,
                               totalChapters: _chapterController.chapters?.length ?? 0,
-                              onLoadChapter: (index) {
-                                _chapterController.loadChapter(index, userInitiated: true);
-                                if (_modeController.isPagedMode && _pageController.hasClients) {
-                                  _pageController.jumpToPage(index);
-                                }
-                              },
+                              onShowChapters: _showChapterList,
+                              onLoadChapter: _goToChapter,
                             ),
                           ),
 
@@ -522,7 +609,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                             onCancel: _cancelTapSelection,
                           ),
 
-                        if (_ttsController.showTtsControls)
+                        if (showTtsControls)
                           Positioned(
                             bottom: 0,
                             left: 0,

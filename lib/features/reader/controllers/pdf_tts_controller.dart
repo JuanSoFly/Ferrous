@@ -190,6 +190,14 @@ class PdfTtsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Set TTS controls visibility without stopping playback.
+  /// Use this for hiding UI while TTS continues in background.
+  void setTtsControlsVisible(bool visible) {
+    if (_showTtsControls == visible) return;
+    _showTtsControls = visible;
+    notifyListeners();
+  }
+
   Future<void> toggleTts() async {
     final next = !_showTtsControls;
     _showTtsControls = next;
@@ -206,8 +214,9 @@ class PdfTtsController extends ChangeNotifier {
       return;
     }
 
-    // Jump to saved TTS position if available
-    if (_lastTtsSentenceStart >= 0 &&
+    // Jump to saved TTS position if available (only when starting from stopped)
+    if (_ttsService.state == TtsState.stopped &&
+        _lastTtsSentenceStart >= 0 &&
         pageController.pageCount > 0 &&
         _lastTtsPage >= 0 &&
         _lastTtsPage < pageController.pageCount &&
@@ -216,7 +225,9 @@ class PdfTtsController extends ChangeNotifier {
     }
 
     // Build document-level text for continuous TTS
-    await _buildDocumentText();
+    if (_documentText == null) {
+      await _buildDocumentText();
+    }
 
     // Ensure character bounds for the current page
     await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);

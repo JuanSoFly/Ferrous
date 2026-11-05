@@ -5,7 +5,8 @@ import 'package:hyphenatorx/languages/language_en_us.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
-  static const String indentString = '\u00A0\u00A0\u00A0\u00A0';
+  // Standard 2-em typographic paragraph indentation using Unicode em-spaces (U+2003)
+  static const String indentString = '\u2003\u2003';
 
   static Hyphenator? _hyphenator;
 
@@ -116,20 +117,30 @@ class HyphenationHelper {
       return;
     }
 
-    // If this is a <p> tag and indent is enabled, indent it
+    // If this is a <p> tag or paragraph <div> and indent is enabled, indent it
     if (applyIndent &&
         node is dom.Element &&
-        node.localName == 'p') {
+        (node.localName == 'p' ||
+            (node.localName == 'div' &&
+                (node.classes.contains('paragraph') ||
+                    node.classes.contains('para') ||
+                    node.classes.any((c) => c.startsWith('calibre')))))) {
       _indentParagraph(node);
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
       final text = node.text;
       if (text != null && text.trim().isNotEmpty && applyHyphenation) {
-        // Hyphenate text content; preserve leading indent non-breaking spaces
+        // Hyphenate text content; preserve leading indent characters
         if (text.startsWith(indentString)) {
           final content = text.substring(indentString.length);
           node.text = '$indentString${hyphenator.hyphenateText(content)}';
+        } else if (text.startsWith('\u2003\u2003')) {
+          final content = text.substring(2);
+          node.text = '\u2003\u2003${hyphenator.hyphenateText(content)}';
+        } else if (text.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
+          final content = text.substring(4);
+          node.text = '\u00A0\u00A0\u00A0\u00A0${hyphenator.hyphenateText(content)}';
         } else {
           node.text = hyphenator.hyphenateText(text);
         }
@@ -162,7 +173,7 @@ class HyphenationHelper {
         className.contains('list-item');
   }
 
-  /// Indents the first visible text node of a paragraph by prepending 4 non-breaking spaces.
+  /// Indents the first visible text node of a paragraph by prepending 2 em-spaces.
   static void _indentParagraph(dom.Element p) {
     if (_isAlignedParagraph(p)) return;
 
@@ -191,12 +202,14 @@ class HyphenationHelper {
 
     if (targetTextNode != null) {
       final text = targetTextNode!.text;
-      if (!text.startsWith(indentString)) {
+      if (!text.startsWith(indentString) &&
+          !text.startsWith('\u2003') &&
+          !text.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
         // Clear preceding whitespace-only nodes in this paragraph so indent isn't preceded by newlines
         for (final wsNode in leadingWhitespaceNodes) {
           wsNode.text = '';
         }
-        // Strip leading whitespace before adding non-breaking spaces
+        // Strip leading whitespace before adding indent
         final trimmed = text.replaceFirst(RegExp(r'^\s+'), '');
         targetTextNode!.text = '$indentString$trimmed';
       }

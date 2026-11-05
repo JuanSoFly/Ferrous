@@ -4,12 +4,14 @@ class MobiReaderBottomControls extends StatelessWidget {
   final int currentChapterIndex;
   final int totalChapters;
   final Function(int) onLoadChapter;
+  final VoidCallback? onShowChapters;
 
   const MobiReaderBottomControls({
     super.key,
     required this.currentChapterIndex,
     required this.totalChapters,
     required this.onLoadChapter,
+    this.onShowChapters,
   });
 
   @override
@@ -31,9 +33,18 @@ class MobiReaderBottomControls extends StatelessWidget {
                     ? () => onLoadChapter(currentChapterIndex - 1)
                     : null,
               ),
-              Text(
-                "Section ${currentChapterIndex + 1} / $totalChapters",
-                style: Theme.of(context).textTheme.bodyMedium,
+              InkWell(
+                onTap: onShowChapters,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                  child: Text(
+                    "Section ${currentChapterIndex + 1} / $totalChapters",
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),

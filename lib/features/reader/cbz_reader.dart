@@ -32,6 +32,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
   late final ReaderChromeController _chromeController;
   late ReaderModeController _modeController;
   final TransformationController _imageTransformController = TransformationController();
+  bool _didRestoreInitialScroll = false;
 
   @override
   void initState() {
@@ -52,15 +53,17 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     _pageController.loadDocument();
     
     _chromeController.addListener(_onChromeChanged);
+    _pageController.addListener(_onPageControllerChanged);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeController.enterImmersiveMode();
-      _pageController.restoreContinuousScroll();
     });
   }
 
   @override
   void dispose() {
+    _saveProgress();
+    _pageController.removeListener(_onPageControllerChanged);
     _pageController.cleanupTempFile();
     _pageController.dispose();
     _chromeController.removeListener(_onChromeChanged);
@@ -71,24 +74,44 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     super.dispose();
   }
 
+  void _saveProgress() {
+    if (_pageController.isContinuousMode) {
+      _pageController.saveContinuousProgress();
+    } else if (_pageController.pageCount > 0) {
+      widget.repository.updateReadingProgress(
+        widget.book.id,
+        currentPage: _pageController.pageIndex,
+        totalPages: _pageController.pageCount,
+        readingMode: _pageController.readingMode,
+      );
+    }
+    widget.book.currentPage = _pageController.pageIndex;
+    widget.book.scrollPosition = _pageController.scrollPosition;
+    widget.book.readingMode = _pageController.readingMode;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      if (_pageController.isContinuousMode) {
-        _pageController.saveContinuousProgress();
-      } else {
-        widget.repository.updateReadingProgress(
-          widget.book.id,
-          currentPage: _pageController.pageIndex,
-          totalPages: _pageController.pageCount,
-        );
-      }
+      _saveProgress();
     }
   }
 
   void _onChromeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onPageControllerChanged() {
+    if (!_didRestoreInitialScroll && !_pageController.isLoading && _pageController.pageCount > 0) {
+      _didRestoreInitialScroll = true;
+      if (_pageController.isContinuousMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _pageController.restoreContinuousScroll();
+        });
+      }
+    }
     if (mounted) setState(() {});
   }
 
@@ -100,7 +123,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     );
     if (selected == null || selected == _pageController.readingMode) return;
     
-    _pageController.updateReadingMode(selected);
+    _pageController.updateReadingMode(selected, context: context);
     _modeController.mode = selected;
   }
 
@@ -121,52 +144,60 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final themeRepo = context.watch<ReaderThemeRepository>();
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Content layer wrapped in physical book background
-          Positioned.fill(
-            child: RealBookBackground(
-              textureId: themeRepo.config.paperTexture,
-              showSpine: themeRepo.config.showBookSpine,
-              child: CbzPageViewer(
-                pageController: _pageController,
-                chromeController: _chromeController,
-                modeController: _modeController,
-                transformController: _imageTransformController,
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _saveProgress();
+        }
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Content layer wrapped in physical book background
+            Positioned.fill(
+              child: RealBookBackground(
+                textureId: themeRepo.config.paperTexture,
+                showSpine: themeRepo.config.showBookSpine,
+                child: CbzPageViewer(
+                  pageController: _pageController,
+                  chromeController: _chromeController,
+                  modeController: _modeController,
+                  transformController: _imageTransformController,
+                ),
               ),
             ),
-          ),
 
-          // Chrome layers
-          ListenableBuilder(
-            listenable: _chromeController,
-            builder: (context, _) {
-              final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
-              final showBottomControls = showChrome && _modeController.isPagedMode;
+            // Chrome layers
+            ListenableBuilder(
+              listenable: _chromeController,
+              builder: (context, _) {
+                final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
+                final showBottomControls = showChrome && _modeController.isPagedMode;
 
-              return Stack(
-                children: [
-                  if (showChrome)
-                    CbzReaderTopBar(
-                      book: widget.book,
-                      pageController: _pageController,
-                      chromeController: _chromeController,
-                      onShowReadingModePicker: _showReadingModePicker,
-                      onToggleLock: _toggleLockModeWithFeedback,
-                    ),
-                  if (showBottomControls)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: CbzPageControls(pageController: _pageController),
-                    ),
-                ],
-              );
-            },
-          ),
-        ],
+                return Stack(
+                  children: [
+                    if (showChrome)
+                      CbzReaderTopBar(
+                        book: widget.book,
+                        pageController: _pageController,
+                        chromeController: _chromeController,
+                        onShowReadingModePicker: _showReadingModePicker,
+                        onToggleLock: _toggleLockModeWithFeedback,
+                      ),
+                    if (showBottomControls)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: CbzPageControls(pageController: _pageController),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

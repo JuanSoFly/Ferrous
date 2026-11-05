@@ -12,11 +12,11 @@ enum ReadingMode {
 }
 
 ReadingMode parseReadingMode(String? value) {
-  if (value == null || value.isEmpty) return ReadingMode.verticalContinuous;
+  if (value == null || value.isEmpty) return ReadingMode.leftToRight;
   for (final mode in ReadingMode.values) {
     if (mode.name == value) return mode;
   }
-  return ReadingMode.verticalContinuous;
+  return ReadingMode.leftToRight;
 }
 
 BookSourceType parseBookSourceType(String? value) {
@@ -119,7 +119,7 @@ class Book extends HiveObject {
     this.coverPath,
     this.sourceType = BookSourceType.imported,
     this.sourceUri,
-    this.readingMode = ReadingMode.verticalContinuous,
+    this.readingMode = ReadingMode.leftToRight,
     this.lastReadingSentenceStart = -1,
     this.lastReadingSentenceEnd = -1,
     this.lastTtsSentenceStart = -1,

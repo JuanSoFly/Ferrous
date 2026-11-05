@@ -10,7 +10,7 @@ class AppConstants {
 class DefaultConfig {
   DefaultConfig._();
 
-  static const String defaultReadingMode = 'verticalContinuous';
+  static const String defaultReadingMode = 'leftToRight';
   static const double defaultTtsRate = 0.8;
   static const double defaultTtsPitch = 1.0;
 }

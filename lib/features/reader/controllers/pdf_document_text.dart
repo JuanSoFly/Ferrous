@@ -15,11 +15,15 @@ class PdfPageOffset {
   /// Number of characters in the page's own raw text.
   final int pageCharCount;
 
+  /// Leading whitespace length in the page's raw extracted text before trim.
+  final int leadingWhitespace;
+
   const PdfPageOffset({
     required this.pageIndex,
     required this.documentCharStart,
     required this.documentCharEnd,
     required this.pageCharCount,
+    this.leadingWhitespace = 0,
   });
 }
 
@@ -86,7 +90,8 @@ class PdfDocumentText {
   int localOffset(int docOffset, int pageIndex) {
     if (pageIndex < 0 || pageIndex >= pageOffsets.length) return -1;
     final page = pageOffsets[pageIndex];
-    return (docOffset - page.documentCharStart).clamp(0, page.pageCharCount);
+    final offsetInTrimmed = (docOffset - page.documentCharStart).clamp(0, page.pageCharCount);
+    return page.leadingWhitespace + offsetInTrimmed;
   }
 
   /// Get the page-local text for a given page index.
@@ -125,6 +130,7 @@ PdfDocumentText buildPdfDocumentText(Map<int, String> pageTexts, int pageCount) 
     final trimmed = rawText.trim();
 
     if (trimmed.isNotEmpty) {
+      final leadingWs = rawText.length - rawText.trimLeft().length;
       final rangeStart = buffer.length;
       if (buffer.isNotEmpty) {
         buffer.write(' \n\n '); // sentence-boundary-friendly separator
@@ -137,6 +143,7 @@ PdfDocumentText buildPdfDocumentText(Map<int, String> pageTexts, int pageCount) 
         documentCharStart: rangeStart,
         documentCharEnd: rangeEnd,
         pageCharCount: trimmed.length,
+        leadingWhitespace: leadingWs,
       ));
     } else {
       // Empty page — share the previous page's end to avoid gaps in the

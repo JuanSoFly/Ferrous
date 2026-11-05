@@ -15,12 +15,19 @@ class CbzCacheController {
   final Map<String, ui.Image> _imageCache = {};
   final List<String> _cacheOrder = []; 
   final Set<String> _loadingPages = {}; 
+  final Map<int, double> _aspectRatios = {};
+  double? _averageAspectRatio;
 
   CbzCacheController({
     required this.archivePath,
     required this.pageNames,
     this.maxCacheSize = 10,
   });
+
+  /// Get estimated aspect ratio for a page, or the global average if unknown.
+  double? getEstimatedAspectRatio(int index) {
+    return _aspectRatios[index] ?? _averageAspectRatio;
+  }
 
   String _getCacheKey(int index, int maxWidth) {
     if (index < 0 || index >= pageNames.length) return '';
@@ -60,6 +67,12 @@ class CbzCacheController {
         maxWidth: maxWidth,
       ), metadata: {'page': index, 'maxWidth': maxWidth});
       
+      if (data.height > 0) {
+        final ar = data.width / data.height;
+        _aspectRatios[index] = ar;
+        _averageAspectRatio = ar;
+      }
+
       // Decode RGBA bytes to Flutter Image
       final completer = Completer<ui.Image>();
       ui.decodeImageFromPixels(
@@ -115,6 +128,12 @@ class CbzCacheController {
         maxWidth: maxWidth,
       );
 
+      if (data.height > 0) {
+        final ar = data.width / data.height;
+        _aspectRatios[index] = ar;
+        _averageAspectRatio = ar;
+      }
+
       final completer = Completer<ui.Image>();
       ui.decodeImageFromPixels(
         data.rgbaBytes,
@@ -162,5 +181,6 @@ class CbzCacheController {
     _imageCache.clear();
     _cacheOrder.clear();
     _loadingPages.clear();
+    _aspectRatios.clear();
   }
 }

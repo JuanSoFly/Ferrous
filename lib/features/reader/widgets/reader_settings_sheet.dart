@@ -336,7 +336,7 @@ class _BookFeelTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        // 1. Apple Books Page Turn animation toggle
+        // 1. Realistic Books Page Turn animation toggle
         _buildSectionHeader(theme, 'PAGE TURN ANIMATION', Icons.auto_stories),
         const SizedBox(height: 8),
         Container(
@@ -350,7 +350,7 @@ class _BookFeelTab extends StatelessWidget {
           child: SwitchListTile(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Text(
-              'Apple Books Page Turn',
+              'Realistic Books Page Turn',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
             subtitle: const Text(

@@ -56,6 +56,7 @@ class EpubChapterController extends ChangeNotifier {
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, ScrollController> _chapterScrollControllers = {};
+  final Map<int, double> _chapterScrollOffsets = {};
   ResolvedBookFile? _resolvedFile;
 
   bool _isRestoringPosition = false;
@@ -343,10 +344,18 @@ class EpubChapterController extends ChangeNotifier {
             }
           }
         });
-      } else if (attempt < 5) {
+      } else if (attempt < 30) {
+        final currentOffset = _scrollController.offset;
         final maxExtent = _scrollController.position.maxScrollExtent;
-        final estimated = _getCharacterBasedEstimate(index);
-        _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
+        final viewportDim = _scrollController.position.viewportDimension;
+        final step = viewportDim > 0 ? viewportDim * 2.5 : 2000.0;
+        if (index > _currentChapterIndex) {
+          final nextJump = currentOffset + step;
+          _scrollController.jumpTo(nextJump.clamp(0.0, maxExtent));
+        } else {
+          final nextJump = currentOffset - step;
+          _scrollController.jumpTo(nextJump.clamp(0.0, maxExtent));
+        }
         _scrollToChapter(index, attempt: attempt + 1);
       } else {
         _isProgrammaticScroll = false;
@@ -416,11 +425,25 @@ class EpubChapterController extends ChangeNotifier {
     }
   }
 
+  double getChapterScrollOffset(int index) => _chapterScrollOffsets[index] ?? 0.0;
+
+  void setChapterScrollOffset(int index, double offset) {
+    _chapterScrollOffsets[index] = offset;
+  }
+
   ScrollController chapterScrollController(int index) {
-    return _chapterScrollControllers.putIfAbsent(
-      index,
-      () => ScrollController(),
-    );
+    var controller = _chapterScrollControllers[index];
+    if (controller == null) {
+      final initialOffset = _chapterScrollOffsets[index] ?? 0.0;
+      controller = ScrollController(initialScrollOffset: initialOffset);
+      controller.addListener(() {
+        if (controller!.hasClients) {
+          _chapterScrollOffsets[index] = controller!.offset;
+        }
+      });
+      _chapterScrollControllers[index] = controller;
+    }
+    return controller;
   }
 
   void saveReadingPositionForMode(ReadingMode mode, {bool refreshChapter = true, BuildContext? context}) {
@@ -636,6 +659,7 @@ class EpubChapterController extends ChangeNotifier {
       controller.dispose();
     }
     _chapterScrollControllers.clear();
+    _chapterScrollOffsets.clear();
   }
 
   @override

@@ -458,7 +458,7 @@ fn parse_table_to_html(
 ) -> String {
     let mut html = String::new();
     html.push_str("<div class='table-container' style='overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch;'>");
-    html.push_str("<table style='border-collapse: collapse; width: 100%; border: 1px solid rgba(128,128,128,0.3);'>");
+    html.push_str("<table style='border-collapse: collapse; min-width: 100%; border: 1px solid rgba(128,128,128,0.3);'>");
 
     for (row_idx, table_child) in table.rows.iter().enumerate() {
         let TableChild::TableRow(row) = table_child;
@@ -485,9 +485,9 @@ fn parse_table_to_html(
 
             let cell_tag = if is_header_row { "th" } else { "td" };
             let cell_style = if is_header_row {
-                "border: 1px solid rgba(128,128,128,0.3); padding: 8px 12px; font-weight: bold; text-align: left; background-color: rgba(128,128,128,0.1);"
+                "border: 1px solid rgba(128,128,128,0.3); padding: 6px 8px; font-size: 0.88em; font-weight: bold; text-align: left; background-color: rgba(128,128,128,0.1);"
             } else {
-                "border: 1px solid rgba(128,128,128,0.3); padding: 8px 12px; vertical-align: top;"
+                "border: 1px solid rgba(128,128,128,0.3); padding: 6px 8px; font-size: 0.88em; vertical-align: top;"
             };
 
             html.push_str(&format!("<{} style='{}'{}>", cell_tag, cell_style, colspan_attr));
@@ -582,7 +582,7 @@ fn process_json_node(
         }
         "table" => {
             html.push_str("<div class='table-container' style='overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch;'>");
-            html.push_str("<table style='border-collapse: collapse; width: 100%; border: 1px solid rgba(128,128,128,0.3);'>");
+            html.push_str("<table style='border-collapse: collapse; min-width: 100%; border: 1px solid rgba(128,128,128,0.3);'>");
             if let Some(rows) = data.get("rows").and_then(|r| r.as_array()) {
                 for (row_idx, row) in rows.iter().enumerate() {
                     let is_header = row_idx == 0;
@@ -605,9 +605,9 @@ fn process_json_node(
 
                             let cell_tag = if is_header { "th" } else { "td" };
                             let cell_style = if is_header {
-                                "border: 1px solid rgba(128,128,128,0.3); padding: 8px 12px; font-weight: bold; text-align: left; background-color: rgba(128,128,128,0.1);"
+                                "border: 1px solid rgba(128,128,128,0.3); padding: 6px 8px; font-size: 0.88em; font-weight: bold; text-align: left; background-color: rgba(128,128,128,0.1);"
                             } else {
-                                "border: 1px solid rgba(128,128,128,0.3); padding: 8px 12px; vertical-align: top;"
+                                "border: 1px solid rgba(128,128,128,0.3); padding: 6px 8px; font-size: 0.88em; vertical-align: top;"
                             };
 
                             html.push_str(&format!("<{} style='{}'{}>", cell_tag, cell_style, colspan_attr));

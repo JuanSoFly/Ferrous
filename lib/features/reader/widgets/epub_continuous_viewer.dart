@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
+import 'book_cover_page.dart';
 import 'epub_content_viewer.dart';
 
 class EpubContinuousViewer extends StatelessWidget {
@@ -31,6 +32,8 @@ class EpubContinuousViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     if (chapterController.chapters == null) return const SizedBox.shrink();
 
+    final totalCount = chapterController.chapters!.length + 1;
+
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification is ScrollEndNotification ||
@@ -49,23 +52,30 @@ class EpubContinuousViewer extends StatelessWidget {
           controller: chapterController.scrollController,
           scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
           addRepaintBoundaries: true,
-          itemCount: chapterController.chapters!.length,
+          itemCount: totalCount,
           itemBuilder: (context, index) {
-            final isFirst = index == 0;
-            final isLast = index == chapterController.chapters!.length - 1;
-            final htmlContent = chapterController.allChapterContents[index];
+            if (index == 0) {
+              return BookCoverPage(
+                book: chapterController.book,
+                isContinuous: true,
+              );
+            }
+
+            final chapterIndex = index - 1;
+            final isLast = chapterIndex == chapterController.chapters!.length - 1;
+            final htmlContent = chapterController.allChapterContents[chapterIndex];
 
             return RepaintBoundary(
-              key: chapterController.chapterKeys[index],
+              key: chapterController.chapterKeys[chapterIndex],
               child: Padding(
                 padding: EdgeInsets.only(
                   left: 16.0,
                   right: 16.0,
-                  top: isFirst ? topPadding : chapterSpacing,
+                  top: chapterSpacing,
                   bottom: isLast ? bottomPadding : 0.0,
                 ),
                 child: EpubContentViewer(
-                  chapterIndex: index,
+                  chapterIndex: chapterIndex,
                   htmlContent: htmlContent,
                   chapterController: chapterController,
                   ttsController: ttsController,

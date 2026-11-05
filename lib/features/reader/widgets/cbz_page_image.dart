@@ -94,8 +94,21 @@ class _CbzPageImageState extends State<CbzPageImage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
+      final estimatedAr = widget.cacheController.getEstimatedAspectRatio(widget.pageIndex);
+      if (estimatedAr != null && estimatedAr > 0) {
+        return AspectRatio(
+          aspectRatio: estimatedAr,
+          child: const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.0),
+            ),
+          ),
+        );
+      }
       return const SizedBox(
-        height: 200,
+        height: 300,
         child: Center(child: CircularProgressIndicator()),
       );
     }

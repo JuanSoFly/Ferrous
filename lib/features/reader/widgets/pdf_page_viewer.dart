@@ -10,7 +10,7 @@ import '../controllers/reader_mode_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
-import 'apple_books_page_curl.dart';
+import 'realistic_page_turn.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;
@@ -37,6 +37,8 @@ class PdfPageViewer extends StatefulWidget {
 class _PdfPageViewerState extends State<PdfPageViewer> {
   late PageController _viewPageController;
   bool _syncing = false;
+  DateTime? _lastWordTapTime;
+  Offset? _lastWordTapLocal;
 
   @override
   void initState() {
@@ -158,18 +160,18 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
   Widget _buildPagedView() {
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final useAppleCurl = !widget.modeController.useVerticalSwipe &&
+    final useRealisticCurl = !widget.modeController.useVerticalSwipe &&
         themeRepo.config.pageFlip &&
         _canSwipe();
 
-    if (useAppleCurl) {
-      return AppleBooksPageCurl(
+    if (useRealisticCurl) {
+      return RealisticPageTurn(
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
         showSpine: themeRepo.config.showBookSpine,
         onPageChanged: _onPageViewChanged,
-        onToggleChrome: () => widget.chromeController.toggleChrome(),
+        onToggleChrome: _handleToggleChrome,
         onTapUp: (details) => _handleTapUp(context, details),
         pageBuilder: (context, index) {
           return InteractiveViewer(
@@ -423,18 +425,31 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     );
   }
 
+  void _handleToggleChrome() {
+    widget.chromeController.toggleChrome();
+    if (!widget.chromeController.showChrome) {
+      widget.ttsController.setTtsControlsVisible(false);
+    }
+  }
+
   void _handleTapUp(BuildContext context, TapUpDetails details) {
     final chromeController = widget.chromeController;
     final screenSize = MediaQuery.of(context).size;
 
     if (chromeController.isCenterTap(details.globalPosition, screenSize)) {
-      chromeController.toggleChrome();
+      _handleToggleChrome();
       return;
     }
 
     if (chromeController.isLocked) return;
 
-    // Start TTS from tap
+    // Start TTS from double tap
+    if (!widget.ttsController.showTtsControls || !widget.ttsController.tapToStartEnabled) {
+      _lastWordTapTime = null;
+      _lastWordTapLocal = null;
+      return;
+    }
+
     final imageContext = widget.pageImageKey.currentContext;
     if (imageContext == null) return;
 
@@ -442,7 +457,21 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     if (imageBox == null) return;
 
     final local = imageBox.globalToLocal(details.globalPosition);
-    widget.ttsController.startTtsFromTap(local, imageBox.size);
+
+    final now = DateTime.now();
+    final isDoubleTap = _lastWordTapTime != null &&
+        _lastWordTapLocal != null &&
+        now.difference(_lastWordTapTime!) < const Duration(milliseconds: 650) &&
+        (local - _lastWordTapLocal!).distance < 48;
+
+    if (isDoubleTap) {
+      _lastWordTapTime = null;
+      _lastWordTapLocal = null;
+      widget.ttsController.startTtsFromTap(local, imageBox.size);
+    } else {
+      _lastWordTapTime = now;
+      _lastWordTapLocal = local;
+    }
   }
 
   void _handleDoubleTap() {
