@@ -11,7 +11,37 @@ env:
   RUSTC_WRAPPER: 'sccache'
 
 jobs:
+  lint:
+    name: Lint Rust & Flutter
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Lint Rust with Clippy
+        working-directory: rust
+        run: cargo clippy -- -D warnings
+
   build-android:
+    needs: lint
     name: Build Android APKs
     runs-on: ubuntu-latest
     permissions:
