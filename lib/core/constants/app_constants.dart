@@ -22,3 +22,20 @@ class CacheConstants {
   static const int cbzPreloadBehind = 1;
   static const int maxConcurrentCoverExtractions = 3;
 }
+
+class AppRadius {
+  AppRadius._();
+
+  static const double pill = 999.0;
+  static const double control = 12.0;
+  static const double card = 16.0;
+  static const double sheet = 24.0;
+}
+
+class AppDuration {
+  AppDuration._();
+
+  static const Duration fast = Duration(milliseconds: 150);
+  static const Duration standard = Duration(milliseconds: 250);
+  static const Duration sheet = Duration(milliseconds: 300);
+}

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/collection.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
@@ -13,64 +14,87 @@ class CollectionsTab extends StatelessWidget {
     final collections = collectionRepo.getAllCollections();
 
     if (collections.isEmpty) {
+      final theme = Theme.of(context);
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.shelves, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text('No collections yet'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _showCreateDialog(context),
-              child: const Text('Create Collection'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.shelves,
+                size: 64,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No collections yet',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Organize your reading list into custom folders and series.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                onPressed: () => _showCreateDialog(context),
+                label: const Text('Create Collection'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: collections.length,
-              itemBuilder: (context, index) {
-                final collection = collections[index];
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.folder_open),
-                    title: Text(collection.name),
-                    subtitle: Text('${collection.bookIds.length} books'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _confirmDelete(context, collection),
+    return Stack(
+      children: [
+        ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
+          itemCount: collections.length,
+          itemBuilder: (context, index) {
+            final collection = collections[index];
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: Text(collection.name),
+                subtitle: Text('${collection.bookIds.length} books'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _confirmDelete(context, collection),
+                ),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CollectionDetailScreen(collection: collection),
                     ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CollectionDetailScreen(collection: collection),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        Positioned(
+          bottom: 100,
+          right: 16,
+          child: FloatingActionButton.extended(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _showCreateDialog(context);
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('New Collection'),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 16.0),
-            child: FloatingActionButton.extended(
-              onPressed: () => _showCreateDialog(context),
-              icon: const Icon(Icons.add),
-              label: const Text('New Collection'),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

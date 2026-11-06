@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -11,9 +12,11 @@ import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/core/widgets/delete_book_dialog.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';
+import 'package:reader_app/features/library/widgets/book_cover_shimmer.dart';
 import 'package:reader_app/features/reader/split_reader_screen.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:reader_app/core/models/book_format.dart';
+import 'package:reader_app/core/constants/app_constants.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -64,9 +67,21 @@ class _LibraryViewState extends State<_LibraryView> {
       _searchController.clear();
     }
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    final hasActiveSearch = _searchController.text.isNotEmpty || state.searchQuery.isNotEmpty;
+
+    return PopScope(
+      canPop: !hasActiveSearch,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _searchController.clear();
+          controller.setSearchQuery('');
+          FocusScope.of(context).unfocus();
+          setState(() {});
+        }
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
         appBar: AppBar(
           titleSpacing: 16,
           title: Container(
@@ -192,30 +207,14 @@ class _LibraryViewState extends State<_LibraryView> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildBooksTab(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
     if (state.isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            if (state.statusMessage != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                state.statusMessage!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
+      return _buildLoadingSkeleton(context, state);
     }
     
     if (state.error != null) {
@@ -317,7 +316,7 @@ class _LibraryViewState extends State<_LibraryView> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Generating coversâ€¦',
+                        'Generating covers…',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w500,
@@ -383,6 +382,123 @@ class _LibraryViewState extends State<_LibraryView> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLoadingSkeleton(BuildContext context, LibraryState state) {
+    final theme = Theme.of(context);
+    return CustomScrollView(
+      slivers: [
+        if (state.statusMessage != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        state.statusMessage!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 100),
+          sliver: SliverMasonryGrid.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childCount: 6,
+            itemBuilder: (context, index) {
+              return _buildBookCardSkeleton(theme, index);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookCardSkeleton(ThemeData theme, int index) {
+    final isDark = theme.brightness == Brightness.dark;
+    final placeholderColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          BookCoverShimmer(
+            title: 'Skeleton Placeholder $index',
+            height: 180,
+            width: double.infinity,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 14,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: placeholderColor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 12,
+                  width: 90,
+                  decoration: BoxDecoration(
+                    color: placeholderColor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  height: 16,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    color: placeholderColor,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -799,8 +915,9 @@ class _LibraryViewState extends State<_LibraryView> {
       context: context,
       backgroundColor: theme.colorScheme.surface,
       elevation: 4,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
       builder: (ctx) {
         return StatefulBuilder(
@@ -809,17 +926,8 @@ class _LibraryViewState extends State<_LibraryView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -842,6 +950,7 @@ class _LibraryViewState extends State<_LibraryView> {
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onPressed: () {
+                            HapticFeedback.selectionClick();
                             final nextOrder = state.sortOrder == SortOrder.ascending
                                 ? SortOrder.descending
                                 : SortOrder.ascending;
@@ -885,6 +994,7 @@ class _LibraryViewState extends State<_LibraryView> {
                               ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20) 
                               : null,
                           onTap: () {
+                            HapticFeedback.selectionClick();
                             controller.setSortBy(type);
                             Navigator.pop(ctx);
                           },
@@ -975,7 +1085,10 @@ class _BookCard extends StatelessWidget {
             });
           }
         },
-        onLongPress: () => _showBookOptionsMenu(context, controller),
+        onLongPress: () {
+          HapticFeedback.lightImpact();
+          _showBookOptionsMenu(context, controller);
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1032,10 +1145,13 @@ class _BookCard extends StatelessWidget {
                         ),
                       ),
                       InkWell(
-                        onTap: () => _showBookOptionsMenu(context, controller),
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _showBookOptionsMenu(context, controller);
+                        },
                         borderRadius: BorderRadius.circular(16),
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
+                          padding: const EdgeInsets.all(6.0),
                           child: Icon(
                             Icons.more_vert,
                             size: 18,

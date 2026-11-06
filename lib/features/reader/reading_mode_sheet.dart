@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:reader_app/core/models/book.dart';
 
 enum ReaderFormatType {
@@ -149,7 +150,10 @@ class _ModeTile extends StatelessWidget {
       trailing: selected
           ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
           : null,
-      onTap: () => Navigator.of(context).pop(mode),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        Navigator.of(context).pop(mode);
+      },
     );
   }
 }

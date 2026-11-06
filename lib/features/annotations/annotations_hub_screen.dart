@@ -68,7 +68,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
     }
     
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       itemCount: grouped.keys.length,
       itemBuilder: (context, index) {
         final bookId = grouped.keys.elementAt(index);
