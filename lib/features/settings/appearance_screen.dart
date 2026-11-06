@@ -54,6 +54,34 @@ class AppearanceScreen extends StatelessWidget {
             currentTheme: currentTheme,
             onTap: () => controller.setTheme(AppTheme.light),
           ),
+          _ThemeOption(
+            title: "OLED Midnight",
+            description: "Pitch black. Starlight silver & celestial blue for bed.",
+            theme: AppTheme.oledMidnight,
+            currentTheme: currentTheme,
+            onTap: () => controller.setTheme(AppTheme.oledMidnight),
+          ),
+          _ThemeOption(
+            title: "Matcha",
+            description: "Botanical sage paper with deep forest moss ink.",
+            theme: AppTheme.matcha,
+            currentTheme: currentTheme,
+            onTap: () => controller.setTheme(AppTheme.matcha),
+          ),
+          _ThemeOption(
+            title: "Nord Arctic",
+            description: "Sub-zero polar slates with frostbite cyan.",
+            theme: AppTheme.nord,
+            currentTheme: currentTheme,
+            onTap: () => controller.setTheme(AppTheme.nord),
+          ),
+          _ThemeOption(
+            title: "E-Ink Paper",
+            description: "Distraction-free physical e-paper greyscale.",
+            theme: AppTheme.eInk,
+            currentTheme: currentTheme,
+            onTap: () => controller.setTheme(AppTheme.eInk),
+          ),
         ],
       ),
     );
@@ -181,6 +209,14 @@ class _ThemeOption extends StatelessWidget {
         return const Color(0xFFDFD4B7);
       case AppTheme.light:
         return const Color(0xFFE2E7ED);
+      case AppTheme.oledMidnight:
+        return const Color(0xFF24242A);
+      case AppTheme.matcha:
+        return const Color(0xFFCBD8C5);
+      case AppTheme.nord:
+        return const Color(0xFF434C5E);
+      case AppTheme.eInk:
+        return const Color(0xFFD0D0D0);
     }
   }
 
@@ -203,6 +239,18 @@ class _ThemeOption extends StatelessWidget {
         break;
       case AppTheme.light:
         middleRingColor = const Color(0xFFEDF1F5);
+        break;
+      case AppTheme.oledMidnight:
+        middleRingColor = const Color(0xFF121214);
+        break;
+      case AppTheme.matcha:
+        middleRingColor = const Color(0xFFE5ECE1);
+        break;
+      case AppTheme.nord:
+        middleRingColor = const Color(0xFF3B4252);
+        break;
+      case AppTheme.eInk:
+        middleRingColor = const Color(0xFFEAEAEA);
         break;
     }
 

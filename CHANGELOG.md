@@ -1,3 +1,11 @@
+## [1.3.0-alpha.2] - 2026-11-07
+
+### Added
+- 4 new application themes: OLED Midnight, Matcha, Nord Arctic, and distraction-free E-Ink Paper.
+- 3 new reading background textures: Japanese Washi (mulberry tea paper), Deckle Rag Folio (cotton rag), and Obsidian Velvet (pitch black 0-nit tactile night paper).
+- Custom vignette gradient shaders and fiber stippling canvas painters for all new textures.
+- Dedicated concentric ring color previews and styling cards in the Appearance settings screen.
+
 ## [1.3.0-alpha.1] - 2026-11-07
 
 ### Added

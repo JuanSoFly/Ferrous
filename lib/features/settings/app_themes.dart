@@ -7,6 +7,10 @@ enum AppTheme {
   console,
   sepia,
   light,
+  oledMidnight,
+  matcha,
+  nord,
+  eInk,
 }
 
 class AppThemes {
@@ -25,6 +29,10 @@ class AppThemes {
     AppTheme.console: _consoleTheme,
     AppTheme.sepia: _sepiaTheme,
     AppTheme.light: _lightTheme,
+    AppTheme.oledMidnight: _oledMidnightTheme,
+    AppTheme.matcha: _matchaTheme,
+    AppTheme.nord: _nordTheme,
+    AppTheme.eInk: _eInkTheme,
   };
 
   // 1. Ferrous (default) - Dark, Warm Charcoal, Premium Rust accents
@@ -371,6 +379,394 @@ class AppThemes {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Color(0xFF2B5C8F), width: 1.5),
+      ),
+    ),
+    pageTransitionsTheme: _pageTransitionsTheme,
+  );
+
+  // 5. OLED Midnight - Pure 0-nit black, Starlight Silver, Celestial Blue
+  static final ThemeData _oledMidnightTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: const ColorScheme(
+      brightness: Brightness.dark,
+      primary: Color(0xFF4C9AFF),
+      onPrimary: Color(0xFF001C3D),
+      secondary: Color(0xFF3A75C4),
+      onSecondary: Colors.white,
+      surface: Color(0xFF0D0D0E),
+      onSurface: Color(0xFFD8DCE3),
+      surfaceContainerLowest: Color(0xFF050505),
+      surfaceContainerLow: Color(0xFF0A0A0C),
+      surfaceContainer: Color(0xFF121214),
+      surfaceContainerHigh: Color(0xFF1A1A1E),
+      surfaceContainerHighest: Color(0xFF24242A),
+      outline: Color(0xFF24242A),
+      outlineVariant: Color(0xFF1E1E22),
+      error: Color(0xFFCF6679),
+      onError: Colors.black,
+    ),
+    scaffoldBackgroundColor: Colors.black,
+    textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
+      titleLarge: GoogleFonts.inter(fontWeight: FontWeight.w700, letterSpacing: -0.2),
+      titleMedium: GoogleFonts.inter(fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    ).apply(
+      bodyColor: const Color(0xFFD8DCE3),
+      displayColor: const Color(0xFFF0F3F8),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      iconTheme: IconThemeData(color: Color(0xFFD8DCE3)),
+      titleTextStyle: TextStyle(color: Color(0xFFD8DCE3), fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    cardTheme: CardThemeData(
+      color: const Color(0xFF121214),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Color(0xFF24242A), width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      indicatorColor: const Color(0xFF4C9AFF).withValues(alpha: 0.18),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return GoogleFonts.inter(color: const Color(0xFF4C9AFF), fontWeight: FontWeight.w600, fontSize: 12);
+        }
+        return GoogleFonts.inter(color: const Color(0xFF8E95A0), fontSize: 12);
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: Color(0xFF4C9AFF), size: 24);
+        }
+        return const IconThemeData(color: Color(0xFF8E95A0), size: 24);
+      }),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFF121214),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    tabBarTheme: TabBarThemeData(
+      dividerColor: Colors.transparent,
+      indicatorColor: const Color(0xFF4C9AFF),
+      labelColor: const Color(0xFF4C9AFF),
+      unselectedLabelColor: const Color(0xFF8E95A0),
+      labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+      unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 14),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFF121214),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF24242A), width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF24242A), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF4C9AFF), width: 1.5),
+      ),
+    ),
+    pageTransitionsTheme: _pageTransitionsTheme,
+  );
+
+  // 6. Matcha - Botanical Sage Paper, Deep Forest Moss, Restorative Daytime Reading
+  static final ThemeData _matchaTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    colorScheme: const ColorScheme(
+      brightness: Brightness.light,
+      primary: Color(0xFF2D5A43),
+      onPrimary: Colors.white,
+      secondary: Color(0xFF4A725D),
+      onSecondary: Colors.white,
+      surface: Color(0xFFE5ECE1),
+      onSurface: Color(0xFF1A2E22),
+      surfaceContainerLowest: Color(0xFFF4F7F2),
+      surfaceContainerLow: Color(0xFFE9F0E5),
+      surfaceContainer: Color(0xFFE5ECE1),
+      surfaceContainerHigh: Color(0xFFDDE6D8),
+      surfaceContainerHighest: Color(0xFFD3DEC8),
+      outline: Color(0xFFCBD8C5),
+      outlineVariant: Color(0xFFB8C8B1),
+      error: Color(0xFFBA1A1A),
+      onError: Colors.white,
+    ),
+    scaffoldBackgroundColor: const Color(0xFFEEF2EB),
+    textTheme: GoogleFonts.literataTextTheme(ThemeData.light().textTheme).copyWith(
+      titleLarge: GoogleFonts.literata(fontWeight: FontWeight.w700, letterSpacing: -0.2),
+      titleMedium: GoogleFonts.literata(fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    ).apply(
+      bodyColor: const Color(0xFF1A2E22),
+      displayColor: const Color(0xFF122319),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      iconTheme: IconThemeData(color: Color(0xFF2D5A43)),
+      titleTextStyle: TextStyle(color: Color(0xFF1A2E22), fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    cardTheme: CardThemeData(
+      color: const Color(0xFFE5ECE1),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Color(0xFFCBD8C5), width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      indicatorColor: const Color(0xFF2D5A43).withValues(alpha: 0.15),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return GoogleFonts.literata(color: const Color(0xFF2D5A43), fontWeight: FontWeight.w600, fontSize: 12);
+        }
+        return GoogleFonts.literata(color: const Color(0xFF43574A), fontSize: 12);
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: Color(0xFF2D5A43), size: 24);
+        }
+        return const IconThemeData(color: Color(0xFF43574A), size: 24);
+      }),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFFEEF2EB),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    tabBarTheme: TabBarThemeData(
+      dividerColor: Colors.transparent,
+      indicatorColor: const Color(0xFF2D5A43),
+      labelColor: const Color(0xFF2D5A43),
+      unselectedLabelColor: const Color(0xFF43574A),
+      labelStyle: GoogleFonts.literata(fontWeight: FontWeight.w600, fontSize: 14),
+      unselectedLabelStyle: GoogleFonts.literata(fontWeight: FontWeight.w500, fontSize: 14),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFFE5ECE1),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFCBD8C5), width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFCBD8C5), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF2D5A43), width: 1.5),
+      ),
+    ),
+    pageTransitionsTheme: _pageTransitionsTheme,
+  );
+
+  // 7. Nord Arctic - Polar Night Slates, Snow Storm White, Frostbite Cyan
+  static final ThemeData _nordTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: const ColorScheme(
+      brightness: Brightness.dark,
+      primary: Color(0xFF88C0D0),
+      onPrimary: Color(0xFF1A2B35),
+      secondary: Color(0xFF81A1C1),
+      onSecondary: Color(0xFF1A2B35),
+      surface: Color(0xFF2E3440),
+      onSurface: Color(0xFFECEFF4),
+      surfaceContainerLowest: Color(0xFF1E222B),
+      surfaceContainerLow: Color(0xFF282E39),
+      surfaceContainer: Color(0xFF353C4A),
+      surfaceContainerHigh: Color(0xFF3B4252),
+      surfaceContainerHighest: Color(0xFF434C5E),
+      outline: Color(0xFF4C566A),
+      outlineVariant: Color(0xFF3B4252),
+      error: Color(0xFFBF616A),
+      onError: Colors.white,
+    ),
+    scaffoldBackgroundColor: const Color(0xFF242933),
+    textTheme: GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme).copyWith(
+      titleLarge: GoogleFonts.dmSans(fontWeight: FontWeight.w700, letterSpacing: -0.2),
+      titleMedium: GoogleFonts.dmSans(fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    ).apply(
+      bodyColor: const Color(0xFFECEFF4),
+      displayColor: const Color(0xFFECEFF4),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      iconTheme: IconThemeData(color: Color(0xFF88C0D0)),
+      titleTextStyle: TextStyle(color: Color(0xFFECEFF4), fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    cardTheme: CardThemeData(
+      color: const Color(0xFF2E3440),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Color(0xFF434C5E), width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      indicatorColor: const Color(0xFF88C0D0).withValues(alpha: 0.18),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return GoogleFonts.dmSans(color: const Color(0xFF88C0D0), fontWeight: FontWeight.w600, fontSize: 12);
+        }
+        return GoogleFonts.dmSans(color: const Color(0xFF94A3B8), fontSize: 12);
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: Color(0xFF88C0D0), size: 24);
+        }
+        return const IconThemeData(color: Color(0xFF94A3B8), size: 24);
+      }),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFF2E3440),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    tabBarTheme: TabBarThemeData(
+      dividerColor: Colors.transparent,
+      indicatorColor: const Color(0xFF88C0D0),
+      labelColor: const Color(0xFF88C0D0),
+      unselectedLabelColor: const Color(0xFF94A3B8),
+      labelStyle: GoogleFonts.dmSans(fontWeight: FontWeight.w600, fontSize: 14),
+      unselectedLabelStyle: GoogleFonts.dmSans(fontWeight: FontWeight.w500, fontSize: 14),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFF2E3440),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF434C5E), width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF434C5E), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF88C0D0), width: 1.5),
+      ),
+    ),
+    pageTransitionsTheme: _pageTransitionsTheme,
+  );
+
+  // 8. E-Ink Paper - Distraction-free Physical Paper Greyscale, Carbon Typography
+  static final ThemeData _eInkTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    colorScheme: const ColorScheme(
+      brightness: Brightness.light,
+      primary: Color(0xFF262626),
+      onPrimary: Colors.white,
+      secondary: Color(0xFF545454),
+      onSecondary: Colors.white,
+      surface: Color(0xFFEAEAEA),
+      onSurface: Color(0xFF141414),
+      surfaceContainerLowest: Color(0xFFFAFAFA),
+      surfaceContainerLow: Color(0xFFF0F0F0),
+      surfaceContainer: Color(0xFFEAEAEA),
+      surfaceContainerHigh: Color(0xFFE0E0E0),
+      surfaceContainerHighest: Color(0xFFD6D6D6),
+      outline: Color(0xFFD0D0D0),
+      outlineVariant: Color(0xFFBEBEBE),
+      error: Color(0xFF5A0000),
+      onError: Colors.white,
+    ),
+    scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+    textTheme: GoogleFonts.robotoSlabTextTheme(ThemeData.light().textTheme).copyWith(
+      titleLarge: GoogleFonts.robotoSlab(fontWeight: FontWeight.w700, letterSpacing: -0.2),
+      titleMedium: GoogleFonts.robotoSlab(fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    ).apply(
+      bodyColor: const Color(0xFF141414),
+      displayColor: const Color(0xFF000000),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      iconTheme: IconThemeData(color: Color(0xFF262626)),
+      titleTextStyle: TextStyle(color: Color(0xFF141414), fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    cardTheme: CardThemeData(
+      color: const Color(0xFFEAEAEA),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      indicatorColor: const Color(0xFF262626).withValues(alpha: 0.12),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return GoogleFonts.robotoSlab(color: const Color(0xFF262626), fontWeight: FontWeight.w600, fontSize: 12);
+        }
+        return GoogleFonts.robotoSlab(color: const Color(0xFF484848), fontSize: 12);
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: Color(0xFF262626), size: 24);
+        }
+        return const IconThemeData(color: Color(0xFF484848), size: 24);
+      }),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFFF5F5F5),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    tabBarTheme: TabBarThemeData(
+      dividerColor: Colors.transparent,
+      indicatorColor: const Color(0xFF262626),
+      labelColor: const Color(0xFF262626),
+      unselectedLabelColor: const Color(0xFF484848),
+      labelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w600, fontSize: 14),
+      unselectedLabelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w500, fontSize: 14),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFFEAEAEA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF262626), width: 1.5),
       ),
     ),
     pageTransitionsTheme: _pageTransitionsTheme,

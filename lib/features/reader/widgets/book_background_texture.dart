@@ -188,6 +188,43 @@ class _BookPaperPainter extends CustomPainter {
         // Soft velvet night paper stippling
         _paintFibers(canvas, size, Colors.white, extraOpacity: 0.7);
         break;
+
+      case BookTextures.washi:
+        // Handmade Japanese mulberry tea paper: soft botanical tea wash and kozo fibers
+        _vignettePaint.shader = RadialGradient(
+          center: const Alignment(-0.15, -0.25),
+          radius: 1.1,
+          colors: [
+            Colors.transparent,
+            const Color(0xFF385E46).withValues(alpha: 0.025),
+            const Color(0xFF244430).withValues(alpha: 0.05),
+          ],
+          stops: const [0.45, 0.80, 1.0],
+        ).createShader(Offset.zero & size);
+        canvas.drawRect(Offset.zero & size, _vignettePaint);
+        _paintFibers(canvas, size, const Color(0xFF284835), extraOpacity: 0.85);
+        break;
+
+      case BookTextures.deckle:
+        // Deckle rag folio: archival cotton pulp clouding and warm cellulose grain
+        _vignettePaint.shader = RadialGradient(
+          center: const Alignment(0.2, 0.15),
+          radius: 1.05,
+          colors: [
+            Colors.transparent,
+            const Color(0xFF7A6245).withValues(alpha: 0.025),
+            const Color(0xFF5E462E).withValues(alpha: 0.06),
+          ],
+          stops: const [0.55, 0.85, 1.0],
+        ).createShader(Offset.zero & size);
+        canvas.drawRect(Offset.zero & size, _vignettePaint);
+        _paintFibers(canvas, size, const Color(0xFF523B25), extraOpacity: 0.9);
+        break;
+
+      case BookTextures.obsidian:
+        // Obsidian velvet: pure 0-nit pitch black with microscopic starlight silver dust
+        _paintFibers(canvas, size, const Color(0xFFD8DCE3), extraOpacity: 0.45);
+        break;
     }
   }
 

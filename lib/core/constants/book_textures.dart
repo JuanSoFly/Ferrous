@@ -29,8 +29,11 @@ class BookTextures {
   static const String natural = 'natural';
   static const String parchment = 'parchment';
   static const String linen = 'linen';
+  static const String washi = 'washi';
+  static const String deckle = 'deckle';
   static const String kraft = 'kraft';
   static const String slate = 'slate';
+  static const String obsidian = 'obsidian';
 
   static const List<BookTextureInfo> all = [
     BookTextureInfo(
@@ -61,6 +64,24 @@ class BookTextures {
       isDark: false,
     ),
     BookTextureInfo(
+      id: washi,
+      name: 'Japanese Washi',
+      subtitle: 'Handmade mulberry tea paper with organic botanical fibers',
+      baseColor: Color(0xFFEDF2E8),
+      textColor: Color(0xFF1A2E22),
+      secondaryTextColor: Color(0xFF4A6152),
+      isDark: false,
+    ),
+    BookTextureInfo(
+      id: deckle,
+      name: 'Deckle Rag Folio',
+      subtitle: 'Heavy 100% cotton archival book stock with rich deckle grain',
+      baseColor: Color(0xFFFAF6EE),
+      textColor: Color(0xFF261C14),
+      secondaryTextColor: Color(0xFF5A4A3D),
+      isDark: false,
+    ),
+    BookTextureInfo(
       id: kraft,
       name: 'Craft / Recycled',
       subtitle: 'Earthy fibrous kraft paper with natural specks',
@@ -76,6 +97,15 @@ class BookTextures {
       baseColor: Color(0xFF1B1917),
       textColor: Color(0xFFECE6DD),
       secondaryTextColor: Color(0xFFA69E94),
+      isDark: true,
+    ),
+    BookTextureInfo(
+      id: obsidian,
+      name: 'Obsidian Velvet',
+      subtitle: 'Pitch black 0-nit tactile night paper with starlight text',
+      baseColor: Color(0xFF000000),
+      textColor: Color(0xFFD8DCE3),
+      secondaryTextColor: Color(0xFF8E95A0),
       isDark: true,
     ),
     BookTextureInfo(
