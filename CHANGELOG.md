@@ -1,3 +1,14 @@
+## [1.3.0-alpha.1] - 2026-11-07
+
+### Added
+- Centralized `AppRadius` and `AppSpacing` design system tokens for consistent layouts.
+
+### Changed
+- Redesigned bottom navigation bar with a docked, translucent frosted-glass aesthetic.
+- Overhauled Settings screen with grouped inset card sections and refined iconography.
+- Unified EPUB, MOBI, and PDF reader top bars with standardized blur and action layouts.
+- Polished delete book dialog, annotations hub, and collections tab styling.
+
 ## [1.2.1] - 2026-11-06
 
 ### Documentation

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/core/models/book.dart';
 
 /// Result returned by [showDeleteBookDialog].
@@ -32,14 +33,14 @@ Future<DeleteBookResult?> showDeleteBookDialog({
       return StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
             title: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Icon(
                     Icons.delete_outline,
@@ -150,7 +151,7 @@ Future<DeleteBookResult?> showDeleteBookDialog({
                 style: FilledButton.styleFrom(
                   backgroundColor: theme.colorScheme.error,
                   foregroundColor: theme.colorScheme.onError,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                 ),
                 onPressed: () => Navigator.of(dialogCtx).pop(
                   DeleteBookResult(

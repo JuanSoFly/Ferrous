@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
@@ -85,10 +86,10 @@ class _LibraryViewState extends State<_LibraryView> {
         appBar: AppBar(
           titleSpacing: 16,
           title: Container(
-            height: 48,
+            height: 44,
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(
                 color: theme.brightness == Brightness.dark
                     ? Colors.white.withValues(alpha: 0.08)
@@ -96,16 +97,16 @@ class _LibraryViewState extends State<_LibraryView> {
                 width: 1,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                Icon(Icons.search, color: theme.colorScheme.primary, size: 20),
+                Icon(CupertinoIcons.search, color: theme.colorScheme.primary, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search your library...',
+                      hintText: 'Search library...',
                       hintStyle: TextStyle(
                         color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         fontSize: 14,
@@ -113,7 +114,7 @@ class _LibraryViewState extends State<_LibraryView> {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     style: const TextStyle(fontSize: 14),
                     onChanged: (value) => controller.setSearchQuery(value),
@@ -127,9 +128,9 @@ class _LibraryViewState extends State<_LibraryView> {
                       setState(() {});
                     },
                     child: Icon(
-                      Icons.cancel,
+                      CupertinoIcons.clear_thick_circled,
                       color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                      size: 20,
+                      size: 18,
                     ),
                   ),
               ],
@@ -137,14 +138,14 @@ class _LibraryViewState extends State<_LibraryView> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_rounded),
               onPressed: state.isLoading
                   ? null
                   : () => controller.rescanFolders(),
               tooltip: "Rescan Folders",
             ),
             IconButton(
-              icon: const Icon(Icons.folder_open),
+              icon: const Icon(Icons.create_new_folder_outlined),
               onPressed: state.isLoading
                   ? null
                   : () async {
@@ -155,42 +156,30 @@ class _LibraryViewState extends State<_LibraryView> {
                     },
               tooltip: "Add Folder",
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
           ],
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(56),
+            preferredSize: const Size.fromHeight(48),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Container(
-                height: 42,
-                padding: const EdgeInsets.all(3),
+                height: 36,
+                padding: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: theme.brightness == Brightness.dark
-                        ? Colors.white.withValues(alpha: 0.04)
-                        : Colors.black.withValues(alpha: 0.03),
-                    width: 1,
-                  ),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: TabBar(
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicator: BoxDecoration(
                     color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(AppRadius.xs),
                   ),
                   labelColor: theme.colorScheme.onPrimary,
                   unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  dividerColor: Colors.transparent,
                   tabs: const [
                     Tab(text: "Books"),
                     Tab(text: "Collections"),
@@ -370,7 +359,7 @@ class _LibraryViewState extends State<_LibraryView> {
             ),
           ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 100), // Extra bottom padding for floating nav bar
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
           sliver: SliverMasonryGrid.count(
             crossAxisCount: 2,
             mainAxisSpacing: 10,
@@ -432,7 +421,7 @@ class _LibraryViewState extends State<_LibraryView> {
             ),
           ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 100),
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
           sliver: SliverMasonryGrid.count(
             crossAxisCount: 2,
             mainAxisSpacing: 10,
@@ -508,7 +497,7 @@ class _LibraryViewState extends State<_LibraryView> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
           title: const Text('Add Folder'),
           content: const Text(
             'Choose how to add books from this folder. '
@@ -525,15 +514,15 @@ class _LibraryViewState extends State<_LibraryView> {
               children: [
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                   ),
                   onPressed: () => Navigator.of(context).pop(SafStorageMode.imported),
                   child: const Text('Import'),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
                     backgroundColor: theme.colorScheme.primary,
                     foregroundColor: theme.colorScheme.onPrimary,
                   ),
@@ -742,7 +731,7 @@ class _LibraryViewState extends State<_LibraryView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: isSelected ? buttonSelectedColor : buttonUnselectedColor,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(
                       color: isSelected ? actionTextColor : onSurface.withValues(alpha: 0.08),
                       width: isSelected ? 1.5 : 1,
@@ -763,11 +752,12 @@ class _LibraryViewState extends State<_LibraryView> {
             Widget otherFilterButton(String label, bool isSelected, VoidCallback onTap) {
               return InkWell(
                 onTap: onTap,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: isSelected ? buttonSelectedColor : buttonUnselectedColor,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(
                       color: isSelected ? actionTextColor : onSurface.withValues(alpha: 0.08),
                       width: isSelected ? 1.5 : 1,
@@ -787,7 +777,7 @@ class _LibraryViewState extends State<_LibraryView> {
 
             return Dialog(
               backgroundColor: dialogBgColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                 width: double.infinity,
@@ -854,11 +844,11 @@ class _LibraryViewState extends State<_LibraryView> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '$matchCount',
+                          '$matchCount ${matchCount == 1 ? 'match' : 'matches'}',
                           style: TextStyle(
                             color: onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         Row(
@@ -866,16 +856,18 @@ class _LibraryViewState extends State<_LibraryView> {
                             TextButton(
                               onPressed: () => Navigator.pop(context),
                               child: Text(
-                                'CANCEL',
+                                'Cancel',
                                 style: TextStyle(
-                                  color: actionTextColor,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            TextButton(
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                              ),
                               onPressed: () {
                                 controller.applyFilters(
                                   selectedFormats: tempSelectedFormats,
@@ -886,14 +878,7 @@ class _LibraryViewState extends State<_LibraryView> {
                                 );
                                 Navigator.pop(context);
                               },
-                              child: Text(
-                                'APPLY',
-                                style: TextStyle(
-                                  color: actionTextColor,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
+                              child: const Text('Apply'),
                             ),
                           ],
                         )
@@ -1212,88 +1197,68 @@ class _BookCard extends StatelessWidget {
   }
 
   void _showBookOptionsMenu(BuildContext context, LibraryController controller) {
-    final theme = Theme.of(context);
-    showModalBottomSheet(
+    showCupertinoModalPopup<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (BuildContext ctx) => CupertinoActionSheet(
+        title: Text(
+          book.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        message: book.author.isNotEmpty ? Text(book.author) : null,
+        actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              controller.setSplitPendingBook(book);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Tap another book to open in split view')),
+              );
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.vertical_split_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('Open in Split View'),
+              ],
             ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      book.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showAddToCollectionDialog(context);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bookmark_add_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('Add to Collection'),
+              ],
             ),
-            const Divider(height: 16),
-            ListTile(
-              leading: Icon(Icons.vertical_split, color: theme.colorScheme.primary),
-              title: const Text('Open in Split View'),
-              subtitle: const Text('Select another book to open both side-by-side'),
-              onTap: () {
-                Navigator.pop(ctx);
-                controller.setSplitPendingBook(book);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Tap another book to open in split view')),
-                );
-              },
+          ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(ctx);
+              _confirmDeleteBook(context, controller);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.delete_outline, size: 20),
+                SizedBox(width: 8),
+                Text('Delete Book'),
+              ],
             ),
-            ListTile(
-              leading: Icon(Icons.collections_bookmark, color: theme.colorScheme.primary),
-              title: const Text('Add to Collection'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAddToCollectionDialog(context);
-              },
-            ),
-            const Divider(height: 8),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: theme.colorScheme.error),
-              title: Text(
-                'Delete Book',
-                style: TextStyle(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                'Remove from library',
-                style: TextStyle(
-                  color: theme.colorScheme.error.withValues(alpha: 0.7),
-                  fontSize: 12,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _confirmDeleteBook(context, controller);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
         ),
       ),
     );

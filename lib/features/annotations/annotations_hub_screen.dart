@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/core/models/annotation.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
@@ -18,6 +19,7 @@ class AnnotationsHubScreen extends StatefulWidget {
 class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final annotationRepo = context.watch<AnnotationRepository>();
     final bookRepo = context.read<BookRepository>();
     
@@ -25,34 +27,50 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
     final allAnnotations = annotationRepo.getAllAnnotations();
     
     if (allAnnotations.isEmpty) {
-      final theme = Theme.of(context);
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.brush_outlined,
-                size: 64,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Annotations'),
+        ),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.edit_note_rounded,
+                      size: 38,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'No annotations yet',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Highlight passages and write notes while reading. Simply press and hold any text in an e-book to add an annotation.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No annotations yet',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Highlight passages and write notes while reading. Simply press and hold any text in an e-book to add an annotation.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       );
@@ -67,38 +85,132 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
       grouped[a.bookId]!.add(a);
     }
     
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      itemCount: grouped.keys.length,
-      itemBuilder: (context, index) {
-        final bookId = grouped.keys.elementAt(index);
-        final annotations = grouped[bookId]!;
-        final book = bookRepo.getBook(bookId);
-        
-        if (book == null) return const SizedBox.shrink();
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ListTile(
-                leading: BookCoverSmall(book: book),
-                title: Text(book.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(book.author),
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Annotations'),
+      ),
+      body: SafeArea(
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          itemCount: grouped.keys.length,
+          itemBuilder: (context, index) {
+            final bookId = grouped.keys.elementAt(index);
+            final annotations = grouped[bookId]!;
+            final book = bookRepo.getBook(bookId);
+            
+            if (book == null) return const SizedBox.shrink();
+            
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 16),
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                side: BorderSide(color: borderColor, width: 1),
               ),
-              const Divider(),
-              ...annotations.map((a) => _buildAnnotationItem(context, a, book)),
-            ],
-          ),
-        );
-      },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.xs),
+                          child: SizedBox(
+                            width: 38,
+                            height: 52,
+                            child: BookCoverSmall(book: book),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                book.title,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  letterSpacing: -0.2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                book.author,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                          child: Text(
+                            '${annotations.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: borderColor,
+                  ),
+                  ...annotations.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final a = entry.value;
+                    return Column(
+                      children: [
+                        if (idx > 0)
+                          Divider(
+                            height: 1,
+                            thickness: 0.5,
+                            indent: 16,
+                            endIndent: 16,
+                            color: borderColor,
+                          ),
+                        _buildAnnotationItem(context, a, book),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
   
   Widget _buildAnnotationItem(BuildContext context, Annotation annotation, Book book) {
     final theme = Theme.of(context);
-    final color = Color(annotation.color);
+    final highlightColor = annotation.color != 0
+        ? Color(annotation.color)
+        : theme.colorScheme.primary;
 
     return InkWell(
       onTap: () {
@@ -114,60 +226,99 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
         );
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-                border: Border(left: BorderSide(color: color, width: 4)),
+                color: highlightColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border(
+                  left: BorderSide(color: highlightColor, width: 3.5),
+                ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text(
                 annotation.selectedText,
-                style: const TextStyle(fontStyle: FontStyle.italic),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.88),
+                ),
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             if (annotation.note != null && annotation.note!.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 6, left: 4),
-                child: Text(
-                  annotation.note!,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                padding: const EdgeInsets.only(top: 8, left: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.sticky_note_2_outlined,
+                      size: 16,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        annotation.note!,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            const SizedBox(height: 4),
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 if (annotation.chapterIndex >= 0) ...[
-                  Text(
-                    'Chapter ${annotation.chapterIndex + 1}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.xs),
+                    ),
+                    child: Text(
+                      'Chapter ${annotation.chapterIndex + 1}',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text('•', style: theme.textTheme.bodySmall),
                   const SizedBox(width: 8),
                 ],
                 Text(
                   _formatDate(annotation.createdAt),
-                  style: theme.textTheme.bodySmall,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
                 ),
-                const SizedBox(width: 4),
+                const Spacer(),
                 IconButton(
                   tooltip: 'Edit note',
-                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  color: theme.colorScheme.onSurfaceVariant,
+                  constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                  padding: const EdgeInsets.all(10),
+                  splashRadius: 20,
                   onPressed: () => _handleEdit(annotation),
                 ),
                 IconButton(
                   tooltip: 'Delete annotation',
-                  icon: const Icon(Icons.delete_outline, size: 16),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: theme.colorScheme.error,
+                  constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                  padding: const EdgeInsets.all(10),
+                  splashRadius: 20,
                   onPressed: () {
                     context.read<AnnotationRepository>().deleteAnnotation(annotation.id);
                   },

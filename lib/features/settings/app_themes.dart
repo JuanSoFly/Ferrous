@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -9,6 +10,16 @@ enum AppTheme {
 }
 
 class AppThemes {
+  static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+    },
+  );
+
   static final Map<AppTheme, ThemeData> themeData = {
     AppTheme.ferrous: _ferrousTheme,
     AppTheme.console: _consoleTheme,
@@ -104,6 +115,7 @@ class AppThemes {
         borderSide: const BorderSide(color: Color(0xFFE0623A), width: 1.5),
       ),
     ),
+    pageTransitionsTheme: _pageTransitionsTheme,
   );
 
   // 2. Console - Cyberpunk/Hacker theme, Neon Green, Tech details
@@ -182,6 +194,7 @@ class AppThemes {
         borderSide: const BorderSide(color: Color(0xFF00FF41), width: 1.5),
       ),
     ),
+    pageTransitionsTheme: _pageTransitionsTheme,
   );
 
   // 3. Sepia - Soft Warm Paper, Comfortable Serif
@@ -271,6 +284,7 @@ class AppThemes {
         borderSide: const BorderSide(color: Color(0xFF5D4037), width: 1.5),
       ),
     ),
+    pageTransitionsTheme: _pageTransitionsTheme,
   );
 
   // 4. Light - Crisp Minimalist Light, Cool Blue accents
@@ -359,5 +373,6 @@ class AppThemes {
         borderSide: const BorderSide(color: Color(0xFF2B5C8F), width: 1.5),
       ),
     ),
+    pageTransitionsTheme: _pageTransitionsTheme,
   );
 }

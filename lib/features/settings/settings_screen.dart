@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/core/services/update_service.dart';
 import 'package:reader_app/core/widgets/update_dialog.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
@@ -77,13 +78,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Spacing for floating nav bar
-        children: [
-          _buildSectionHeader(theme, 'Aesthetics & Layout'),
-          const SizedBox(height: 8),
-          Card(
-            child: Column(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          children: [
+            _buildSectionHeader(theme, 'Aesthetics & Layout'),
+            const SizedBox(height: 8),
+            _buildInsetGroup(
+              theme: theme,
               children: [
                 _buildSettingsTile(
                   context: context,
@@ -116,16 +118,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionHeader(theme, 'Application Info'),
-          const SizedBox(height: 8),
-          FutureBuilder<PackageInfo>(
-            future: _packageInfoFuture,
-            builder: (context, snapshot) {
-              final version = snapshot.data?.version ?? '1.1.0';
-              return Card(
-                child: Column(
+            const SizedBox(height: 24),
+            _buildSectionHeader(theme, 'Application Info'),
+            const SizedBox(height: 8),
+            FutureBuilder<PackageInfo>(
+              future: _packageInfoFuture,
+              builder: (context, snapshot) {
+                final version = snapshot.data?.version ?? '1.1.0';
+                return _buildInsetGroup(
+                  theme: theme,
                   children: [
                     _buildSettingsTile(
                       context: context,
@@ -153,34 +154,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: theme.colorScheme.primary,
                               ),
                             )
-                          : Icon(
-                              Icons.chevron_right,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                              size: 20,
-                            ),
+                          : null,
+                      showChevron: !_isCheckingForUpdates,
                       onTap: _isCheckingForUpdates ? null : _handleCheckForUpdates,
                     ),
                   ],
-                ),
-              );
-            },
-          ),
-        ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSectionHeader(ThemeData theme, String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
           color: theme.colorScheme.primary,
-          letterSpacing: 1.2,
+          letterSpacing: 1.1,
         ),
+      ),
+    );
+  }
+
+  Widget _buildInsetGroup({
+    required ThemeData theme,
+    required List<Widget> children,
+  }) {
+    final borderColor = theme.brightness == Brightness.dark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: BorderSide(color: borderColor, width: 1),
+      ),
+      child: Column(
+        children: children,
       ),
     );
   }
@@ -189,8 +209,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Divider(
       height: 1,
       thickness: 0.5,
-      indent: 56,
-      endIndent: 16,
+      indent: 64,
+      endIndent: 0,
       color: theme.brightness == Brightness.dark
           ? Colors.white.withValues(alpha: 0.06)
           : Colors.black.withValues(alpha: 0.04),
@@ -208,12 +228,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Widget? trailing,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      minTileHeight: 60,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Container(
-        padding: const EdgeInsets.all(8),
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: theme.colorScheme.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         child: Icon(
           icon,
@@ -226,12 +249,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         style: const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 15,
+          letterSpacing: -0.2,
         ),
       ),
       subtitle: Text(
         subtitle,
         style: TextStyle(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
           fontSize: 12,
         ),
       ),
@@ -239,7 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           (showChevron
               ? Icon(
                   Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
                   size: 20,
                 )
               : null),

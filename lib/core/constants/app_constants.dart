@@ -26,10 +26,15 @@ class CacheConstants {
 class AppRadius {
   AppRadius._();
 
-  static const double pill = 999.0;
+  static const double xs = 6.0;
+  static const double sm = 10.0;
   static const double control = 12.0;
+  static const double md = 12.0;
   static const double card = 16.0;
+  static const double lg = 16.0;
   static const double sheet = 24.0;
+  static const double xl = 24.0;
+  static const double pill = 999.0;
 }
 
 class AppDuration {

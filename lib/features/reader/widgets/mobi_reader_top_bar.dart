@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:reader_app/core/models/book.dart';
 
 class MobiReaderTopBar extends StatelessWidget {
@@ -29,64 +30,200 @@ class MobiReaderTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
       child: Material(
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
-                  onPressed: onBack,
-                ),
-                Expanded(
-                  child: Text(
-                     book.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
+        color: theme.colorScheme.surface.withValues(alpha: 0.94),
+        elevation: 0,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SafeArea(
+              bottom: false,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                  child: Row(
+                    children: [
+                      // Leading: Back button (Apple HIG 20pt chevron with 48x48 touch target)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                        tooltip: 'Back',
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          onBack();
+                        },
+                      ),
+
+                      // Center: Expanded title (maxLines 1, ellipsis, clean typography)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                          child: Text(
+                            book.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Trailing prominent actions: Search and Chapters
+                      IconButton(
+                        icon: const Icon(Icons.search, size: 22),
+                        tooltip: 'Find in chapter',
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          onShowSearch();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.format_list_bulleted, size: 22),
+                        tooltip: 'Chapters',
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          onShowChapters();
+                        },
+                      ),
+
+                      // Overflow / Controls Menu
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_horiz,
+                          size: 22,
+                          color: (showTtsControls || lockMode)
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
+                        ),
+                        tooltip: 'More options',
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        position: PopupMenuPosition.under,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        color: theme.colorScheme.surfaceContainer,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 4,
+                        onSelected: (value) {
+                          HapticFeedback.lightImpact();
+                          switch (value) {
+                            case 'settings':
+                              onShowSettings();
+                              break;
+                            case 'reading_mode':
+                              onShowReadingMode();
+                              break;
+                            case 'tts':
+                              onToggleTts();
+                              break;
+                            case 'lock':
+                              onToggleLock();
+                              break;
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                          PopupMenuItem<String>(
+                            value: 'settings',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.text_format, size: 20, color: theme.colorScheme.onSurface),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Appearance & Settings',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'reading_mode',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.view_carousel, size: 20, color: theme.colorScheme.onSurface),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Reading Mode',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(height: 1),
+                          PopupMenuItem<String>(
+                            value: 'tts',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  showTtsControls ? Icons.volume_off : Icons.volume_up,
+                                  size: 20,
+                                  color: showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  showTtsControls ? 'Stop Listening' : 'Listen (Text-to-Speech)',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'lock',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  lockMode ? Icons.lock_open : Icons.lock_outline,
+                                  size: 20,
+                                  color: lockMode ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  lockMode ? 'Unlock Controls' : 'Lock Reader',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: lockMode ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(lockMode ? Icons.lock : Icons.lock_open),
-                  tooltip: lockMode ? 'Unlock' : 'Lock',
-                  onPressed: onToggleLock,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'Settings',
-                  onPressed: onShowSettings,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.view_carousel),
-                  tooltip: 'Reading mode',
-                  onPressed: onShowReadingMode,
-                ),
-                IconButton(
-                  icon: Icon(showTtsControls ? Icons.volume_off : Icons.volume_up),
-                  tooltip: 'Listen',
-                  onPressed: onToggleTts,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  tooltip: 'Find in chapter',
-                  onPressed: onShowSearch,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.list),
-                  tooltip: 'Chapters',
-                  onPressed: onShowChapters,
-                ),
-              ],
+              ),
             ),
-          ),
+            Divider(
+              height: 0.5,
+              thickness: 0.5,
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+            ),
+          ],
         ),
       ),
     );

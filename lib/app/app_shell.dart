@@ -45,9 +45,8 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       body: IndexedStack(
         index: _currentIndex,
         children: List.generate(_screens.length, (i) {
@@ -55,43 +54,32 @@ class _AppShellState extends State<AppShell> {
           return const SizedBox.shrink();
         }),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: RepaintBoundary(
-          child: Container(
-            margin: EdgeInsets.fromLTRB(24, 0, 24, bottomInset > 0 ? 12 : 20),
-            height: 72,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(36),
-              border: Border.all(
-                color: theme.brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.05),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.92),
+          border: Border(
+            top: BorderSide(
+              color: theme.brightness == Brightness.dark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.06),
+              width: 0.5,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(36),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildNavItem(0, Icons.book_outlined, Icons.auto_stories, 'Library', theme),
-                      _buildNavItem(1, Icons.mode_comment_outlined, Icons.comment, 'Annotations', theme),
-                      _buildNavItem(2, Icons.settings_outlined, Icons.settings, 'Settings', theme),
-                    ],
-                  ),
+          ),
+        ),
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 52,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildNavItem(0, Icons.book_outlined, Icons.auto_stories, 'Library', theme),
+                    _buildNavItem(1, Icons.mode_comment_outlined, Icons.comment, 'Annotations', theme),
+                    _buildNavItem(2, Icons.settings_outlined, Icons.settings, 'Settings', theme),
+                  ],
                 ),
               ),
             ),
@@ -104,17 +92,16 @@ class _AppShellState extends State<AppShell> {
   Widget _buildNavItem(int index, IconData outlineIcon, IconData filledIcon, String label, ThemeData theme) {
     final isSelected = _currentIndex == index;
     final activeColor = theme.colorScheme.primary;
-    final inactiveColor = theme.brightness == Brightness.dark
-        ? Colors.grey.shade500
-        : Colors.grey.shade600;
+    final inactiveColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
 
     return Expanded(
       child: Semantics(
         label: label,
         selected: isSelected,
         button: true,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: InkResponse(
+          containedInkWell: true,
+          highlightShape: BoxShape.rectangle,
           onTap: () {
             if (_currentIndex == index) {
               HapticFeedback.lightImpact();
@@ -129,28 +116,24 @@ class _AppShellState extends State<AppShell> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.fastOutSlowIn,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? activeColor.withValues(alpha: 0.12) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+              AnimatedScale(
+                scale: isSelected ? 1.05 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
                 child: Icon(
                   isSelected ? filledIcon : outlineIcon,
                   color: isSelected ? activeColor : inactiveColor,
                   size: 24,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected ? activeColor : inactiveColor,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  letterSpacing: 0.1,
+                  letterSpacing: -0.1,
                 ),
               ),
             ],
