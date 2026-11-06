@@ -1,10 +1,74 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:reader_app/core/services/update_service.dart';
+import 'package:reader_app/core/widgets/update_dialog.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
 import 'package:reader_app/features/settings/library_locations/library_locations_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late final Future<PackageInfo> _packageInfoFuture;
+  bool _isCheckingForUpdates = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+  }
+
+  Future<void> _handleCheckForUpdates() async {
+    if (_isCheckingForUpdates) return;
+
+    setState(() {
+      _isCheckingForUpdates = true;
+    });
+
+    try {
+      final updateInfo = await UpdateService.checkForUpdate();
+      if (!mounted) return;
+
+      if (updateInfo == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Unable to check for updates. Please try again later.'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      } else if (updateInfo.isUpdateAvailable) {
+        showUpdateDialog(context, updateInfo);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ferrous is up to date (v${updateInfo.currentVersion})'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('An error occurred while checking for updates.'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingForUpdates = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,17 +121,46 @@ class SettingsScreen extends StatelessWidget {
           _buildSectionHeader(theme, 'Application Info'),
           const SizedBox(height: 8),
           FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
+            future: _packageInfoFuture,
             builder: (context, snapshot) {
               final version = snapshot.data?.version ?? '1.1.0';
               return Card(
-                child: _buildSettingsTile(
-                  context: context,
-                  theme: theme,
-                  icon: Icons.info_outline,
-                  title: 'About Ferrous',
-                  subtitle: 'Version $version',
-                  showChevron: false,
+                child: Column(
+                  children: [
+                    _buildSettingsTile(
+                      context: context,
+                      theme: theme,
+                      icon: Icons.info_outline,
+                      title: 'About Ferrous',
+                      subtitle: 'Version $version',
+                      showChevron: false,
+                    ),
+                    _buildDivider(theme),
+                    _buildSettingsTile(
+                      context: context,
+                      theme: theme,
+                      icon: Icons.system_update_outlined,
+                      title: 'Check for Updates',
+                      subtitle: _isCheckingForUpdates
+                          ? 'Checking for updates...'
+                          : 'Check for the latest release',
+                      trailing: _isCheckingForUpdates
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.colorScheme.primary,
+                              ),
+                            )
+                          : Icon(
+                              Icons.chevron_right,
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              size: 20,
+                            ),
+                      onTap: _isCheckingForUpdates ? null : _handleCheckForUpdates,
+                    ),
+                  ],
                 ),
               );
             },
@@ -112,6 +205,7 @@ class SettingsScreen extends StatelessWidget {
     required String subtitle,
     VoidCallback? onTap,
     bool showChevron = false,
+    Widget? trailing,
   }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -141,13 +235,14 @@ class SettingsScreen extends StatelessWidget {
           fontSize: 12,
         ),
       ),
-      trailing: showChevron
-          ? Icon(
-              Icons.chevron_right,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              size: 20,
-            )
-          : null,
+      trailing: trailing ??
+          (showChevron
+              ? Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                  size: 20,
+                )
+              : null),
       onTap: onTap,
     );
   }

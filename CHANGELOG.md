@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.0] - 2026-11-06
+
+### Added
+- Manual "Check for Updates" tile in Settings to check for new releases on demand.
+- Realistic Apple Books style page curl animation and interactive gesture navigation.
+- Customizable book background textures (parchment, paper grain) and reader themes.
+- Custom library storage locations management with automated folder scanning.
+- Native HTML and EPUB table rendering powered by flutter_html_table and flutter_layout_grid.
+- First-line paragraph indentation injection across EPUB and MOBI content.
+- Annotation details bottom sheet with highlight management and notes editing.
+- Delete book confirmation dialog with optional physical storage cleanup.
+- Configured Android ProGuard optimization rules for release APK builds.
+
+### Changed
+- Refactored page curl rendering with ListenableBuilder and cached repaints for smooth 120Hz performance.
+- Improved chapter scroll navigation and character-based offset estimation in EPUB and MOBI controllers.
+- Overhauled reader TTS controllers and sentence boundary tracking.
+- Added automated Rust (Clippy) and Flutter static analysis lint checks to the release CI pipeline.
+
 ## [1.2.0-alpha.3] - 2026-11-06
 
 ### Added
