@@ -29,12 +29,14 @@ Builds:
       - flutter@3.24.5
       - rustup@1.27.1
     prebuild:
+      - $$rustup$$/rustup-init.sh -y --default-toolchain 1.81.0 --target aarch64-linux-android
+      - source $$HOME$$/.cargo/env
       - export PATH="$$flutter$$/bin:$$PATH"
       - flutter config --no-analytics
       - flutter pub get
+      - bash scripts/setup-pdfium-android.sh
     build:
-      - export PATH="$$flutter$$/bin:$$HOME/.cargo/bin:$$PATH"
-      - $$rustup$$/rustup-init.sh -y --default-toolchain 1.81.0 -t aarch64-linux-android
+      - export PATH="$$flutter$$/bin:$$HOME$$/.cargo/bin:$$PATH"
       - flutter build apk --release --split-per-abi --target-platform android-arm64
     ndk: 26.1.10909125
 
