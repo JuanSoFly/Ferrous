@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/ferrous-sequence.gif" alt="Ferrous Reader Walkthrough" width="420" />
+  <img src="assets/ferrous-sequence.gif" alt="Ferrous Reader Showcase" width="100%" />
 </p>
 
 <p align="center">
