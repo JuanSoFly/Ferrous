@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 480" width="100%" height="100%">
+  <style>
+    .ascii {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13.5px;
+      line-height: 1.25;
+      fill: #e6edf3;
+      white-space: pre;
+    }
+    .wordmark {
+      fill: #e06c75;
+    }
+    .tagline {
+      fill: #8b949e;
+      font-size: 12.5px;
+      letter-spacing: 0.5px;
+    }
+  </style>
+  <rect width="100%" height="100%" fill="transparent"/>
+  <text x="50%" y="30" text-anchor="middle" xml:space="preserve" class="ascii">
+    <tspan x="50%" dy="0">        ▄▄                                         ▄▄       </tspan>
+    <tspan x="50%" dy="16">        █████▄▄▄▄                           ▄▄▄▄█████       </tspan>
+    <tspan x="50%" dy="16">        ████████████▄▄▄               ▄▄▄████████████       </tspan>
+    <tspan x="50%" dy="16">   ▄█▄  ██████████████████▄       ▄██████████████████  ▄█▄  </tspan>
+    <tspan x="50%" dy="16">   ███  ████████████████████▄   ▄████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████████████████ ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████  ▀▀▀███████ ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████        ▀▀▀▀ ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████▄▄▄          ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ████████████████▄▄▄▄   ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  █████████████████████  ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  █████████████████████  ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████   ▀▀▀█████  ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ██████████         ▀▀  ██████████████████████  ███  </tspan>
+    <tspan x="50%" dy="16">   ███  ▀█████████             █████████████████████▀  ███  </tspan>
+    <tspan x="50%" dy="16">   ████▄  ▀▀▀█████             █████████████████▀▀▀  ▄████  </tspan>
+    <tspan x="50%" dy="16">   ▀██████▄▄▄▄  ▀▀             ██████████▀▀▀▀  ▄▄▄██████▀   </tspan>
+    <tspan x="50%" dy="16">        ▀▀▀▀█████▄▄▄▄          ██████▀▀  ▄▄▄▄█████▀▀▀▀      </tspan>
+    <tspan x="50%" dy="16">                ▀▀▀▀███▄▄      ██▀  ▄▄███▀▀▀▀               </tspan>
+    <tspan x="50%" dy="16">                        ▀▀▀▄ ▄▀▀▀                           </tspan>
+    <tspan x="50%" dy="26" class="wordmark">        ______                                   </tspan>
+    <tspan x="50%" dy="16" class="wordmark">       / ____/__  ______________  __  _______    </tspan>
+    <tspan x="50%" dy="16" class="wordmark">      / /_  / _ \/ ___/ ___/ __ \/ / / / ___/    </tspan>
+    <tspan x="50%" dy="16" class="wordmark">     / __/ /  __/ /  / /  / /_/ / /_/ (__  )     </tspan>
+    <tspan x="50%" dy="16" class="wordmark">    /_/    \___/_/  /_/   \____/\__,_/____/      </tspan>
+    <tspan x="50%" dy="26" class="tagline">Offline Mobile Reader • Built with Flutter &amp; Rust</tspan>
+  </text>
+</svg>

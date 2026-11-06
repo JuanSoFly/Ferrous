@@ -26,8 +26,13 @@
 </p>
 
 <p align="center">
+  <img src="assets/ferrous-sequence.gif" alt="Ferrous Reader Walkthrough" width="420" />
+</p>
+
+<p align="center">
   <a href="#download">Download</a> •
   <a href="#overview">Overview</a> •
+  <a href="#app-walkthrough">App Walkthrough</a> •
   <a href="#key-features">Key Features</a> •
   <a href="#supported-formats">Supported Formats</a> •
   <a href="#architecture">Architecture</a> •
@@ -65,6 +70,22 @@ Ferrous Reader is an open-source, offline-first mobile reading application desig
 
 ---
 
+## App Walkthrough
+
+Experience Ferrous Reader's tactile 120Hz interface, native typography engine, and seamless offline library management:
+
+| 01. Offline Library & Carousel | 02. Reflowable EPUB Typography | 03. Realistic 3D Page Turn |
+| :---: | :---: | :---: |
+| <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="220" alt="Offline Library" /> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="220" alt="EPUB Typography" /> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="220" alt="3D Page Turn" /> |
+| **Instant Library Indexing**<br/>Parallel Rust `walkdir` storage scan, "Continue Reading" shelf, and format filtering. | **Native Non-WebView Engine**<br/>Reflowable text in native Flutter widgets with custom margins and book textures. | **120 FPS Physics Curl**<br/>Hardware-accelerated page curls with dynamic lighting and ambient shadow simulation. |
+
+| 04. Rich In-Text Annotations | 05. Annotations Hub | 06. Synchronized Text-to-Speech | 07. Custom Collections |
+| :---: | :---: | :---: | :---: |
+| <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="200" alt="Annotations" /> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="200" alt="Annotations Hub" /> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="200" alt="Synchronized TTS" /> | <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/7.png" width="200" alt="Collections" /> |
+| **5-Color Highlighter**<br/>Yellow, coral, green, blue, and purple highlighting with instant note attachments. | **Centralized Notes Store**<br/>Global review hub organizing all quotes, notes, and chapter bookmarks locally. | **Non-Blocking TTS**<br/>Sentence lock tracking with floating audio controls running on native worker threads. | **Android SAF Storage**<br/>Scoped storage compliant directory mapping and custom reading shelf organization. |
+
+---
+
 ## Key Features
 
 - **Blazing Fast File Indexing**: Scans device storage and Storage Access Framework (SAF) trees in seconds via parallel directory traversal in Rust (`walkdir`).
@@ -95,31 +116,23 @@ Ferrous Reader is an open-source, offline-first mobile reading application desig
 Ferrous utilizes a hybrid boundary model where Flutter handles UI composition and state presentation, while Rust manages high-throughput, latency-critical operations.
 
 ```mermaid
-flowchart TD
-    subgraph UI ["Flutter / Dart Frontend (UI Isolate)"]
-        A[Material 3 UI & Readers]
-        B[State Management: Provider & Notifiers]
-        C[Local Metadata Cache: Hive NoSQL]
-    end
+flowchart LR
+    UI["Flutter Frontend<br/>(UI Isolate)"]
+    FFI["flutter_rust_bridge v2<br/>(FFI Transport)"]
+    RUST["Rust Native Engine<br/>(tokio Runtime)"]
 
-    subgraph FFI ["flutter_rust_bridge (v2) FFI Boundary"]
-        D[Type-Safe Code Generation & Zero-Copy Byte Transfers]
-    end
+    PDF["PDFium Engine<br/>(PDF Rendering)"]
+    SCAN["walkdir<br/>(Storage Scanner)"]
+    PARSERS["Format Decoders<br/>(MOBI, CBZ, DOCX)"]
+    TTS["TTS Pipeline<br/>(Text Segmentation)"]
 
-    subgraph Backend ["Rust Backend (tokio Thread Pool)"]
-        E[PDF Engine: pdfium-render]
-        F[Storage Scanner: walkdir]
-        G[Format Parsers: mobi, zip, docx-rs]
-        H[TTS Segmentation & Text Processing]
-    end
+    UI <===>|"Type-Safe FFI"| FFI
+    FFI <===>|"Async Worker Tasks"| RUST
 
-    A <--> B
-    B <--> C
-    B <--> D
-    D <--> E
-    D <--> F
-    D <--> G
-    D <--> H
+    RUST --> PDF
+    RUST --> SCAN
+    RUST --> PARSERS
+    RUST --> TTS
 ```
 
 ### Separation of Concerns
@@ -304,38 +317,7 @@ flutter_rust_bridge_codegen generate
 
 ---
 
-<div align="center">
-
-```text
-        ▄▄                                         ▄▄       
-        █████▄▄▄▄                           ▄▄▄▄█████       
-        ████████████▄▄▄               ▄▄▄████████████       
-   ▄█▄  ██████████████████▄       ▄██████████████████  ▄█▄  
-   ███  ████████████████████▄   ▄████████████████████  ███  
-   ███  ██████████████████████ ██████████████████████  ███  
-   ███  ██████████  ▀▀▀███████ ██████████████████████  ███  
-   ███  ██████████        ▀▀▀▀ ██████████████████████  ███  
-   ███  ██████████▄▄▄          ██████████████████████  ███  
-   ███  ████████████████▄▄▄▄   ██████████████████████  ███  
-   ███  █████████████████████  ██████████████████████  ███  
-   ███  █████████████████████  ██████████████████████  ███  
-   ███  ██████████   ▀▀▀█████  ██████████████████████  ███  
-   ███  ██████████         ▀▀  ██████████████████████  ███  
-   ███  ▀█████████             █████████████████████▀  ███  
-   ████▄  ▀▀▀█████             █████████████████▀▀▀  ▄████  
-   ▀██████▄▄▄▄  ▀▀             ██████████▀▀▀▀  ▄▄▄██████▀   
-        ▀▀▀▀█████▄▄▄▄          ██████▀▀  ▄▄▄▄█████▀▀▀▀      
-                ▀▀▀▀███▄▄      ██▀  ▄▄███▀▀▀▀               
-                        ▀▀▀▄ ▄▀▀▀                           
-
-                 ______                                     
-                / ____/___  ______________  __  _______     
-               / /_  / __ \/ ___/ ___/ __ \/ / / / ___/     
-              / __/ / /_/ / /  / /  / /_/ / /_/ (__  )      
-             /_/    \____/_/  /_/   \____/\__,_/____/       
-
-             Offline Mobile Reader • Built with Flutter & Rust
-```
-
-</div>
+<p align="center">
+  <img src="assets/ferrous-footer.svg" alt="Ferrous Reader" width="560" />
+</p>
 
