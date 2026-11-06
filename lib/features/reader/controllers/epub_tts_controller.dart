@@ -458,11 +458,18 @@ class EpubTtsController extends ChangeNotifier {
 
   /// Result of detecting a word at a tap position.
   /// Used for the tap-to-start confirmation flow.
-  TapDetectionResult? detectWordAtTap(TapUpDetails details, {required ReaderModeController modeController, required BuildContext context}) {
-    if (!_showTtsControls || !_tapToStartEnabled) return null;
+  TapDetectionResult? detectWordAtTap({
+    TapUpDetails? details,
+    Offset? position,
+    required ReaderModeController modeController,
+    required BuildContext context,
+  }) {
+    if (!_tapToStartEnabled) return null;
     if (chapterController.allChapterPlainTexts.isEmpty) return null;
 
-    final tap = details.globalPosition;
+    final tap = position ?? details?.globalPosition;
+    if (tap == null) return null;
+
     final chapterIndex = _findChapterIndexAtTap(tap, modeController: modeController, context: context) ?? 
                          chapterController.currentChapterIndex.clamp(0, chapterController.allChapterPlainTexts.length - 1);
     
@@ -476,43 +483,66 @@ class EpubTtsController extends ChangeNotifier {
     if (hit != null) {
       final rawFragment = hit.rawText;
       if (rawFragment.trim().isNotEmpty) {
+        // Extract the target word directly from the tapped paragraph
+        final localWordStart = _wordStartForOffset(rawFragment, hit.rawOffset);
+        final localWordEnd = _findWordEnd(rawFragment, localWordStart);
+        if (localWordEnd > localWordStart) {
+          detectedWord = rawFragment.substring(localWordStart, localWordEnd).trim();
+        }
+
         final fragmentMap = buildNormalizedTextMap(rawFragment);
         final fragment = fragmentMap.normalized;
 
-        if (fragment.isNotEmpty) {
-          var approxIndex = 0;
-          if (modeController.isContinuousMode) {
-            final ctx = chapterController.chapterKeys[chapterIndex].currentContext;
-            final chapterBox = ctx?.findRenderObject() as RenderBox?;
-            if (chapterBox != null && chapterBox.hasSize) {
-              final topLeft = chapterBox.localToGlobal(Offset.zero);
-              final dy = (tap.dy - topLeft.dy).clamp(0.0, chapterBox.size.height);
-              final frac = chapterBox.size.height <= 0 ? 0.0 : (dy / chapterBox.size.height).clamp(0.0, 1.0);
-              approxIndex = (frac * (chapterText.length - 1)).floor().clamp(0, chapterText.length - 1);
-            }
+        var approxIndex = 0;
+        if (modeController.isContinuousMode) {
+          final ctx = chapterController.chapterKeys[chapterIndex].currentContext;
+          final chapterBox = ctx?.findRenderObject() as RenderBox?;
+          if (chapterBox != null && chapterBox.hasSize) {
+            final topLeft = chapterBox.localToGlobal(Offset.zero);
+            final dy = (tap.dy - topLeft.dy).clamp(0.0, chapterBox.size.height);
+            final frac = chapterBox.size.height <= 0 ? 0.0 : (dy / chapterBox.size.height).clamp(0.0, 1.0);
+            approxIndex = (frac * (chapterText.length - 1)).floor().clamp(0, chapterText.length - 1);
           }
+        }
 
+        int? fragmentStart;
+        if (fragment.isNotEmpty) {
           final startFrom = approxIndex.clamp(0, chapterText.length);
           final forward = chapterText.indexOf(fragment, startFrom);
           final backward = chapterText.lastIndexOf(fragment, startFrom);
 
-          final fragmentStart = switch ((forward, backward)) {
+          fragmentStart = switch ((forward, backward)) {
             (int f, int b) when f >= 0 && b >= 0 => (f - startFrom).abs() < (b - startFrom).abs() ? f : b,
             (int f, _) when f >= 0 => f,
             (_, int b) when b >= 0 => b,
             _ => null,
           };
+        }
 
-          if (fragmentStart != null) {
-            final fragmentOffset = _normalizedOffsetForRawOffset(fragmentMap, hit.rawOffset);
-            absoluteOffset = _wordStartForOffset(chapterText, fragmentStart + fragmentOffset);
-            
-            // Extract the detected word for display
-            if (absoluteOffset < chapterText.length) {
-              final wordEnd = _findWordEnd(chapterText, absoluteOffset);
-              detectedWord = chapterText.substring(absoluteOffset, wordEnd).trim();
-            }
+        if (fragmentStart != null) {
+          final fragmentOffset = _normalizedOffsetForRawOffset(fragmentMap, hit.rawOffset);
+          absoluteOffset = _wordStartForOffset(chapterText, fragmentStart + fragmentOffset);
+        } else if (detectedWord != null && detectedWord.isNotEmpty) {
+          // Fallback: locate detectedWord near approxIndex in chapterText
+          final cleanTarget = detectedWord.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
+          final query = cleanTarget.isNotEmpty ? cleanTarget : detectedWord;
+          final startFrom = approxIndex.clamp(0, chapterText.length);
+          final forward = chapterText.indexOf(query, startFrom);
+          final backward = chapterText.lastIndexOf(query, startFrom);
+          final matchPos = switch ((forward, backward)) {
+            (int f, int b) when f >= 0 && b >= 0 => (f - startFrom).abs() < (b - startFrom).abs() ? f : b,
+            (int f, _) when f >= 0 => f,
+            (_, int b) when b >= 0 => b,
+            _ => null,
+          };
+          if (matchPos != null) {
+            absoluteOffset = _wordStartForOffset(chapterText, matchPos);
           }
+        }
+
+        if ((detectedWord == null || detectedWord.isEmpty) && absoluteOffset != null && absoluteOffset < chapterText.length) {
+          final wordEnd = _findWordEnd(chapterText, absoluteOffset);
+          detectedWord = chapterText.substring(absoluteOffset, wordEnd).trim();
         }
       }
     }
@@ -555,7 +585,7 @@ class EpubTtsController extends ChangeNotifier {
 
   /// Legacy method for backward compatibility - immediately starts TTS from tap.
   Future<void> startTtsFromTap(TapUpDetails details, {required ReaderModeController modeController, required BuildContext context}) async {
-    final result = detectWordAtTap(details, modeController: modeController, context: context);
+    final result = detectWordAtTap(details: details, modeController: modeController, context: context);
     if (result != null) {
       await speakFromLocation(chapterIndex: result.chapterIndex, offset: result.offset);
     } else {
@@ -609,15 +639,28 @@ class EpubTtsController extends ChangeNotifier {
   }
 
   ({String rawText, int rawOffset})? _hitTestTextAt(Offset globalPosition, {required BuildContext context}) {
-    final result = HitTestResult();
-    WidgetsBinding.instance.hitTestInView(result, globalPosition, View.of(context).viewId);
+    final viewId = View.of(context).viewId;
+    const offsets = [
+      Offset.zero,
+      Offset(0, -6),
+      Offset(0, 6),
+      Offset(-6, 0),
+      Offset(6, 0),
+      Offset(0, -12),
+      Offset(0, 12),
+    ];
 
-    for (final entry in result.path) {
-      final target = entry.target;
-      if (target is RenderParagraph) {
-        final local = target.globalToLocal(globalPosition);
-        final position = target.getPositionForOffset(local);
-        return (rawText: target.text.toPlainText(), rawOffset: position.offset);
+    for (final delta in offsets) {
+      final result = HitTestResult();
+      WidgetsBinding.instance.hitTestInView(result, globalPosition + delta, viewId);
+
+      for (final entry in result.path) {
+        final target = entry.target;
+        if (target is RenderParagraph) {
+          final local = target.globalToLocal(globalPosition + delta);
+          final position = target.getPositionForOffset(local);
+          return (rawText: target.text.toPlainText(), rawOffset: position.offset);
+        }
       }
     }
     return null;

@@ -276,6 +276,22 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         builder: (child) => HtmlTableViewer(child: child),
       ),
       const TableHtmlExtension(),
+      TagExtension.inline(
+        tagsToExtend: {'p-indent', 'indent'},
+        builder: (extensionContext) {
+          if (!themeConfig.paragraphIndent) {
+            return const TextSpan(text: '');
+          }
+          final indentWidth = (themeConfig.fontSize * 1.6).clamp(18.0, 42.0);
+          return WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: SizedBox(
+              width: indentWidth,
+              height: 1.0,
+            ),
+          );
+        },
+      ),
       TagExtension(
         tagsToExtend: {'tts-highlight'},
         builder: (context) {

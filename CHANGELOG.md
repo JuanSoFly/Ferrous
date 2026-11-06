@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0-alpha.3] - 2026-11-06
+
+### Added
+- Native paragraph first-line indentation injection for EPUB and MOBI content via HyphenationHelper.
+- Integrated `flutter_html_table` and `flutter_layout_grid` for styled HTML table rendering.
+
+### Changed
+- Refactored `RealisticPageTurn` using `ListenableBuilder` and cached page rendering to optimize animation performance.
+- Improved chapter scroll navigation and character-based offset estimation in EPUB/MOBI controllers.
+- Added `build/**` and `android/**` paths to analyzer exclusion list in `analysis_options.yaml`.
+
+## [1.2.0-alpha.2] - 2026-11-06
+
+### Fixed
+- Fixed Matrix4 `scaleByDouble` argument signature in `TableFullScreenViewer` for proper 2D zoom transformation.
+- Streamlined chapter scroll controller lookups with early returns in EPUB and MOBI chapter controllers.
+- Resolved Dart analyzer warnings and clippy lints across cover extraction and TXT parser.
+
 ## [1.2.0-alpha.1] - 2026-11-06
 
 ### Added

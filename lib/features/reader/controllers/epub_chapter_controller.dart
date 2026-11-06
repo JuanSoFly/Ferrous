@@ -11,6 +11,7 @@ import 'package:reader_app/core/utils/performance.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:reader_app/features/reader/hyphenation_helper.dart';
 
 class EpubChapterInfo {
   final String? title;
@@ -191,9 +192,10 @@ class EpubChapterController extends ChangeNotifier {
 
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
+      final contentWithIndent = HyphenationHelper.injectIndentTags(content);
 
       chapters.add(EpubChapterInfo(title: title));
-      contents.add(content);
+      contents.add(contentWithIndent);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
     }
@@ -292,31 +294,6 @@ class EpubChapterController extends ChangeNotifier {
     }
   }
 
-  double _getCharacterBasedEstimate(int index) {
-    if (_allChapterPlainTexts.isEmpty) return 0.0;
-    if (index <= 0) return 0.0;
-    if (index >= _allChapterPlainTexts.length) {
-      if (_scrollController.hasClients) {
-        return _scrollController.position.maxScrollExtent;
-      }
-      return 0.0;
-    }
-
-    double totalChars = 0;
-    for (final text in _allChapterPlainTexts) {
-      totalChars += text.length;
-    }
-    if (totalChars == 0) return 0.0;
-
-    double charsBefore = 0;
-    for (int i = 0; i < index; i++) {
-      charsBefore += _allChapterPlainTexts[i].length;
-    }
-
-    final maxExtent = _scrollController.hasClients ? _scrollController.position.maxScrollExtent : 0.0;
-    return (charsBefore / totalChars) * maxExtent;
-  }
-
   void _scrollToChapter(int index, {int attempt = 0}) {
     if (!_scrollController.hasClients) return;
     if (attempt == 0) {
@@ -349,12 +326,19 @@ class EpubChapterController extends ChangeNotifier {
         final maxExtent = _scrollController.position.maxScrollExtent;
         final viewportDim = _scrollController.position.viewportDimension;
         final step = viewportDim > 0 ? viewportDim * 2.5 : 2000.0;
-        if (index > _currentChapterIndex) {
-          final nextJump = currentOffset + step;
-          _scrollController.jumpTo(nextJump.clamp(0.0, maxExtent));
+
+        double charsBefore = 0;
+        for (int i = 0; i < index && i < _allChapterPlainTexts.length; i++) {
+          charsBefore += _allChapterPlainTexts[i].length;
+        }
+        final estimatedPixelTarget = 700.0 + charsBefore * 0.5;
+
+        if (estimatedPixelTarget > currentOffset) {
+          final nextJump = (currentOffset + step).clamp(0.0, maxExtent);
+          _scrollController.jumpTo(nextJump);
         } else {
-          final nextJump = currentOffset - step;
-          _scrollController.jumpTo(nextJump.clamp(0.0, maxExtent));
+          final nextJump = (currentOffset - step).clamp(0.0, maxExtent);
+          _scrollController.jumpTo(nextJump);
         }
         _scrollToChapter(index, attempt: attempt + 1);
       } else {
@@ -386,8 +370,12 @@ class EpubChapterController extends ChangeNotifier {
     }
     _lastScrollCheckTime = now;
 
+    final scrollableBox = _scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
+    final scrollableTop = scrollableBox != null ? scrollableBox.localToGlobal(Offset.zero).dy : 0.0;
+
     final viewportTop = _scrollController.offset;
-    final viewportMiddle = viewportTop + MediaQuery.of(context).size.height / 2;
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final viewportMiddle = viewportTop + viewportHeight / 2;
 
     int visibleChapter = 0;
     for (int i = 0; i < _chapterKeys.length; i++) {
@@ -396,7 +384,7 @@ class EpubChapterController extends ChangeNotifier {
       if (renderBox == null) continue;
 
       final position = renderBox.localToGlobal(Offset.zero);
-      final chapterTop = position.dy + viewportTop;
+      final chapterTop = (position.dy - scrollableTop) + viewportTop;
       final chapterBottom = chapterTop + renderBox.size.height;
 
       if (viewportMiddle >= chapterTop && viewportMiddle < chapterBottom) {
@@ -453,7 +441,7 @@ class EpubChapterController extends ChangeNotifier {
       _saveReadingPositionFromPagedController(_currentChapterIndex);
     } else {
       if (refreshChapter && context != null) {
-        updateCurrentChapterFromScroll(context);
+        updateCurrentChapterFromScroll(context, force: true);
       }
       _saveReadingPositionFromScroll();
     }
@@ -525,9 +513,12 @@ class EpubChapterController extends ChangeNotifier {
     final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || renderBox.size.height <= 0) return null;
 
+    final scrollableBox = _scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
+    final scrollableTop = scrollableBox != null ? scrollableBox.localToGlobal(Offset.zero).dy : 0.0;
+
     final viewportHeight = _scrollController.position.viewportDimension;
     final anchorY = _scrollController.offset + viewportHeight * 0.5;
-    final chapterTop = _scrollController.offset + renderBox.localToGlobal(Offset.zero).dy;
+    final chapterTop = _scrollController.offset + (renderBox.localToGlobal(Offset.zero).dy - scrollableTop);
     final localY = (anchorY - chapterTop).clamp(0.0, renderBox.size.height);
     return localY / renderBox.size.height;
   }
@@ -558,31 +549,72 @@ class EpubChapterController extends ChangeNotifier {
       if (!_scrollController.hasClients) return;
       final chapterIndex = _currentChapterIndex.clamp(0, _chapterKeys.length - 1);
       final anchorOffset = _readingAnchorOffset();
-      final fraction = anchorOffset >= 0 ? _fractionForTextOffset(chapterIndex, anchorOffset) : null;
-      final target = fraction == null ? null : _scrollOffsetForChapterFraction(chapterIndex, fraction);
 
-      if (target != null) {
+      // If user was viewing the cover page (anchorOffset < 0 && chapterIndex == 0)
+      if (anchorOffset < 0 && chapterIndex == 0) {
         _markRestoringPosition();
-        _scrollController.jumpTo(target);
+        _scrollController.jumpTo(0.0);
         return;
       }
 
-      final maxExtent = _scrollController.position.maxScrollExtent;
-      if (maxExtent > 0) {
-        if (fraction != null && attempt < 2) {
-          final estimated = _getCharacterBasedEstimate(chapterIndex);
-          _markRestoringPosition();
-          _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
-          _restoreContinuousPosition(attempt: attempt + 1);
-        } else if (_lastScrollPosition > 0) {
-          _markRestoringPosition();
-          _scrollController.jumpTo(_lastScrollPosition.clamp(0.0, maxExtent));
-        } else if (attempt < 2) {
-          final estimated = _getCharacterBasedEstimate(chapterIndex);
-          _markRestoringPosition();
-          _scrollController.jumpTo(estimated.clamp(0.0, maxExtent));
+      final fraction = anchorOffset >= 0
+          ? _fractionForTextOffset(chapterIndex, anchorOffset)
+          : 0.0;
+
+      final key = _chapterKeys[chapterIndex];
+      final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+
+      if (renderBox != null && renderBox.hasSize && renderBox.size.height > 0) {
+        final scrollableBox = _scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
+        final scrollableTop = scrollableBox != null ? scrollableBox.localToGlobal(Offset.zero).dy : 0.0;
+
+        final viewportHeight = _scrollController.position.viewportDimension;
+        final chapterTop = _scrollController.offset + (renderBox.localToGlobal(Offset.zero).dy - scrollableTop);
+        final anchorY = renderBox.size.height * fraction;
+        final idealTarget = chapterTop + anchorY - viewportHeight * 0.5;
+        final targetOffset = idealTarget.clamp(0.0, _scrollController.position.maxScrollExtent);
+
+        _markRestoringPosition();
+        _scrollController.jumpTo(targetOffset);
+
+        if (attempt < 15 && idealTarget > _scrollController.position.maxScrollExtent) {
           _restoreContinuousPosition(attempt: attempt + 1);
         }
+        return;
+      }
+
+      // If target chapter is not yet laid out in lazy ListView.builder:
+      if (attempt < 30) {
+        _markRestoringPosition();
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final currentOffset = _scrollController.offset;
+
+        double charsBefore = 0;
+        for (int i = 0; i < chapterIndex && i < _allChapterPlainTexts.length; i++) {
+          charsBefore += _allChapterPlainTexts[i].length;
+        }
+        if (chapterIndex < _allChapterPlainTexts.length) {
+          charsBefore += _allChapterPlainTexts[chapterIndex].length * fraction;
+        }
+
+        final estimatedPixelTarget = 700.0 + charsBefore * 0.5;
+
+        if (chapterIndex > 0) {
+          if (estimatedPixelTarget > currentOffset) {
+            final nextJump = estimatedPixelTarget.clamp(0.0, maxExtent);
+            if (nextJump > currentOffset) {
+              _scrollController.jumpTo(nextJump);
+            } else if (maxExtent > currentOffset) {
+              _scrollController.jumpTo(maxExtent);
+            }
+          } else if (maxExtent > currentOffset) {
+            _scrollController.jumpTo(maxExtent);
+          }
+        } else {
+          _scrollController.jumpTo(estimatedPixelTarget.clamp(0.0, maxExtent));
+        }
+
+        _restoreContinuousPosition(attempt: attempt + 1);
       }
     });
   }
@@ -594,7 +626,7 @@ class EpubChapterController extends ChangeNotifier {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller = chapterScrollController(chapterIndex);
       if (!controller.hasClients) {
-        if (attempt < 3) _restorePagedPosition(attempt: attempt + 1);
+        if (attempt < 10) _restorePagedPosition(attempt: attempt + 1);
         return;
       }
 
@@ -602,10 +634,13 @@ class EpubChapterController extends ChangeNotifier {
       final fraction = anchorOffset >= 0 ? _fractionForTextOffset(chapterIndex, anchorOffset) : 0.0;
       final viewportHeight = controller.position.viewportDimension;
       final contentHeight = controller.position.maxScrollExtent + viewportHeight;
-      final target = contentHeight <= 0 ? 0.0 : (contentHeight * fraction - viewportHeight * 0.5).clamp(0.0, controller.position.maxScrollExtent);
+      final target = contentHeight <= 0
+          ? 0.0
+          : (contentHeight * fraction - viewportHeight * 0.5).clamp(0.0, controller.position.maxScrollExtent);
       
       _markRestoringPosition();
       controller.jumpTo(target);
+      _chapterScrollOffsets[chapterIndex] = target;
     });
   }
 
@@ -622,21 +657,6 @@ class EpubChapterController extends ChangeNotifier {
     final maxIndex = text.length - 1;
     if (maxIndex <= 0) return 0.0;
     return offset.clamp(0, maxIndex) / maxIndex;
-  }
-
-  double? _scrollOffsetForChapterFraction(int chapterIndex, double fraction) {
-    if (!_scrollController.hasClients) return null;
-    if (chapterIndex < 0 || chapterIndex >= _chapterKeys.length) return null;
-
-    final key = _chapterKeys[chapterIndex];
-    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null || renderBox.size.height <= 0) return null;
-
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final chapterTop = _scrollController.offset + renderBox.localToGlobal(Offset.zero).dy;
-    final anchorY = renderBox.size.height * fraction;
-    final target = chapterTop + anchorY - viewportHeight * 0.5;
-    return target.clamp(0.0, _scrollController.position.maxScrollExtent);
   }
 
   void _markRestoringPosition() {

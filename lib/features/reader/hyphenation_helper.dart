@@ -5,8 +5,7 @@ import 'package:hyphenatorx/languages/language_en_us.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
-  // Standard 2-em typographic paragraph indentation using Unicode em-spaces (U+2003)
-  static const String indentString = '\u2003\u2003';
+  static const String indentTag = 'p-indent';
 
   static Hyphenator? _hyphenator;
 
@@ -25,6 +24,37 @@ class HyphenationHelper {
       Language_en_us(),
       symbol: softHyphen,
     );
+  }
+
+  /// Injects `<p-indent></p-indent>` tags into all paragraph elements.
+  static String injectIndentTags(String html) {
+    if (html.isEmpty) return html;
+    try {
+      final document = html_parser.parse(html);
+      final body = document.body ?? document.documentElement;
+      if (body == null) return html;
+      _injectIndentTagsRecursive(body);
+      return document.body?.innerHtml ?? html;
+    } catch (_) {
+      return html;
+    }
+  }
+
+  static void _injectIndentTagsRecursive(dom.Node node) {
+    if (node is dom.Element) {
+      final tag = node.localName?.toLowerCase();
+      if ({'pre', 'code', 'script', 'style', 'tt'}.contains(tag)) {
+        return;
+      }
+      if (_isParagraphElement(node)) {
+        _indentParagraph(node);
+      }
+    }
+    if (node.hasChildNodes()) {
+      for (final child in List<dom.Node>.from(node.nodes)) {
+        _injectIndentTagsRecursive(child);
+      }
+    }
   }
 
   /// Process HTML for hyphenation only.
@@ -52,7 +82,7 @@ class HyphenationHelper {
     bool applyHyphenation = true,
     bool applyIndent = true,
   }) {
-    if (!applyHyphenation && !applyIndent) return html;
+    if (!applyHyphenation && !applyIndent && !html.contains('<p-indent')) return html;
 
     try {
       final document = html_parser.parse(html);
@@ -112,41 +142,28 @@ class HyphenationHelper {
   }) {
     if (node == null) return;
 
-    if (node is dom.Element &&
-        {'pre', 'code', 'script', 'style', 'tt'}.contains(node.localName?.toLowerCase())) {
-      return;
-    }
+    if (node is dom.Element) {
+      final tag = node.localName?.toLowerCase();
+      if ({'pre', 'code', 'script', 'style', 'tt'}.contains(tag)) {
+        return;
+      }
 
-    // If this is a <p> tag or paragraph <div> and indent is enabled, indent it
-    if (applyIndent &&
-        node is dom.Element &&
-        (node.localName == 'p' ||
-            (node.localName == 'div' &&
-                (node.classes.contains('paragraph') ||
-                    node.classes.contains('para') ||
-                    node.classes.any((c) => c.startsWith('calibre')))))) {
-      _indentParagraph(node);
+      if (_isParagraphElement(node)) {
+        if (applyIndent) {
+          _indentParagraph(node);
+        } else {
+          _removeIndentFromParagraph(node);
+        }
+      }
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
       final text = node.text;
       if (text != null && text.trim().isNotEmpty && applyHyphenation) {
-        // Hyphenate text content; preserve leading indent characters
-        if (text.startsWith(indentString)) {
-          final content = text.substring(indentString.length);
-          node.text = '$indentString${hyphenator.hyphenateText(content)}';
-        } else if (text.startsWith('\u2003\u2003')) {
-          final content = text.substring(2);
-          node.text = '\u2003\u2003${hyphenator.hyphenateText(content)}';
-        } else if (text.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
-          final content = text.substring(4);
-          node.text = '\u00A0\u00A0\u00A0\u00A0${hyphenator.hyphenateText(content)}';
-        } else {
-          node.text = hyphenator.hyphenateText(text);
-        }
+        node.text = hyphenator.hyphenateText(text);
       }
     } else if (node.hasChildNodes()) {
-      for (final child in node.nodes) {
+      for (final child in List<dom.Node>.from(node.nodes)) {
         _processNodeHyphenateAndIndent(
           child,
           applyHyphenation: applyHyphenation,
@@ -154,6 +171,54 @@ class HyphenationHelper {
         );
       }
     }
+  }
+
+  /// Determines whether an element represents a normal reading paragraph.
+  static bool _isParagraphElement(dom.Element el) {
+    final tag = el.localName?.toLowerCase();
+    if (tag == null) return false;
+
+    if ({
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'pre', 'code', 'table', 'th', 'td',
+      'ul', 'ol', 'li', 'blockquote', 'caption',
+      'p-indent', 'indent', 'annotation-highlight', 'tts-highlight'
+    }.contains(tag)) {
+      return false;
+    }
+
+    if (_isAlignedParagraph(el)) {
+      return false;
+    }
+
+    final text = el.text.trim();
+    if (text.isEmpty) return false;
+
+    if (tag == 'p') {
+      final hasOnlyImages = el.nodes.every((n) =>
+          (n is dom.Element && {'img', 'svg', 'image', 'picture'}.contains(n.localName?.toLowerCase())) ||
+          (n is dom.Text && n.text.trim().isEmpty));
+      return !hasOnlyImages;
+    }
+
+    if (tag == 'div' || tag == 'section') {
+      final hasChildParagraphs = el.querySelector('p') != null;
+      if (hasChildParagraphs) return false;
+
+      final hasOnlyImages = el.nodes.every((n) =>
+          (n is dom.Element && {'img', 'svg', 'image', 'picture'}.contains(n.localName?.toLowerCase())) ||
+          (n is dom.Text && n.text.trim().isEmpty));
+      if (hasOnlyImages) return false;
+
+      final isExplicitPara = el.classes.any((c) {
+        final cl = c.toLowerCase();
+        return cl.contains('para') || cl.contains('calibre') || cl == 'p' || cl == 'text' || cl == 'story' || cl == 'body';
+      });
+
+      return isExplicitPara || text.length > 20;
+    }
+
+    return false;
   }
 
   /// Checks if a paragraph is explicitly aligned or styled (centered, right-aligned, or a list/choice item).
@@ -173,46 +238,20 @@ class HyphenationHelper {
         className.contains('list-item');
   }
 
-  /// Indents the first visible text node of a paragraph by prepending 2 em-spaces.
+  /// Indents a paragraph by inserting a `<p-indent></p-indent>` element as the first child.
   static void _indentParagraph(dom.Element p) {
-    if (_isAlignedParagraph(p)) return;
-
-    final leadingWhitespaceNodes = <dom.Text>[];
-    dom.Text? targetTextNode;
-
-    void findTarget(dom.Node node) {
-      if (targetTextNode != null) return;
-
-      if (node is dom.Text) {
-        if (node.text.trim().isEmpty) {
-          leadingWhitespaceNodes.add(node);
-        } else {
-          targetTextNode = node;
-          return;
-        }
-      } else if (node.hasChildNodes()) {
-        for (final child in node.nodes) {
-          findTarget(child);
-          if (targetTextNode != null) return;
-        }
-      }
+    if (p.children.isNotEmpty && p.children.first.localName == 'p-indent') {
+      return;
     }
-
-    findTarget(p);
-
-    if (targetTextNode != null) {
-      final text = targetTextNode!.text;
-      if (!text.startsWith(indentString) &&
-          !text.startsWith('\u2003') &&
-          !text.startsWith('\u00A0\u00A0\u00A0\u00A0')) {
-        // Clear preceding whitespace-only nodes in this paragraph so indent isn't preceded by newlines
-        for (final wsNode in leadingWhitespaceNodes) {
-          wsNode.text = '';
-        }
-        // Strip leading whitespace before adding indent
-        final trimmed = text.replaceFirst(RegExp(r'^\s+'), '');
-        targetTextNode!.text = '$indentString$trimmed';
-      }
+    // Remove any leading empty text nodes before inserting indent
+    while (p.nodes.isNotEmpty && p.nodes.first is dom.Text && p.nodes.first.text!.trim().isEmpty) {
+      p.nodes.removeAt(0);
     }
+    p.nodes.insert(0, dom.Element.tag('p-indent'));
+  }
+
+  /// Removes `<p-indent>` tags from a paragraph.
+  static void _removeIndentFromParagraph(dom.Element p) {
+    p.nodes.removeWhere((node) => node is dom.Element && (node.localName == 'p-indent' || node.localName == 'indent'));
   }
 }

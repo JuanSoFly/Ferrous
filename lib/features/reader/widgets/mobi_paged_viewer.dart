@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
@@ -33,6 +34,8 @@ class MobiPagedViewer extends StatefulWidget {
 class _MobiPagedViewerState extends State<MobiPagedViewer> {
   late int _activePage;
   late PageController _viewPageController;
+  double _accumulatedOverscroll = 0.0;
+  DateTime? _lastPageTurnTime;
 
   @override
   void initState() {
@@ -52,6 +55,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (oldWidget.chapterController != widget.chapterController) {
       oldWidget.chapterController.removeListener(_onChapterControllerChanged);
       widget.chapterController.addListener(_onChapterControllerChanged);
+    }
+    if (oldWidget.readingMode != widget.readingMode) {
+      _viewPageController.dispose();
+      _viewPageController = PageController(initialPage: _activePage);
     }
     _syncActivePage();
   }
@@ -104,6 +111,118 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     }
   }
 
+  void _goToPreviousPage() {
+    if (_activePage > 0) {
+      final target = _activePage - 1;
+      final themeRepo = context.read<ReaderThemeRepository>();
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+          themeRepo.config.pageFlip;
+      if (useRealisticCurl) {
+        _handlePageChanged(target);
+      } else if (_viewPageController.hasClients) {
+        _viewPageController.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _handlePageChanged(target);
+      }
+    }
+  }
+
+  void _goToNextPage() {
+    final totalPages = (widget.chapterController.chapters?.length ?? 0) + 1;
+    if (_activePage < totalPages - 1) {
+      final target = _activePage + 1;
+      final themeRepo = context.read<ReaderThemeRepository>();
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+          themeRepo.config.pageFlip;
+      if (useRealisticCurl) {
+        _handlePageChanged(target);
+      } else if (_viewPageController.hasClients) {
+        _viewPageController.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _handlePageChanged(target);
+      }
+    }
+  }
+
+  void _handleTapUp(TapUpDetails details, Size size) {
+    widget.onTapUp(details);
+
+    if (widget.readingMode == ReadingMode.vertical) {
+      const marginRatio = 0.15;
+      final tapY = details.globalPosition.dy;
+      final height = size.height;
+      if (tapY < height * marginRatio) {
+        _goToPreviousPage();
+      } else if (tapY > height * (1.0 - marginRatio)) {
+        _goToNextPage();
+      } else {
+        widget.onToggleChrome();
+      }
+    } else {
+      const marginRatio = 0.18;
+      final tapX = details.globalPosition.dx;
+      final width = size.width;
+      if (tapX < width * marginRatio) {
+        _goToPreviousPage();
+      } else if (tapX > width * (1.0 - marginRatio)) {
+        _goToNextPage();
+      } else {
+        widget.onToggleChrome();
+      }
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollEndNotification) {
+      widget.chapterController.saveReadingPositionForMode(widget.readingMode);
+    }
+
+    if (widget.readingMode != ReadingMode.vertical) {
+      return false;
+    }
+
+    if (notification is ScrollStartNotification) {
+      _accumulatedOverscroll = 0.0;
+    } else if (notification is OverscrollNotification) {
+      _accumulatedOverscroll += notification.overscroll;
+    } else if (notification is ScrollUpdateNotification) {
+      final metrics = notification.metrics;
+      final delta = notification.scrollDelta ?? 0.0;
+      if (metrics.pixels <= metrics.minScrollExtent && delta < 0) {
+        _accumulatedOverscroll += delta;
+      } else if (metrics.pixels >= metrics.maxScrollExtent && delta > 0) {
+        _accumulatedOverscroll += delta;
+      }
+    } else if (notification is ScrollEndNotification) {
+      final now = DateTime.now();
+      if (_lastPageTurnTime == null ||
+          now.difference(_lastPageTurnTime!).inMilliseconds > 400) {
+        const threshold = 35.0;
+        final metrics = notification.metrics;
+        final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
+        final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
+
+        if (_accumulatedOverscroll < -threshold || (isAtTop && _accumulatedOverscroll < -10)) {
+          _lastPageTurnTime = now;
+          _goToPreviousPage();
+        } else if (_accumulatedOverscroll > threshold || (isAtBottom && _accumulatedOverscroll > 10)) {
+          _lastPageTurnTime = now;
+          _goToNextPage();
+        }
+      }
+      _accumulatedOverscroll = 0.0;
+    }
+    return false;
+  }
+
   void _handlePageChanged(int index) {
     if (_activePage == index) return;
     // Save reading progress of the chapter we are navigating away from
@@ -114,6 +233,18 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (index > 0) {
       final chapterIndex = index - 1;
       widget.chapterController.loadChapter(chapterIndex, userInitiated: false);
+    } else {
+      widget.chapterController.book.sectionIndex = 0;
+      widget.chapterController.book.lastReadingSentenceStart = -1;
+      widget.chapterController.book.lastReadingSentenceEnd = -1;
+      widget.chapterController.book.scrollPosition = 0.0;
+      unawaited(widget.chapterController.repository.updateReadingProgress(
+        widget.chapterController.book.id,
+        sectionIndex: 0,
+        scrollPosition: 0.0,
+        lastReadingSentenceStart: -1,
+        lastReadingSentenceEnd: -1,
+      ));
     }
     if (_viewPageController.hasClients &&
         _viewPageController.page?.round() != index) {
@@ -199,9 +330,26 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       onPageChanged: _handlePageChanged,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return BookCoverPage(
-            book: widget.chapterController.book,
-            onToggleChrome: widget.onToggleChrome,
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
+            onHorizontalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
+              }
+            },
+            onVerticalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
+              }
+            },
+            child: BookCoverPage(
+              book: widget.chapterController.book,
+              onToggleChrome: widget.onToggleChrome,
+              onTurnPage: _goToNextPage,
+            ),
           );
         }
 
@@ -211,18 +359,26 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
             widget.chapterController.chapterScrollController(chapterIndex);
 
         return GestureDetector(
-          onTap: widget.onToggleChrome,
-          onTapUp: widget.onTapUp,
-          child: NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification is ScrollEndNotification) {
-                widget.chapterController.saveReadingPositionForMode(widget.readingMode);
+          behavior: HitTestBehavior.translucent,
+          onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
+          onHorizontalDragEnd: (details) {
+            if (widget.readingMode == ReadingMode.vertical) {
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
+              } else if (velocity > 200) {
+                _goToPreviousPage();
               }
-              return false;
-            },
+            }
+          },
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
             child: SingleChildScrollView(
               key: PageStorageKey('mobi-chapter-scroll-$chapterIndex'),
               controller: scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               padding: const EdgeInsets.only(
                 left: 16.0,
                 right: 16.0,

@@ -181,10 +181,11 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final resolver = BookFileResolver();
       final resolved = await resolver.resolve(widget.book);
       _resolvedFile = resolved;
-      final html = await loadContent(resolved.path);
+      final rawHtml = await loadContent(resolved.path);
+      final html = HyphenationHelper.injectIndentTags(rawHtml);
 
       // Run expensive text processing in background isolates
-      final plainTextFuture = compute(_htmlToPlainTextStatic, html);
+      final plainTextFuture = compute(_htmlToPlainTextStatic, rawHtml);
       final sentenceSpansFuture = plainTextFuture.then(
         (plainText) => compute(splitIntoSentences, plainText),
       );
@@ -844,6 +845,22 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   builder: (child) => HtmlTableViewer(child: child),
                 ),
                 const TableHtmlExtension(),
+                TagExtension.inline(
+                  tagsToExtend: {'p-indent', 'indent'},
+                  builder: (ctx) {
+                    if (!themeConfig.paragraphIndent) {
+                      return const TextSpan(text: '');
+                    }
+                    final indentWidth = (themeConfig.fontSize * 1.6).clamp(18.0, 42.0);
+                    return WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: SizedBox(
+                        width: indentWidth,
+                        height: 1.0,
+                      ),
+                    );
+                  },
+                ),
                 TagExtension(
                   tagsToExtend: {'tts-highlight'},
                   builder: (ctx) {

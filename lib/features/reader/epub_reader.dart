@@ -59,8 +59,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   // Tap-to-start confirmation state
   TapDetectionResult? _pendingTapResult;
-  DateTime? _lastWordTapTime;
-  TapDetectionResult? _lastWordTapResult;
   SelectedContent? _selectedContent;
 
   @override
@@ -180,22 +178,44 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _handleDoubleTap() {
-    if (!_chromeController.isLocked) return;
     final position = _lastDoubleTapDown;
     if (position == null) return;
-    
-    if (_chromeController.isCenterTap(position, MediaQuery.of(context).size)) {
-      final isLocked = _chromeController.toggleLockMode();
-      if (isLocked) {
-        _ttsController.setTtsControlsVisible(false);
+    final screenSize = MediaQuery.of(context).size;
+
+    // 1. If locked, double tap center unlocks
+    if (_chromeController.isLocked) {
+      if (_chromeController.isCenterTap(position, screenSize)) {
+        final isLocked = _chromeController.toggleLockMode();
+        if (isLocked) {
+          _ttsController.setTtsControlsVisible(false);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isLocked ? 'Lock mode on. Double-tap center to unlock.' : 'Lock mode off.'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isLocked ? 'Lock mode on. Double-tap center to unlock.' : 'Lock mode off.'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      return;
+    }
+
+    // 2. Normal reading: double tap on a word triggers the "read from" toggle
+    if (_ttsController.tapToStartEnabled) {
+      final result = _ttsController.detectWordAtTap(
+        position: position,
+        modeController: _modeController,
+        context: context,
+      );
+      if (result != null) {
+        setState(() {
+          _pendingTapResult = result;
+        });
+      } else if (_pendingTapResult != null) {
+        setState(() {
+          _pendingTapResult = null;
+        });
       }
     }
   }
@@ -203,12 +223,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   /// Toggle reader chrome. TTS controls are closed when hiding chrome
   /// and remain hidden by default until the user explicitly taps the TTS icon.
   void _toggleAllUi() {
+    if (_pendingTapResult != null) {
+      setState(() => _pendingTapResult = null);
+      return;
+    }
     _chromeController.toggleChrome();
     if (!_chromeController.showChrome) {
       _ttsController.setTtsControlsVisible(false);
-    }
-    if (_pendingTapResult != null) {
-      setState(() => _pendingTapResult = null);
     }
   }
 
@@ -230,8 +251,12 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
       _modeController = ReaderModeController(selected);
       if (switchingToPaged) {
         _pageController.dispose();
+        final isCover = _chapterController.currentChapterIndex == 0 &&
+            widget.book.sectionIndex == 0 &&
+            widget.book.scrollPosition == 0.0 &&
+            widget.book.lastReadingSentenceStart == -1;
         _pageController = PageController(
-          initialPage: _chapterController.currentChapterIndex,
+          initialPage: isCover ? 0 : _chapterController.currentChapterIndex + 1,
         );
       }
     });
@@ -311,69 +336,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _handleTapUpForTts(TapUpDetails details) {
-    // Only active when TTS controls are visible and Double Tap is enabled
-    if (!_ttsController.showTtsControls || !_ttsController.tapToStartEnabled) {
-      if (_pendingTapResult != null) {
-        setState(() => _pendingTapResult = null);
-      }
-      return;
+    if (_pendingTapResult != null) {
+      setState(() => _pendingTapResult = null);
     }
-
-    // Ignore center taps - those are for toggling chrome UI
-    final screenSize = MediaQuery.of(context).size;
-    if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
-      if (_pendingTapResult != null) {
-        setState(() => _pendingTapResult = null);
-      }
-      return;
-    }
-
-    // Detect word at tap position
-    final result = _ttsController.detectWordAtTap(
-      details,
-      modeController: _modeController,
-      context: context,
-    );
-
-    if (result == null) {
-      if (_pendingTapResult != null) {
-        setState(() => _pendingTapResult = null);
-      }
-      _lastWordTapResult = null;
-      _lastWordTapTime = null;
-      return;
-    }
-
-    final now = DateTime.now();
-    final isDoubleTap = _lastWordTapResult != null &&
-        _lastWordTapTime != null &&
-        now.difference(_lastWordTapTime!) < const Duration(milliseconds: 650) &&
-        _isSameTargetWord(_lastWordTapResult!, result);
-
-    if (isDoubleTap) {
-      _lastWordTapResult = null;
-      _lastWordTapTime = null;
-      setState(() {
-        _pendingTapResult = result;
-      });
-    } else {
-      // First tap on this word - record it and dismiss any previous overlay
-      _lastWordTapResult = result;
-      _lastWordTapTime = now;
-      if (_pendingTapResult != null) {
-        setState(() {
-          _pendingTapResult = null;
-        });
-      }
-    }
-  }
-
-  bool _isSameTargetWord(TapDetectionResult a, TapDetectionResult b) {
-    if (a.chapterIndex != b.chapterIndex) return false;
-    if (a.offset == b.offset) return true;
-    final dist = (a.tapPosition - b.tapPosition).distance;
-    if (dist < 48) return true;
-    return a.word.trim().toLowerCase() == b.word.trim().toLowerCase() && dist < 120;
   }
 
   /// Confirm the pending tap selection and start TTS.
@@ -381,8 +346,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     final result = _pendingTapResult;
     if (result == null) return;
 
-    _lastWordTapResult = null;
-    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -395,8 +358,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   /// Cancel the pending tap selection.
   void _cancelTapSelection() {
-    _lastWordTapResult = null;
-    _lastWordTapTime = null;
     setState(() {
       _pendingTapResult = null;
     });
@@ -514,6 +475,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
           }
         },
         child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
           onDoubleTapDown: _handleDoubleTapDown,
           onDoubleTap: _handleDoubleTap,
           child: SelectionArea(
