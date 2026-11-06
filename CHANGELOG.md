@@ -1,3 +1,13 @@
+## [1.2.1] - 2026-11-06
+
+### Documentation
+- Add 1-click Obtainium installation badge and update release asset links.
+
+### Maintenance
+- Configure Fastlane Android store metadata (title, descriptions, icon, changelog) for F-Droid and IzzyOnDroid.
+- Disable Google encrypted dependency metadata in release APK builds for FOSS compliance.
+- Add official F-Droid build recipe template.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added

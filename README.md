@@ -47,9 +47,9 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 
 | Architecture | Target Devices | Release Asset |
 | :--- | :--- | :--- |
-| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | [`ferrous-v1.2.0-arm64-v8a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.0/ferrous-v1.2.0-arm64-v8a.apk) |
-| **`armeabi-v7a`** | Legacy 32-bit Android devices | [`ferrous-v1.2.0-armeabi-v7a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.0/ferrous-v1.2.0-armeabi-v7a.apk) |
-| **`x86_64`** | Android emulators & ChromeOS | [`ferrous-v1.2.0-x86_64.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.0/ferrous-v1.2.0-x86_64.apk) |
+| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | [`ferrous-v1.2.1-arm64-v8a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-arm64-v8a.apk) |
+| **`armeabi-v7a`** | Legacy 32-bit Android devices | [`ferrous-v1.2.1-armeabi-v7a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-armeabi-v7a.apk) |
+| **`x86_64`** | Android emulators & ChromeOS | [`ferrous-v1.2.1-x86_64.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-x86_64.apk) |
 
 > [!TIP]
 > If you are unsure which build your phone requires, choose **`arm64-v8a`**, which works on virtually all modern Android devices.
