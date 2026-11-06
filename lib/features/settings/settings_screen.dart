@@ -91,8 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   context: context,
                   theme: theme,
                   icon: Icons.palette_outlined,
-                  title: 'Appearance',
-                  subtitle: 'Customize themes, dark mode, and fonts',
+                  title: 'Appearance & Dimensions',
+                  subtitle: 'Customize layouts, themes, dynamic dock, and typography',
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const AppearanceScreen()),

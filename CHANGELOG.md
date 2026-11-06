@@ -1,3 +1,13 @@
+## [1.3.0-alpha.3] - 2026-11-07
+
+### Added
+- 5 spatial Layout Dimensions (`AppDimension`): Modernist, Floating Island, Cyber Terminal, Athenaeum, and Compact Slate.
+- Adaptive navigation archetypes (`DimensionNavStyle`): floating capsule dock, top command HUD, classical bookmark ribbon, and docked frosted glass.
+- Specialized library card presentations (`DimensionCardStyle`): Magazine Bento showcase, Terminal telemetry rows with ASCII meters, embossed Index Spines, and high-density Compact rows.
+- Dynamic semantic icon pack resolver (`DimensionIcons`) matching Cupertino, ASCII Terminal, Classical Serif, Hairline, and Modern styles.
+- Hive-backed `DimensionController` for persistent spatial configuration.
+- Interactive Dimension selector cards with live preview in Appearance settings.
+
 ## [1.3.0-alpha.2] - 2026-11-07
 
 ### Added

@@ -4,20 +4,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:reader_app/core/models/app_dimension.dart';
+import 'package:reader_app/core/constants/dimension_tokens.dart';
+import 'package:reader_app/features/settings/dimension_controller.dart';
+import 'package:reader_app/features/library/widgets/dimension_book_views.dart';
 import 'package:reader_app/features/library/library_state.dart';
-import 'package:reader_app/features/reader/reader_screen.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/collections/collections_tab.dart';
 import 'package:reader_app/data/repositories/collection_repository.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
-import 'package:reader_app/core/widgets/delete_book_dialog.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/library/widgets/book_cover_shimmer.dart';
-import 'package:reader_app/features/reader/split_reader_screen.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:reader_app/core/models/book_format.dart';
 import 'package:reader_app/core/constants/app_constants.dart';
+import 'package:reader_app/features/library/widgets/book_view_items.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -62,6 +64,8 @@ class _LibraryViewState extends State<_LibraryView> {
     final state = context.watch<LibraryState>();
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    final dimensionState = context.watch<DimensionState>();
+    final dimensionConfig = dimensionState.config;
 
     // Sync search controller if cleared externally
     if (state.searchQuery.isEmpty && _searchController.text.isNotEmpty) {
@@ -69,6 +73,14 @@ class _LibraryViewState extends State<_LibraryView> {
     }
 
     final hasActiveSearch = _searchController.text.isNotEmpty || state.searchQuery.isNotEmpty;
+
+    final searchRadius = dimensionConfig.cardRadius <= 0
+        ? BorderRadius.zero
+        : BorderRadius.circular(dimensionConfig.cardRadius.clamp(4.0, 24.0));
+
+    final searchHint = dimensionConfig.isMonospace
+        ? '> search library_'
+        : (dimensionConfig.isSerif ? 'Search catalog...' : 'Search library...');
 
     return PopScope(
       canPop: !hasActiveSearch,
@@ -89,34 +101,51 @@ class _LibraryViewState extends State<_LibraryView> {
             height: 44,
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: searchRadius,
               border: Border.all(
-                color: theme.brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.05),
-                width: 1,
+                color: dimensionConfig.cardBorderWidth > 1
+                    ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                    : (theme.brightness == Brightness.dark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.05)),
+                width: dimensionConfig.cardBorderWidth > 1 ? 1.5 : 1,
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                Icon(CupertinoIcons.search, color: theme.colorScheme.primary, size: 18),
+                Icon(
+                  DimensionIcons.search(dimensionConfig.iconStyle),
+                  color: theme.colorScheme.primary,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search library...',
-                      hintStyle: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                        fontSize: 14,
-                      ),
+                      hintText: searchHint,
+                      hintStyle: dimensionConfig.isMonospace
+                          ? GoogleFonts.firaCode(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              fontSize: 13,
+                            )
+                          : TextStyle(
+                              fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              fontSize: 14,
+                            ),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
-                    style: const TextStyle(fontSize: 14),
+                    style: dimensionConfig.isMonospace
+                        ? GoogleFonts.firaCode(fontSize: 13)
+                        : TextStyle(
+                            fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                            fontSize: 14,
+                          ),
                     onChanged: (value) => controller.setSearchQuery(value),
                   ),
                 ),
@@ -138,14 +167,14 @@ class _LibraryViewState extends State<_LibraryView> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh_rounded),
+              icon: Icon(DimensionIcons.refresh(dimensionConfig.iconStyle)),
               onPressed: state.isLoading
                   ? null
                   : () => controller.rescanFolders(),
               tooltip: "Rescan Folders",
             ),
             IconButton(
-              icon: const Icon(Icons.create_new_folder_outlined),
+              icon: Icon(DimensionIcons.addFolder(dimensionConfig.iconStyle)),
               onPressed: state.isLoading
                   ? null
                   : () async {
@@ -167,22 +196,38 @@ class _LibraryViewState extends State<_LibraryView> {
                 padding: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderRadius: dimensionConfig.cardRadius <= 0
+                      ? BorderRadius.zero
+                      : BorderRadius.circular(AppRadius.sm),
                 ),
                 child: TabBar(
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicator: BoxDecoration(
                     color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(AppRadius.xs),
+                    borderRadius: dimensionConfig.cardRadius <= 0
+                        ? BorderRadius.zero
+                        : BorderRadius.circular(AppRadius.xs),
                   ),
                   labelColor: theme.colorScheme.onPrimary,
                   unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  labelStyle: dimensionConfig.isMonospace
+                      ? GoogleFonts.firaCode(fontWeight: FontWeight.bold, fontSize: 12)
+                      : TextStyle(
+                          fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                  unselectedLabelStyle: dimensionConfig.isMonospace
+                      ? GoogleFonts.firaCode(fontWeight: FontWeight.w500, fontSize: 12)
+                      : TextStyle(
+                          fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                        ),
                   dividerColor: Colors.transparent,
-                  tabs: const [
-                    Tab(text: "Books"),
-                    Tab(text: "Collections"),
+                  tabs: [
+                    Tab(text: dimensionConfig.isMonospace ? "[BOOKS]" : "Books"),
+                    Tab(text: dimensionConfig.isMonospace ? "[COLLECTIONS]" : "Collections"),
                   ],
                 ),
               ),
@@ -202,6 +247,7 @@ class _LibraryViewState extends State<_LibraryView> {
 
   Widget _buildBooksTab(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
+    final dimensionConfig = context.watch<DimensionState>().config;
     if (state.isLoading) {
       return _buildLoadingSkeleton(context, state);
     }
@@ -317,7 +363,7 @@ class _LibraryViewState extends State<_LibraryView> {
               ),
             ),
           ),
-        if (continueReadingBooks.isNotEmpty)
+        if (continueReadingBooks.isNotEmpty && dimensionConfig.cardStyle != DimensionCardStyle.bentoShowcase)
           SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,12 +371,21 @@ class _LibraryViewState extends State<_LibraryView> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
                   child: Text(
-                    "Continue Reading",
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                      letterSpacing: -0.2,
-                    ),
+                    dimensionConfig.isMonospace
+                        ? "> BUFFER // ACTIVE_READS"
+                        : (dimensionConfig.isSerif ? "Current Folios" : "Continue Reading"),
+                    style: dimensionConfig.isMonospace
+                        ? GoogleFonts.firaCode(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: theme.colorScheme.primary,
+                          )
+                        : theme.textTheme.titleMedium?.copyWith(
+                            fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            letterSpacing: -0.2,
+                          ),
                   ),
                 ),
                 SizedBox(
@@ -345,7 +400,7 @@ class _LibraryViewState extends State<_LibraryView> {
                         width: 156,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: _BookCard(book: book),
+                          child: BookLargeCard(book: book),
                         ),
                       );
                     },
@@ -358,18 +413,7 @@ class _LibraryViewState extends State<_LibraryView> {
               ],
             ),
           ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
-          sliver: SliverMasonryGrid.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childCount: displayedBooks.length,
-            itemBuilder: (context, index) {
-              return _BookCard(book: displayedBooks[index]);
-            },
-          ),
-        ),
+        _buildBooksSliver(context, state, controller, displayedBooks),
       ],
     );
   }
@@ -551,107 +595,147 @@ class _LibraryViewState extends State<_LibraryView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              // Sort Trigger
-              InkWell(
-                onTap: () => _showSortBottomSheet(context, state, controller),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerLow,
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Sort Trigger
+                  InkWell(
+                    onTap: () => _showSortBottomSheet(context, state, controller),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.sort,
-                        size: 16,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _getSortLabel(state.sortBy),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        state.sortOrder == SortOrder.ascending 
-                            ? Icons.arrow_upward 
-                            : Icons.arrow_downward,
-                        size: 12,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Filter Trigger (Matches Photo Modal launcher)
-              InkWell(
-                onTap: () => _showFilterDialog(context, state, controller),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: hasActiveFilters 
-                        ? theme.colorScheme.primaryContainer 
-                        : theme.colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: hasActiveFilters 
-                          ? theme.colorScheme.primary 
-                          : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.filter_alt,
-                        size: 16,
-                        color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Filter',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: hasActiveFilters ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      if (hasActiveFilters) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.sort,
+                            size: 16,
                             color: theme.colorScheme.primary,
-                            shape: BoxShape.circle,
                           ),
-                          child: Text(
-                            '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: theme.colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 6),
+                          Text(
+                            _getSortLabel(state.sortBy),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
                             ),
                           ),
-                        ),
-                      ]
-                    ],
+                          const SizedBox(width: 4),
+                          Icon(
+                            state.sortOrder == SortOrder.ascending 
+                                ? Icons.arrow_upward 
+                                : Icons.arrow_downward,
+                            size: 12,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  // Filter Trigger (Matches Photo Modal launcher)
+                  InkWell(
+                    onTap: () => _showFilterDialog(context, state, controller),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: hasActiveFilters 
+                            ? theme.colorScheme.primaryContainer 
+                            : theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: hasActiveFilters 
+                              ? theme.colorScheme.primary 
+                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.filter_alt,
+                            size: 16,
+                            color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Filter',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: hasActiveFilters ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          if (hasActiveFilters) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: theme.colorScheme.onPrimary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ]
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // View Trigger
+                  InkWell(
+                    onTap: () => _showViewModeBottomSheet(context, state, controller),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            state.viewMode.icon,
+                            size: 16,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'View',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
+          const SizedBox(width: 8),
           Text(
             '${state.filteredBooks.length} books',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -1030,318 +1114,265 @@ class _LibraryViewState extends State<_LibraryView> {
         return Icons.history;
     }
   }
-}
 
-class _BookCard extends StatelessWidget {
-  final Book book;
-
-  const _BookCard({required this.book});
-
-  @override
-  Widget build(BuildContext context) {
-    final hasPendingSplit = context.select<LibraryState, bool>((s) => s.splitPendingBook != null);
-    final isSplitPendingBook = context.select<LibraryState, bool>((s) => s.splitPendingBook?.id == book.id);
-    final controller = context.read<LibraryController>();
+  void _showViewModeBottomSheet(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          if (hasPendingSplit && !isSplitPendingBook) {
-            final leftBook = context.read<LibraryState>().splitPendingBook!;
-            controller.clearSplitPending();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => SplitReaderScreen(
-                  leftBook: leftBook,
-                  rightBook: book,
-                ),
-              ),
-            );
-          } else {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => ReaderScreen(book: book),
-              ),
-            ).then((_) {
-               if (!context.mounted) return;
-               context.read<LibraryController>().loadBooks();
-            });
-          }
-        },
-        onLongPress: () {
-          HapticFeedback.lightImpact();
-          _showBookOptionsMenu(context, controller);
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-                  child: BookCoverCard(book: book),
-                ),
-                if (book.progress > 0)
-                  Container(
-                    height: 4,
-                    width: double.infinity,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: book.progress.clamp(0.0, 1.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(2)),
-                            gradient: LinearGradient(
-                              colors: [
-                                theme.colorScheme.primary,
-                                theme.colorScheme.secondary,
-                              ],
-                            ),
-                          ),
-                        ),
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      elevation: 4,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'View',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
                       ),
                     ),
-                  ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          book.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.1,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _showBookOptionsMenu(context, controller);
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(6.0),
-                          child: Icon(
-                            Icons.more_vert,
-                            size: 18,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    book.author,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      fontSize: 11,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: BookViewMode.values.map((mode) {
+                    final isSelected = state.viewMode == mode;
+                    return ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
+                          color: isSelected 
+                              ? theme.colorScheme.primaryContainer 
+                              : theme.colorScheme.surfaceContainer,
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text(
-                          book.format.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
+                        child: Icon(
+                          mode.icon,
+                          size: 18,
+                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      if (book.progress > 0)
-                        Text(
-                          "${(book.progress * 100).toInt()}% read",
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
+                      title: Text(
+                        mode.label,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
                         ),
-                    ],
-                  ),
-                ],
+                      ),
+                      trailing: isSelected 
+                          ? Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 20) 
+                          : null,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        controller.setViewMode(mode);
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  void _showBookOptionsMenu(BuildContext context, LibraryController controller) {
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (BuildContext ctx) => CupertinoActionSheet(
-        title: Text(
-          book.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        message: book.author.isNotEmpty ? Text(book.author) : null,
-        actions: <CupertinoActionSheetAction>[
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(ctx);
-              controller.setSplitPendingBook(book);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Tap another book to open in split view')),
-              );
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.vertical_split_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Open in Split View'),
-              ],
-            ),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _showAddToCollectionDialog(context);
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.bookmark_add_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Add to Collection'),
-              ],
-            ),
-          ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () {
-              Navigator.pop(ctx);
-              _confirmDeleteBook(context, controller);
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.delete_outline, size: 20),
-                SizedBox(width: 8),
-                Text('Delete Book'),
-              ],
-            ),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
-        ),
-      ),
-    );
-  }
+  Widget _buildBooksSliver(BuildContext context, LibraryState state, LibraryController controller, List<Book> displayedBooks) {
+    final dimensionState = context.watch<DimensionState>();
+    final config = dimensionState.config;
 
-  Future<void> _confirmDeleteBook(BuildContext context, LibraryController controller) async {
-    final result = await showDeleteBookDialog(
-      context: context,
-      book: book,
-    );
-
-    if (result != null && result.confirmed && context.mounted) {
-      await controller.deleteBook(book.id, deleteFile: result.deletePhysicalFile);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Deleted "${book.title}" from library'),
-            action: SnackBarAction(
-              label: 'Dismiss',
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
+    // Specialized dimension presentation when in default largeIcons mode
+    if (state.viewMode == BookViewMode.largeIcons) {
+      if (config.cardStyle == DimensionCardStyle.terminalTelemetry) {
+        return DimensionBookView(
+          books: displayedBooks,
+          config: config,
+          splitPendingBook: state.splitPendingBook,
+          onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        );
+      }
+      if (config.cardStyle == DimensionCardStyle.bentoShowcase) {
+        return DimensionBookView(
+          books: displayedBooks,
+          config: config,
+          splitPendingBook: state.splitPendingBook,
+          onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        );
+      }
+      if (config.cardStyle == DimensionCardStyle.indexSpines) {
+        return DimensionBookView(
+          books: displayedBooks,
+          config: config,
+          splitPendingBook: state.splitPendingBook,
+          onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        );
+      }
+      if (config.cardStyle == DimensionCardStyle.compactList) {
+        return DimensionBookView(
+          books: displayedBooks,
+          config: config,
+          splitPendingBook: state.splitPendingBook,
+          onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
         );
       }
     }
-  }
-  
-  Future<void> _showAddToCollectionDialog(BuildContext context) async {
-    final collectionRepo = context.read<CollectionRepository>();
-    final collections = collectionRepo.getAllCollections();
-    final theme = Theme.of(context);
-    
-    if (collections.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No collections created yet')),
-      );
-      return;
-    }
-    
-    await showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add to Collection'),
-        children: collections.map((collection) {
-          final isInCollection = collection.bookIds.contains(book.id);
-          return SimpleDialogOption(
-            onPressed: () async {
-              if (isInCollection) {
-                Navigator.pop(context);
-                return;
-              }
-              await collectionRepo.addBookToCollection(collection.id, book.id);
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Added to ${collection.name}')),
-                );
-              }
+
+    switch (state.viewMode) {
+      case BookViewMode.extraLargeIcons:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 380,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              mainAxisExtent: 395,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookExtraLargeCard(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+      case BookViewMode.largeIcons:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
+          sliver: SliverMasonryGrid.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childCount: displayedBooks.length,
+            itemBuilder: (context, index) {
+              return BookLargeCard(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              );
             },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isInCollection ? Icons.check_box : Icons.check_box_outline_blank,
-                    color: isInCollection ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+          ),
+        );
+      case BookViewMode.mediumIcons:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 140,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              mainAxisExtent: 225,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookMediumCard(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+      case BookViewMode.smallIcons:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(10, 16, 10, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 95,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              mainAxisExtent: 125,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookSmallCard(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+      case BookViewMode.list:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(0, 10, 0, 28),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookListItem(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+      case BookViewMode.details:
+        return SliverMainAxisGroup(
+          slivers: [
+            const SliverToBoxAdapter(child: BookDetailsHeader()),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(0, 4, 0, 28),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => BookDetailsItem(
+                    key: ValueKey(displayedBooks[index].id),
+                    book: displayedBooks[index],
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    collection.name,
-                    style: TextStyle(
-                      fontWeight: isInCollection ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                ],
+                  childCount: displayedBooks.length,
+                ),
               ),
             ),
-          );
-        }).toList(),
-      ),
-    );
+          ],
+        );
+      case BookViewMode.tiles:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 360,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              mainAxisExtent: 80,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookTileItem(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+      case BookViewMode.content:
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(0, 10, 0, 28),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => BookContentItem(
+                key: ValueKey(displayedBooks[index].id),
+                book: displayedBooks[index],
+              ),
+              childCount: displayedBooks.length,
+            ),
+          ),
+        );
+    }
   }
 }

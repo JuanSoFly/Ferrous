@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
@@ -8,6 +10,59 @@ import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
 import 'package:state_notifier/state_notifier.dart';
 import 'package:uuid/uuid.dart';
+
+enum BookViewMode {
+  extraLargeIcons,
+  largeIcons,
+  mediumIcons,
+  smallIcons,
+  list,
+  details,
+  tiles,
+  content;
+
+  String get label {
+    switch (this) {
+      case BookViewMode.extraLargeIcons:
+        return 'Extra large icons';
+      case BookViewMode.largeIcons:
+        return 'Large icons';
+      case BookViewMode.mediumIcons:
+        return 'Medium icons';
+      case BookViewMode.smallIcons:
+        return 'Small icons';
+      case BookViewMode.list:
+        return 'List';
+      case BookViewMode.details:
+        return 'Details';
+      case BookViewMode.tiles:
+        return 'Tiles';
+      case BookViewMode.content:
+        return 'Content';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case BookViewMode.extraLargeIcons:
+        return Icons.photo_size_select_actual_outlined;
+      case BookViewMode.largeIcons:
+        return Icons.grid_view_rounded;
+      case BookViewMode.mediumIcons:
+        return Icons.grid_on_rounded;
+      case BookViewMode.smallIcons:
+        return Icons.view_compact_rounded;
+      case BookViewMode.list:
+        return Icons.view_list_rounded;
+      case BookViewMode.details:
+        return Icons.table_rows_outlined;
+      case BookViewMode.tiles:
+        return Icons.view_quilt_outlined;
+      case BookViewMode.content:
+        return Icons.view_stream_rounded;
+    }
+  }
+}
 
 enum SortType {
   name,
@@ -36,6 +91,7 @@ class LibraryState {
   final SortType sortBy;
   final SortOrder sortOrder;
   final Set<String> selectedFormats;
+  final BookViewMode viewMode;
 
   final bool filterNoAuthor;
   final bool filterNoCollection;
@@ -59,6 +115,7 @@ class LibraryState {
     this.sortBy = SortType.dateRead,
     this.sortOrder = SortOrder.descending,
     this.selectedFormats = const {},
+    this.viewMode = BookViewMode.largeIcons,
     this.filterNoAuthor = false,
     this.filterNoCollection = false,
     this.filterUnread = false,
@@ -83,6 +140,7 @@ class LibraryState {
     SortType? sortBy,
     SortOrder? sortOrder,
     Set<String>? selectedFormats,
+    BookViewMode? viewMode,
     bool? filterNoAuthor,
     bool? filterNoCollection,
     bool? filterUnread,
@@ -93,6 +151,7 @@ class LibraryState {
     final newSortBy = sortBy ?? this.sortBy;
     final newSortOrder = sortOrder ?? this.sortOrder;
     final newSelectedFormats = selectedFormats ?? this.selectedFormats;
+    final newViewMode = viewMode ?? this.viewMode;
     final newFilterNoAuthor = filterNoAuthor ?? this.filterNoAuthor;
     final newFilterNoCollection = filterNoCollection ?? this.filterNoCollection;
     final newFilterUnread = filterUnread ?? this.filterUnread;
@@ -131,6 +190,7 @@ class LibraryState {
       sortBy: newSortBy,
       sortOrder: newSortOrder,
       selectedFormats: newSelectedFormats,
+      viewMode: newViewMode,
       filterNoAuthor: newFilterNoAuthor,
       filterNoCollection: newFilterNoCollection,
       filterUnread: newFilterUnread,
@@ -231,7 +291,29 @@ class LibraryController extends StateNotifier<LibraryState> {
         super(const LibraryState()) {
     _bookRepository.addListener(_onBookRepositoryChanged);
     loadBooks();
+    unawaited(_loadSavedViewMode());
     unawaited(_maybeGenerateMissingCovers());
+  }
+
+  Future<void> _loadSavedViewMode() async {
+    try {
+      final box = await Hive.openBox('settings');
+      final savedModeName = box.get('book_view_mode') as String?;
+      if (savedModeName != null) {
+        final mode = BookViewMode.values.byName(savedModeName);
+        state = state.copyWith(viewMode: mode);
+      }
+    } catch (_) {
+      // Graceful fallback to default largeIcons
+    }
+  }
+
+  Future<void> setViewMode(BookViewMode mode) async {
+    state = state.copyWith(viewMode: mode);
+    try {
+      final box = await Hive.openBox('settings');
+      await box.put('book_view_mode', mode.name);
+    } catch (_) {}
   }
 
   void _onBookRepositoryChanged() {

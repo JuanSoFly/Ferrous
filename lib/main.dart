@@ -15,6 +15,7 @@ import 'package:reader_app/data/services/saf_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
+import 'package:reader_app/features/settings/dimension_controller.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
@@ -143,8 +144,16 @@ class ReaderApp extends StatelessWidget {
         ChangeNotifierProvider<AnnotationRepository>.value(value: annotationRepository),
         ChangeNotifierProvider<CollectionRepository>.value(value: collectionRepository),
         ChangeNotifierProvider<LibraryLocationRepository>.value(value: libraryLocationRepository),
+        StateNotifierProvider<DimensionController, DimensionState>(
+          create: (_) => DimensionController(),
+        ),
         StateNotifierProvider<ThemeController, AppTheme>(
-          create: (_) => ThemeController(),
+          create: (context) {
+            final dimensionController = context.read<DimensionController>();
+            return ThemeController(
+              onThemeChanged: (theme) => dimensionController.onThemeChanged(theme),
+            );
+          },
         ),
         ChangeNotifierProvider<ReaderThemeRepository>.value(value: readerThemeRepository),
       ],

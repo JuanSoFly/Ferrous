@@ -6,7 +6,9 @@ class ThemeController extends StateNotifier<AppTheme> {
   static const String _boxName = 'settings';
   static const String _keyTheme = 'app_theme';
 
-  ThemeController() : super(AppTheme.ferrous) {
+  void Function(AppTheme theme)? onThemeChanged;
+
+  ThemeController({this.onThemeChanged}) : super(AppTheme.ferrous) {
     _loadTheme();
   }
 
@@ -27,5 +29,6 @@ class ThemeController extends StateNotifier<AppTheme> {
     state = theme;
     final box = await Hive.openBox(_boxName);
     await box.put(_keyTheme, theme.name);
+    onThemeChanged?.call(theme);
   }
 }
