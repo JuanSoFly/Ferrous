@@ -20,6 +20,9 @@
   <a href="https://github.com/JuanSoFly/Ferrous/releases/latest">
     <img src="https://img.shields.io/badge/Download_APK-Latest_Release-8C1D18?style=for-the-badge&logo=android&logoColor=white" alt="Download Latest Release" height="38" />
   </a>
+  <a href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/JuanSoFly/Ferrous">
+    <img src="https://img.shields.io/badge/Obtainium-Install-blue?style=for-the-badge&logo=android&logoColor=white" alt="Get it on Obtainium" height="38" />
+  </a>
 </p>
 
 <p align="center">
@@ -40,7 +43,7 @@
 
 ## Download
 
-Precompiled Android packages (APKs) are available on the [GitHub Releases](https://github.com/JuanSoFly/Ferrous/releases/latest) page:
+Precompiled Android packages (APKs) are available on the [GitHub Releases](https://github.com/JuanSoFly/Ferrous/releases/latest) page, or automatically via [Obtainium](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/JuanSoFly/Ferrous):
 
 | Architecture | Target Devices | Release Asset |
 | :--- | :--- | :--- |

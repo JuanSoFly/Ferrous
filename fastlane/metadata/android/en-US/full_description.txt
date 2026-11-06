@@ -1,0 +1,15 @@
+Ferrous is an open-source, offline-first document and book reader for Android, engineered for speed, low memory footprint, and fine typography control.
+
+By pairing a fluid Flutter front-end with an asynchronous Rust core via flutter_rust_bridge (v2), Ferrous offloads computationally intensive workloads—such as book indexing, EPUB/PDF parsing, and text layout—to background native threads, keeping animations and navigation smooth at 120Hz.
+
+Key Features:
+
+• Multi-Format Support: Seamlessly read EPUB, PDF, CBZ/CBR comic archives, and plain text documents.
+• High-Performance Engine: Asynchronous Rust backend provides instant indexing and search with minimal battery and memory overhead.
+• Realistic Page Turn: Apple Books-style interactive page curl animation with customizable gestures and high-refresh-rate display support.
+• Full Typography Control: Adjust font family, size, line height, margins, letter spacing, and first-line paragraph indentation.
+• Theming & Textures: Multiple reading themes including light, sepia, OLED true black, and paper textures (parchment, paper grain).
+• Annotations & Highlights: Select text, add colored highlights, and record notes with a dedicated annotations manager.
+• Text-to-Speech (TTS): Built-in voice reading with sentence tracking and customizable speech rate.
+• Storage Access Framework (SAF): Full Android SAF integration to seamlessly read from external storage, SD cards, and custom book folders.
+• Complete Privacy: 100% offline. Zero ads, zero tracking, zero telemetry, and no network permissions required for reading.

@@ -1,0 +1,1 @@
+Fast, lightweight offline document and book reader built with Flutter and Rust.

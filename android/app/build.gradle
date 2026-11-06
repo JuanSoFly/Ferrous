@@ -35,6 +35,12 @@ android {
         versionName = flutter.versionName
     }
 
+    dependenciesInfo {
+        // Disables encrypted Google Play dependency metadata block required by F-Droid / IzzyOnDroid
+        includeInApk = false
+        includeInBundle = false
+    }
+
     signingConfigs {
         release {
             if (keystorePropertiesFile.exists() && keystoreProperties['storeFile'] != null) {

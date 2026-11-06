@@ -1,0 +1,10 @@
+- Manual "Check for Updates" tile in Settings to check for new releases on demand.
+- Realistic Apple Books style page curl animation and interactive gesture navigation.
+- Customizable book background textures (parchment, paper grain) and reader themes.
+- Custom library storage locations management with automated folder scanning.
+- Native HTML and EPUB table rendering powered by flutter_html_table and flutter_layout_grid.
+- First-line paragraph indentation injection across EPUB and MOBI content.
+- Annotation details bottom sheet with highlight management and notes editing.
+- Delete book confirmation dialog with optional physical storage cleanup.
+- Refactored page curl rendering with cached repaints for smooth 120Hz performance.
+- Improved reader TTS controllers and sentence boundary tracking.
