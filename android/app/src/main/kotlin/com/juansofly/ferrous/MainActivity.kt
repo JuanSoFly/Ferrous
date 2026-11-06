@@ -13,6 +13,8 @@ class MainActivity : FlutterActivity() {
     private lateinit var safHandler: SafHandler
 
     companion object {
+        const val APP_INFO_CHANNEL = "com.juansofly.ferrous/app_info"
+
         init {
             try {
                 System.loadLibrary("pdfium")
@@ -59,6 +61,15 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SafHandler.CHANNEL)
             .setMethodCallHandler { call, result ->
                 safHandler.handleMethodCall(call, result)
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_INFO_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "getSupportedAbis") {
+                    result.success(Build.SUPPORTED_ABIS.toList())
+                } else {
+                    result.notImplemented()
+                }
             }
     }
 
