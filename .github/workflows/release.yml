@@ -139,6 +139,16 @@ jobs:
           chmod +x scripts/setup-pdfium-android.sh
           PDFIUM_ABIS="arm64-v8a,armeabi-v7a,x86_64" bash scripts/setup-pdfium-android.sh
 
+      # ===== Optional: Override Keystore from Repository Secret =====
+      - name: Setup Keystore from Secret if configured
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Overriding release keystore with secret"
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          fi
+
       # ===== Build APKs =====
       # Note: Cargokit (flutter_rust_bridge) handles Rust compilation automatically
       - name: Build APKs (split per ABI)

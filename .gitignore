@@ -47,5 +47,8 @@ test_driver
 AGENTS.md
 test
 
+key.properties
+**/*.keystore
+**/*.jks
 .agents
 skills-lock.json
