@@ -28,6 +28,8 @@ import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/services/tts_service.dart';
 import 'package:reader_app/features/reader/controllers/html_tts_controller.dart';
 import 'package:reader_app/features/reader/tts_controls_sheet.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:reader_app/core/constants/e_ink_tokens.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'package:reader_app/core/constants/book_textures.dart';
@@ -487,10 +489,17 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
           expand: false,
           builder: (context, sheetScrollController) {
             final theme = Theme.of(context);
+            AppTheme? currentTheme;
+            try {
+              currentTheme = context.watch<AppTheme?>();
+            } catch (_) {}
+            final isEInk = currentTheme == AppTheme.eInk;
+
             return Container(
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(isEInk ? 2 : 16)),
+                border: isEInk ? const Border(top: BorderSide(color: Color(0xFF1A1A18), width: 1.5)) : null,
               ),
               child: Column(
                 children: [
@@ -498,26 +507,37 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                     child: Row(
                       children: [
-                        const Icon(Icons.list, size: 24),
+                        Icon(Icons.list, size: 24, color: isEInk ? const Color(0xFF1A1A18) : null),
                         const SizedBox(width: 8),
                         Text(
                           'Table of Contents',
-                          style: theme.textTheme.titleLarge,
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: const Color(0xFF1A1A18),
+                                )
+                              : theme.textTheme.titleLarge,
                         ),
                         const Spacer(),
                         IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: Icon(Icons.close, color: isEInk ? const Color(0xFF1A1A18) : null),
                           tooltip: 'Close',
                           onPressed: () => Navigator.pop(sheetContext),
                         ),
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  Divider(height: 1, thickness: 1, color: isEInk ? const Color(0xFFC2BEB4) : null),
                   Expanded(
-                    child: ListView.builder(
+                    child: ListView.separated(
                       controller: sheetScrollController,
                       itemCount: _tocEntries.length,
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: isEInk ? const Color(0xFFC2BEB4) : theme.dividerColor.withValues(alpha: 0.3),
+                      ),
                       itemBuilder: (context, index) {
                         final entry = _tocEntries[index];
                         final indent = ((entry.level - 1).clamp(0, 4)) * 16.0;
@@ -530,17 +550,28 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                           ),
                           title: Text(
                             entry.title,
-                            style: TextStyle(
-                              fontWeight: isH1 ? FontWeight.bold : FontWeight.normal,
-                              fontSize: isH1 ? 15.0 : 14.0,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontWeight: isH1 ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: isH1 ? 15.0 : 14.0,
+                                    color: const Color(0xFF1A1A18),
+                                  )
+                                : TextStyle(
+                                    fontWeight: isH1 ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: isH1 ? 15.0 : 14.0,
+                                  ),
                           ),
                           trailing: entry.estimatedFraction > 0.0
                               ? Text(
                                   '${(entry.estimatedFraction * 100).toStringAsFixed(0)}%',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: isEInk
+                                      ? const TextStyle(
+                                          color: Color(0xFF3D3C38),
+                                          fontSize: 12,
+                                        )
+                                      : theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
                                 )
                               : null,
                           onTap: () {
@@ -883,11 +914,20 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                   builder: (ctx) {
                     final text = ctx.node.text ?? '';
                     final id = ctx.attributes['data-id'] ?? '';
+                    AppTheme? currentTheme;
+                    try {
+                      currentTheme = context.watch<AppTheme?>();
+                    } catch (_) {}
+                    final isEInk = currentTheme == AppTheme.eInk;
                     final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
-                    final color = Color(colorVal);
+                    final color = isEInk ? const Color(0xFFD5D0C5) : Color(colorVal);
                     final style = ctx.style?.generateTextStyle() ?? const TextStyle();
                     final highlightStyle = style.copyWith(
-                      backgroundColor: color.withValues(alpha: 0.35),
+                      backgroundColor: isEInk ? const Color(0xFFD5D0C5) : color.withValues(alpha: 0.35),
+                      color: isEInk ? const Color(0xFF1A1A18) : null,
+                      decoration: isEInk ? TextDecoration.underline : null,
+                      decorationColor: isEInk ? const Color(0xFF1A1A18) : null,
+                      decorationThickness: isEInk ? 1.5 : null,
                     );
 
                     void handleTap() {
@@ -918,10 +958,18 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                 ),
               ];
 
+            AppTheme? currentTheme;
+            try {
+              currentTheme = context.watch<AppTheme?>();
+            } catch (_) {}
+            final isEInk = currentTheme == AppTheme.eInk;
+
             final textureInfo = BookTextures.getById(themeConfig.paperTexture);
-            final effectiveTextColor = themeConfig.paperTexture != BookTextures.none
-                ? textureInfo.textColor
-                : Theme.of(context).textTheme.bodyLarge?.color;
+            final effectiveTextColor = isEInk
+                ? const Color(0xFF1A1A18)
+                : (themeConfig.paperTexture != BookTextures.none
+                    ? textureInfo.textColor
+                    : Theme.of(context).textTheme.bodyLarge?.color);
 
             Widget buildHtmlWidget(String displayContent) {
               return Padding(
@@ -948,20 +996,26 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
                       color: effectiveTextColor,
+                      textShadow: isEInk ? const [EInkTokens.inkBleed] : null,
                       textAlign: _parseTextAlign(themeConfig.textAlign),
                       letterSpacing: themeConfig.wordSpacing,
                       padding: HtmlPaddings.zero,
                       margin: Margins.zero,
                     ),
                     "a": Style(
-                      color: Theme.of(context).colorScheme.primary,
-                      textDecoration: TextDecoration.none,
+                      color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
+                      textDecoration: TextDecoration.underline,
+                      textDecorationColor: isEInk ? const Color(0xFF1A1A18) : null,
+                      textDecorationThickness: isEInk ? 1.0 : null,
                     ),
                     "tts-highlight": Style(
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.3),
+                      backgroundColor: isEInk
+                          ? const Color(0xFFD5D0C5)
+                          : Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.3),
+                      color: isEInk ? const Color(0xFF1A1A18) : null,
                     ),
                     "p": Style(
                       margin: Margins.only(
@@ -970,6 +1024,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       ),
                       textAlign: _parseTextAlign(themeConfig.textAlign),
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                     ),
                     "div": Style(
                       margin: Margins.only(
@@ -978,6 +1033,11 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       ),
                       textAlign: _parseTextAlign(themeConfig.textAlign),
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
+                    ),
+                    "span": Style(
+                      color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                     ),
                     "img": Style(
                       width: Width(100, Unit.percent),
@@ -989,6 +1049,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(top: 24, bottom: 12),
                     ),
                     "h2": Style(
@@ -997,6 +1058,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(top: 20, bottom: 10),
                     ),
                     "h3": Style(
@@ -1005,6 +1067,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(top: 18, bottom: 8),
                     ),
                     "h4": Style(
@@ -1013,6 +1076,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
                       color: effectiveTextColor,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(top: 16, bottom: 8),
                     ),
                     "ul": Style(
@@ -1028,49 +1092,53 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(bottom: 6),
                     ),
                     "table": Style(
                       width: Width(100, Unit.percent),
                       margin: Margins.symmetric(vertical: 14.0),
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 1.0),
+                      border: Border.all(color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant, width: 1.0),
                     ),
                     "th": Style(
                       padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 6.0),
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainerHigh,
                       fontWeight: FontWeight.bold,
                       fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
                       lineHeight: LineHeight(1.25),
                       color: effectiveTextColor,
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
+                      border: Border.all(color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant, width: 0.5),
                     ),
                     "td": Style(
                       padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 5.0),
                       fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
                       lineHeight: LineHeight(1.25),
                       color: effectiveTextColor,
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.5),
+                      border: Border.all(color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant, width: 0.5),
                     ),
                     "blockquote": Style(
                       margin: Margins.symmetric(horizontal: 16, vertical: 8),
                       padding: HtmlPaddings.all(12),
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
-                      border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 4)),
+                      color: effectiveTextColor,
+                      backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainer,
+                      border: Border(left: BorderSide(color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary, width: isEInk ? 3 : 4)),
                     ),
                     "hr": Style(
                       margin: Margins.symmetric(vertical: 24),
                       height: Height(1),
-                      backgroundColor: Theme.of(context).colorScheme.outlineVariant,
+                      backgroundColor: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
                     ),
                     "pre": Style(
                       fontFamily: 'JetBrains Mono',
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                      backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainer,
+                      color: effectiveTextColor,
                       padding: HtmlPaddings.all(8),
                     ),
                     "code": Style(
                       fontFamily: 'JetBrains Mono',
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                      backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainer,
+                      color: effectiveTextColor,
                       padding: HtmlPaddings.all(4),
                     ),
                     ".list-item": Style(
@@ -1078,7 +1146,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
                       margin: Margins.only(bottom: 8),
                     ),
                     ".choice-item": Style(
@@ -1086,7 +1154,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
                       margin: Margins.only(bottom: 6),
                     ),
                     ".toc-entry": Style(
@@ -1094,7 +1162,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
                       margin: Margins.only(bottom: 6),
                     ),
                     ".toc-heading": Style(
@@ -1102,7 +1170,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
                       margin: Margins.only(top: 20, bottom: 12),
                     ),
                   },
@@ -1249,54 +1317,74 @@ class _TtsHighlightSpan extends StatelessWidget {
 
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     BoxDecoration decoration;
     TextStyle highlightedTextStyle;
     EdgeInsets padding;
 
-    switch (highlightStyle) {
-      case TtsHighlightStyle.softPill:
-        decoration = BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(4),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-        break;
+    if (isEInk) {
+      decoration = BoxDecoration(
+        color: const Color(0xFFD5D0C5),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+      );
+      highlightedTextStyle = textStyle.copyWith(
+        color: const Color(0xFF1A1A18),
+        fontWeight: FontWeight.w600,
+        decoration: TextDecoration.underline,
+        decorationColor: const Color(0xFF1A1A18),
+      );
+      padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5);
+    } else {
+      switch (highlightStyle) {
+        case TtsHighlightStyle.softPill:
+          decoration = BoxDecoration(
+            color: primaryColor.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(4),
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+          break;
 
-      case TtsHighlightStyle.underline:
-        decoration = BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: primaryColor,
-              width: 2.5,
+        case TtsHighlightStyle.underline:
+          decoration = BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: primaryColor,
+                width: 2.5,
+              ),
             ),
-          ),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
-        break;
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
+          break;
 
-      case TtsHighlightStyle.classicClean:
-        decoration = BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: primaryColor.withValues(alpha: 0.4),
-            width: 1.0,
-          ),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-        break;
+        case TtsHighlightStyle.classicClean:
+          decoration = BoxDecoration(
+            color: primaryColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.4),
+              width: 1.0,
+            ),
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+          break;
+      }
     }
 
     return Container(

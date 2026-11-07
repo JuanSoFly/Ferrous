@@ -18,6 +18,8 @@ import 'package:reader_app/features/reader/controllers/epub_chapter_controller.d
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:reader_app/core/constants/e_ink_tokens.dart';
 
 class EpubContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -177,9 +179,17 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     }
 
     final textureInfo = BookTextures.getById(themeConfig.paperTexture);
-    final effectiveTextColor = themeConfig.paperTexture != BookTextures.none
-        ? textureInfo.textColor
-        : null;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
+    final effectiveTextColor = isEInk
+        ? const Color(0xFF1A1A18)
+        : (themeConfig.paperTexture != BookTextures.none
+            ? textureInfo.textColor
+            : null);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
@@ -197,25 +207,49 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             textAlign: parseTextAlign(themeConfig.textAlign),
             letterSpacing: themeConfig.wordSpacing,
             color: effectiveTextColor,
+            textShadow: isEInk ? const [EInkTokens.inkBleed] : null,
             padding: HtmlPaddings.zero,
             margin: Margins.zero,
           ),
+          "a": Style(
+            color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
+            textDecoration: TextDecoration.underline,
+            textDecorationColor: isEInk ? const Color(0xFF1A1A18) : null,
+            textDecorationThickness: isEInk ? 1.0 : null,
+          ),
           "tts-highlight": Style(
-            backgroundColor: Theme.of(context)
-                .colorScheme
-                .primary
-                .withValues(alpha: 0.3),
+            backgroundColor: isEInk
+                ? const Color(0xFFD5D0C5)
+                : Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.3),
+            color: isEInk ? const Color(0xFF1A1A18) : null,
           ),
           "p": Style(
             margin: Margins.only(bottom: themeConfig.paragraphSpacing),
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
           ),
           "div": Style(
             margin: Margins.only(bottom: themeConfig.paragraphSpacing),
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
           ),
+          "span": Style(
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h1": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h2": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h3": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h4": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h5": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h6": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "blockquote": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "img": Style(
             width: Width(100, Unit.percent),
             margin: Margins.only(bottom: 24.0),
@@ -224,19 +258,19 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             width: Width(100, Unit.percent),
             margin: Margins.symmetric(vertical: 14.0),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
+              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
               width: 1.0,
             ),
           ),
           "th": Style(
             padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 6.0),
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+            backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainerHigh,
             fontWeight: FontWeight.bold,
             fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
             lineHeight: LineHeight(1.25),
             color: effectiveTextColor,
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
+              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
               width: 0.5,
             ),
           ),
@@ -246,7 +280,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             lineHeight: LineHeight(1.25),
             color: effectiveTextColor,
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
+              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
               width: 0.5,
             ),
           ),
@@ -314,11 +348,20 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         builder: (ctx) {
           final text = ctx.node.text ?? '';
           final id = ctx.attributes['data-id'] ?? '';
+          AppTheme? currentTheme;
+          try {
+            currentTheme = context.watch<AppTheme?>();
+          } catch (_) {}
+          final isEInk = currentTheme == AppTheme.eInk;
           final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
-          final color = Color(colorVal);
+          final color = isEInk ? const Color(0xFFD5D0C5) : Color(colorVal);
           final style = ctx.style?.generateTextStyle() ?? const TextStyle();
           final highlightStyle = style.copyWith(
-            backgroundColor: color.withValues(alpha: 0.35),
+            backgroundColor: isEInk ? const Color(0xFFD5D0C5) : color.withValues(alpha: 0.35),
+            color: isEInk ? const Color(0xFF1A1A18) : null,
+            decoration: isEInk ? TextDecoration.underline : null,
+            decorationColor: isEInk ? const Color(0xFF1A1A18) : null,
+            decorationThickness: isEInk ? 1.5 : null,
           );
 
           void handleTap() {
@@ -415,54 +458,74 @@ class _TtsHighlightSpan extends StatelessWidget {
 
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     BoxDecoration decoration;
     TextStyle highlightedTextStyle;
     EdgeInsets padding;
 
-    switch (highlightStyle) {
-      case TtsHighlightStyle.softPill:
-        decoration = BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(4),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-        break;
+    if (isEInk) {
+      decoration = BoxDecoration(
+        color: const Color(0xFFD5D0C5),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+      );
+      highlightedTextStyle = textStyle.copyWith(
+        color: const Color(0xFF1A1A18),
+        fontWeight: FontWeight.w600,
+        decoration: TextDecoration.underline,
+        decorationColor: const Color(0xFF1A1A18),
+      );
+      padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5);
+    } else {
+      switch (highlightStyle) {
+        case TtsHighlightStyle.softPill:
+          decoration = BoxDecoration(
+            color: primaryColor.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(4),
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+          break;
 
-      case TtsHighlightStyle.underline:
-        decoration = BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: primaryColor,
-              width: 2.5,
+        case TtsHighlightStyle.underline:
+          decoration = BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: primaryColor,
+                width: 2.5,
+              ),
             ),
-          ),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
-        break;
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
+          break;
 
-      case TtsHighlightStyle.classicClean:
-        decoration = BoxDecoration(
-          color: primaryColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: primaryColor.withValues(alpha: 0.4),
-            width: 1.0,
-          ),
-        );
-        highlightedTextStyle = textStyle.copyWith(
-          fontWeight: FontWeight.w600,
-        );
-        padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-        break;
+        case TtsHighlightStyle.classicClean:
+          decoration = BoxDecoration(
+            color: primaryColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.4),
+              width: 1.0,
+            ),
+          );
+          highlightedTextStyle = textStyle.copyWith(
+            fontWeight: FontWeight.w600,
+          );
+          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+          break;
+      }
     }
 
     return Container(

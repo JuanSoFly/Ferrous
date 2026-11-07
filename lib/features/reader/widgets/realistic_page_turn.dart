@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 /// Callback when a page turn begins or finishes.
 typedef PageTurnCallback = void Function(int newIndex);
@@ -253,7 +255,13 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     if (direction == 1 && !_canTurnForward()) return;
     if (direction == -1 && !_canTurnBackward()) return;
 
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.read<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
+    final reduceMotion = MediaQuery.of(context).disableAnimations || isEInk;
     if (reduceMotion || !widget.enabled) {
       final newIndex = direction == 1 ? _activePage + 1 : _activePage - 1;
       _activePage = newIndex.clamp(0, widget.pageCount - 1);
@@ -343,6 +351,11 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     final Widget leftPage = _getPage(context, leftPageIndex);
     final Widget rightPage = _getPage(context, rightPageIndex);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return ValueListenableBuilder<double>(
       valueListenable: _progressNotifier,
@@ -365,16 +378,17 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
             ),
 
             // 2. Realistic drop shadow cast onto the right page by the lifted sheet
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _RealisticDropShadowPainter(
-                    curlX: curlX,
-                    progress: progress,
+            if (!isEInk)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _RealisticDropShadowPainter(
+                      curlX: curlX,
+                      progress: progress,
+                    ),
                   ),
                 ),
               ),
-            ),
 
             // 3. Left page (intact page on the left of curl fold)
             Positioned.fill(
@@ -387,17 +401,18 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
             ),
 
             // 4. Physical cylindrical curvature shading & specular crest highlight on the curl edge
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _RealisticCurlLightingPainter(
-                    curlX: curlX,
-                    progress: progress,
-                    isDark: isDark,
+            if (!isEInk)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _RealisticCurlLightingPainter(
+                      curlX: curlX,
+                      progress: progress,
+                      isDark: isDark,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         );
       },

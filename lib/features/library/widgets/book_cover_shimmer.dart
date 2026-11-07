@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 /// Animated shimmer skeleton placeholder for book covers.
 /// Shows a sweeping light band over the cover gradient while content loads.
@@ -56,14 +58,23 @@ class _BookCoverShimmerState extends State<BookCoverShimmer>
 
   @override
   Widget build(BuildContext context) {
-    final colors = _getColorGradient(widget.title);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
+    final colors = isEInk
+        ? const [Color(0xFFE0DCD3), Color(0xFFD5D0C5)]
+        : _getColorGradient(widget.title);
     final displayHeight = widget.height ?? 200;
     final isCompact = displayHeight < 100;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Shimmer highlight color adapts to theme brightness
-    final shimmerHighlight =
-        isDark ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.45);
+    final shimmerHighlight = isEInk
+        ? const Color(0xFFEAE6DF).withValues(alpha: 0.5)
+        : (isDark ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.45));
 
     return AnimatedBuilder(
       animation: _controller,
@@ -73,6 +84,9 @@ class _BookCoverShimmerState extends State<BookCoverShimmer>
           height: widget.height,
           width: widget.width,
           decoration: BoxDecoration(
+            border: isEInk
+                ? Border.all(color: const Color(0xFF1A1A18), width: 1.0)
+                : null,
             gradient: LinearGradient(
               colors: [
                 colors[0],

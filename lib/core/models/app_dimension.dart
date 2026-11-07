@@ -182,7 +182,7 @@ class DimensionConfig {
           cardStyle: DimensionCardStyle.compactList,
           iconStyle: DimensionIconStyle.hairlineMinimal,
           defaultTheme: AppTheme.eInk,
-          cardRadius: 4.0,
+          cardRadius: 2.0,
           cardBorderWidth: 1.0,
           elevation: 0.0,
           enableBlur: false,

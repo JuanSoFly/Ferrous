@@ -13,7 +13,32 @@ enum AppTheme {
   eInk,
 }
 
+class _InstantPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _InstantPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
+  }
+}
+
 class AppThemes {
+  static const PageTransitionsTheme _eInkPageTransitionsTheme = PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: _InstantPageTransitionsBuilder(),
+      TargetPlatform.iOS: _InstantPageTransitionsBuilder(),
+      TargetPlatform.macOS: _InstantPageTransitionsBuilder(),
+      TargetPlatform.windows: _InstantPageTransitionsBuilder(),
+      TargetPlatform.linux: _InstantPageTransitionsBuilder(),
+    },
+  );
+
   static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(
     builders: {
       TargetPlatform.android: CupertinoPageTransitionsBuilder(),
@@ -675,100 +700,101 @@ class AppThemes {
     pageTransitionsTheme: _pageTransitionsTheme,
   );
 
-  // 8. E-Ink Paper - Distraction-free Physical Paper Greyscale, Carbon Typography
+  // 8. E-Ink Paper - Distraction-free Physical Paper Greyscale, Carbon Typography (Kindle Carta 1300)
   static final ThemeData _eInkTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: const ColorScheme(
       brightness: Brightness.light,
-      primary: Color(0xFF262626),
-      onPrimary: Colors.white,
-      secondary: Color(0xFF545454),
-      onSecondary: Colors.white,
-      surface: Color(0xFFEAEAEA),
-      onSurface: Color(0xFF141414),
-      surfaceContainerLowest: Color(0xFFFAFAFA),
-      surfaceContainerLow: Color(0xFFF0F0F0),
-      surfaceContainer: Color(0xFFEAEAEA),
-      surfaceContainerHigh: Color(0xFFE0E0E0),
-      surfaceContainerHighest: Color(0xFFD6D6D6),
-      outline: Color(0xFFD0D0D0),
-      outlineVariant: Color(0xFFBEBEBE),
-      error: Color(0xFF5A0000),
-      onError: Colors.white,
+      primary: Color(0xFF1A1A18),
+      onPrimary: Color(0xFFEAE6DF),
+      secondary: Color(0xFF3D3C38),
+      onSecondary: Color(0xFFEAE6DF),
+      surface: Color(0xFFEAE6DF),
+      onSurface: Color(0xFF1A1A18),
+      surfaceContainerLowest: Color(0xFFEAE6DF),
+      surfaceContainerLow: Color(0xFFE0DCD3),
+      surfaceContainer: Color(0xFFE0DCD3),
+      surfaceContainerHigh: Color(0xFFD5D0C5),
+      surfaceContainerHighest: Color(0xFFD5D0C5),
+      outline: Color(0xFF9E9A90),
+      outlineVariant: Color(0xFF9E9A90),
+      error: Color(0xFF1A1A18),
+      onError: Color(0xFFEAE6DF),
     ),
-    scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+    scaffoldBackgroundColor: const Color(0xFFEAE6DF),
     textTheme: GoogleFonts.robotoSlabTextTheme(ThemeData.light().textTheme).copyWith(
       titleLarge: GoogleFonts.robotoSlab(fontWeight: FontWeight.w700, letterSpacing: -0.2),
       titleMedium: GoogleFonts.robotoSlab(fontWeight: FontWeight.w600, letterSpacing: -0.1),
     ).apply(
-      bodyColor: const Color(0xFF141414),
-      displayColor: const Color(0xFF000000),
+      bodyColor: const Color(0xFF1A1A18),
+      displayColor: const Color(0xFF1A1A18),
     ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+    appBarTheme: AppBarTheme(
+      backgroundColor: const Color(0xFFEAE6DF),
       elevation: 0,
       scrolledUnderElevation: 0,
-      iconTheme: IconThemeData(color: Color(0xFF262626)),
-      titleTextStyle: TextStyle(color: Color(0xFF141414), fontSize: 20, fontWeight: FontWeight.bold),
+      iconTheme: const IconThemeData(color: Color(0xFF1A1A18)),
+      titleTextStyle: GoogleFonts.robotoSlab(color: const Color(0xFF1A1A18), fontSize: 20, fontWeight: FontWeight.bold),
     ),
     cardTheme: CardThemeData(
-      color: const Color(0xFFEAEAEA),
+      color: const Color(0xFFE0DCD3),
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        side: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
-        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFF9E9A90), width: 1),
+        borderRadius: BorderRadius.circular(2),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFFEAE6DF),
       elevation: 0,
-      indicatorColor: const Color(0xFF262626).withValues(alpha: 0.12),
+      indicatorColor: const Color(0xFF1A1A18),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return GoogleFonts.robotoSlab(color: const Color(0xFF262626), fontWeight: FontWeight.w600, fontSize: 12);
+          return GoogleFonts.robotoSlab(color: const Color(0xFF1A1A18), fontWeight: FontWeight.w700, fontSize: 12);
         }
-        return GoogleFonts.robotoSlab(color: const Color(0xFF484848), fontSize: 12);
+        return GoogleFonts.robotoSlab(color: const Color(0xFF4A4945), fontSize: 12);
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return const IconThemeData(color: Color(0xFF262626), size: 24);
+          return const IconThemeData(color: Color(0xFF1A1A18), size: 24);
         }
-        return const IconThemeData(color: Color(0xFF484848), size: 24);
+        return const IconThemeData(color: Color(0xFF4A4945), size: 24);
       }),
     ),
     bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: Color(0xFFF5F5F5),
+      backgroundColor: Color(0xFFEAE6DF),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        side: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
       ),
     ),
     tabBarTheme: TabBarThemeData(
       dividerColor: Colors.transparent,
-      indicatorColor: const Color(0xFF262626),
-      labelColor: const Color(0xFF262626),
-      unselectedLabelColor: const Color(0xFF484848),
-      labelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w600, fontSize: 14),
+      indicatorColor: const Color(0xFF1A1A18),
+      labelColor: const Color(0xFFEAE6DF),
+      unselectedLabelColor: const Color(0xFF1A1A18),
+      labelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w700, fontSize: 14),
       unselectedLabelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w500, fontSize: 14),
     ),
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: const InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFFEAEAEA),
+      fillColor: Color(0xFFE0DCD3),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
+        borderRadius: BorderRadius.all(Radius.circular(2)),
+        borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFD0D0D0), width: 1),
+        borderRadius: BorderRadius.all(Radius.circular(2)),
+        borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF262626), width: 1.5),
+        borderRadius: BorderRadius.all(Radius.circular(2)),
+        borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
       ),
     ),
-    pageTransitionsTheme: _pageTransitionsTheme,
+    pageTransitionsTheme: _eInkPageTransitionsTheme,
   );
 }

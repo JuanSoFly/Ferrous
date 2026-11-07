@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 /// Used for TTS text highlighting to show the currently spoken word.
 class HighlightedTextView extends StatefulWidget {
@@ -136,12 +138,30 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
       );
     }
 
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
     final defaultStyle = widget.textStyle ??
-        Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontSize: 18,
-              height: 1.8,
-            ) ??
-        const TextStyle(fontSize: 18, height: 1.8);
+        (isEInk
+            ? GoogleFonts.robotoSlab(
+                fontSize: 18,
+                height: 1.8,
+                color: const Color(0xFF1A1A18),
+                shadows: const [
+                  Shadow(
+                    color: Color.fromRGBO(26, 26, 24, 0.25),
+                    blurRadius: 0.35,
+                  ),
+                ],
+              )
+            : (Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: 18,
+                  height: 1.8,
+                ) ??
+                const TextStyle(fontSize: 18, height: 1.8)));
 
     // If no highlighting offsets, show plain text
     if (widget.startOffset == null || widget.endOffset == null) {
@@ -169,32 +189,43 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     TextStyle highlightedTextStyle;
-    switch (highlightStyle) {
-      case TtsHighlightStyle.softPill:
-        highlightedTextStyle = TextStyle(
-          backgroundColor: primaryColor.withValues(alpha: 0.16),
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-        );
-        break;
-      case TtsHighlightStyle.underline:
-        highlightedTextStyle = TextStyle(
-          color: primaryColor,
-          fontWeight: FontWeight.w600,
-          decoration: TextDecoration.underline,
-          decorationColor: primaryColor,
-          decorationThickness: 2.0,
-        );
-        break;
-      case TtsHighlightStyle.classicClean:
-        highlightedTextStyle = TextStyle(
-          backgroundColor: primaryColor.withValues(alpha: 0.12),
-          fontWeight: FontWeight.w600,
-          decoration: TextDecoration.underline,
-          decorationColor: primaryColor.withValues(alpha: 0.4),
-          decorationThickness: 1.0,
-        );
-        break;
+    if (isEInk) {
+      highlightedTextStyle = const TextStyle(
+        backgroundColor: Color(0xFFD5D0C5),
+        color: Color(0xFF1A1A18),
+        fontWeight: FontWeight.w600,
+        decoration: TextDecoration.underline,
+        decorationColor: Color(0xFF1A1A18),
+        decorationThickness: 1.5,
+      );
+    } else {
+      switch (highlightStyle) {
+        case TtsHighlightStyle.softPill:
+          highlightedTextStyle = TextStyle(
+            backgroundColor: primaryColor.withValues(alpha: 0.16),
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          );
+          break;
+        case TtsHighlightStyle.underline:
+          highlightedTextStyle = TextStyle(
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.underline,
+            decorationColor: primaryColor,
+            decorationThickness: 2.0,
+          );
+          break;
+        case TtsHighlightStyle.classicClean:
+          highlightedTextStyle = TextStyle(
+            backgroundColor: primaryColor.withValues(alpha: 0.12),
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.underline,
+            decorationColor: primaryColor.withValues(alpha: 0.4),
+            decorationThickness: 1.0,
+          );
+          break;
+      }
     }
 
     return LayoutBuilder(

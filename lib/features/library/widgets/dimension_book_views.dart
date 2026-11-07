@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 typedef BookCallback = void Function(Book book);
 
@@ -855,20 +857,31 @@ class _CompactBookRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+    final isCompactSlate = config.dimension == AppDimension.compactSlate;
+    final effectiveRadius = (isEInk || isCompactSlate) ? 2.0 : 4.0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6.0),
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         child: Container(
           height: 48,
           decoration: BoxDecoration(
-            color: isPending ? primary.withValues(alpha: 0.12) : theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(4),
+            color: isEInk
+                ? (isPending ? const Color(0xFFD5D0C5) : const Color(0xFFE0DCD3))
+                : (isPending ? primary.withValues(alpha: 0.12) : theme.colorScheme.surface),
+            borderRadius: BorderRadius.circular(effectiveRadius),
             border: Border.all(
-              color: isPending ? primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+              color: isEInk
+                  ? (isPending ? const Color(0xFF1A1A18) : const Color(0xFF9E9A90))
+                  : (isPending ? primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.25)),
               width: 1.0,
             ),
           ),
@@ -876,7 +889,7 @@ class _CompactBookRow extends StatelessWidget {
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : 2),
                 child: SizedBox(
                   width: 26,
                   height: 38,
@@ -889,10 +902,16 @@ class _CompactBookRow extends StatelessWidget {
                   book.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: isEInk
+                      ? GoogleFonts.robotoSlab(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1A1A18),
+                        )
+                      : const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -902,22 +921,24 @@ class _CompactBookRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 10,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(3),
+                  color: isEInk ? Colors.transparent : primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(isEInk ? 2 : 3),
+                  border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
                 ),
                 child: Text(
                   book.format.toUpperCase(),
                   style: TextStyle(
                     fontSize: 8,
                     fontWeight: FontWeight.bold,
-                    color: primary,
+                    letterSpacing: isEInk ? 0.5 : 0,
+                    color: isEInk ? const Color(0xFF1A1A18) : primary,
                   ),
                 ),
               ),
@@ -929,8 +950,10 @@ class _CompactBookRow extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: book.progress > 0 ? primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    fontWeight: isEInk ? FontWeight.w600 : FontWeight.w500,
+                    color: isEInk
+                        ? const Color(0xFF1A1A18)
+                        : (book.progress > 0 ? primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   ),
                 ),
               ),
@@ -964,14 +987,23 @@ class _StandardBookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+    final effectiveRadius = isEInk ? 2.0 : config.cardRadius;
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(config.cardRadius),
-        side: isPending
-            ? BorderSide(color: primary, width: 2)
-            : BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(effectiveRadius),
+        side: isEInk
+            ? BorderSide(color: isPending ? const Color(0xFF1A1A18) : const Color(0xFF9E9A90), width: 1.0)
+            : (isPending
+                ? BorderSide(color: primary, width: 2)
+                : BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
       ),
       child: InkWell(
         onTap: onTap,
@@ -983,22 +1015,25 @@ class _StandardBookCard extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(config.cardRadius - 1)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(effectiveRadius > 1 ? effectiveRadius - 1 : 0)),
                   child: BookCoverCard(book: book),
                 ),
                 if (book.progress > 0)
                   Container(
-                    height: 4,
+                    height: isEInk ? 3 : 4,
                     width: double.infinity,
-                    color: primary.withValues(alpha: 0.2),
+                    decoration: BoxDecoration(
+                      color: isEInk ? const Color(0xFFEAE6DF) : primary.withValues(alpha: 0.2),
+                      border: isEInk ? const Border(top: BorderSide(color: Color(0xFF1A1A18), width: 1.0)) : null,
+                    ),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: FractionallySizedBox(
                         widthFactor: book.progress.clamp(0.0, 1.0),
                         child: Container(
                           decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(2)),
-                            color: primary,
+                            borderRadius: isEInk ? BorderRadius.zero : const BorderRadius.horizontal(right: Radius.circular(2)),
+                            color: isEInk ? const Color(0xFF1A1A18) : primary,
                           ),
                         ),
                       ),
@@ -1015,10 +1050,16 @@ class _StandardBookCard extends StatelessWidget {
                     book.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1A1A18),
+                          )
+                        : const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -1027,7 +1068,7 @@ class _StandardBookCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1037,15 +1078,17 @@ class _StandardBookCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
-                          color: primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(4),
+                          color: isEInk ? Colors.transparent : primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : 4),
+                          border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
                         ),
                         child: Text(
                           book.format.toUpperCase(),
                           style: TextStyle(
                             fontSize: 8,
                             fontWeight: FontWeight.bold,
-                            color: primary,
+                            letterSpacing: isEInk ? 0.5 : 0,
+                            color: isEInk ? const Color(0xFF1A1A18) : primary,
                           ),
                         ),
                       ),
@@ -1054,7 +1097,8 @@ class _StandardBookCard extends StatelessWidget {
                           "${(book.progress * 100).toInt()}% read",
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            fontWeight: isEInk ? FontWeight.w600 : FontWeight.normal,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                           ),
                         ),
                     ],

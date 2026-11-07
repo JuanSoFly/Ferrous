@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/features/library/library_state.dart';
 import 'package:reader_app/features/library/widgets/book_cover_shimmer.dart';
+import 'package:reader_app/core/constants/e_ink_tokens.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 import 'package:google_fonts/google_fonts.dart';
 
@@ -64,11 +66,71 @@ class _BookCoverState extends State<BookCover> {
 
   @override
   Widget build(BuildContext context) {
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
     final coverPath = widget.book.coverPath;
     final fileExists = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
 
+    Widget content;
     if (fileExists && !_loadFailed) {
-      return SizedBox(
+      final imageWidget = Image.file(
+        File(coverPath),
+        fit: widget.fit,
+        cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : null,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded) {
+            if (!_imageLoaded) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _imageLoaded = true;
+                    _showShimmer = false;
+                  });
+                }
+              });
+            }
+            return child;
+          }
+          if (frame != null) {
+            if (!_imageLoaded) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() => _imageLoaded = true);
+                }
+              });
+            }
+            return child;
+          }
+          // Still loading — hidden behind shimmer
+          return const SizedBox.shrink();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          if (!_loadFailed) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _loadFailed = true;
+                  _showShimmer = false;
+                });
+              }
+            });
+          }
+          return _buildPlaceholder(context, isEInk: isEInk);
+        },
+      );
+
+      final filteredImage = isEInk
+          ? ColorFiltered(
+              colorFilter: EInkTokens.coverFilter,
+              child: imageWidget,
+            )
+          : imageWidget;
+
+      content = SizedBox(
         height: widget.height,
         width: widget.width,
         child: Stack(
@@ -85,7 +147,7 @@ class _BookCoverState extends State<BookCover> {
             // Image fades in on top when first frame is available
             AnimatedOpacity(
               opacity: _imageLoaded ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 200),
+              duration: isEInk ? Duration.zero : const Duration(milliseconds: 200),
               curve: Curves.easeIn,
               onEnd: () {
                 if (_imageLoaded && mounted) {
@@ -94,77 +156,110 @@ class _BookCoverState extends State<BookCover> {
                   });
                 }
               },
-              child: Image.file(
-                File(coverPath),
-                fit: widget.fit,
-                cacheHeight:
-                    widget.height != null ? (widget.height! * 2).toInt() : null,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (wasSynchronouslyLoaded) {
-                    if (!_imageLoaded) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() {
-                            _imageLoaded = true;
-                            _showShimmer = false;
-                          });
-                        }
-                      });
-                    }
-                    return child;
-                  }
-                  if (frame != null) {
-                    if (!_imageLoaded) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() => _imageLoaded = true);
-                        }
-                      });
-                    }
-                    return child;
-                  }
-                  // Still loading — hidden behind shimmer
-                  return const SizedBox.shrink();
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  if (!_loadFailed) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        setState(() {
-                          _loadFailed = true;
-                          _showShimmer = false;
-                        });
-                      }
-                    });
-                  }
-                  return _buildPlaceholder(context);
-                },
-              ),
+              child: filteredImage,
             ),
           ],
         ),
       );
-    }
-
-    if (widget.isGenerating) {
-      return BookCoverShimmer(
+    } else if (widget.isGenerating) {
+      content = BookCoverShimmer(
         title: widget.book.title,
         format: widget.book.format,
         height: widget.height,
         width: widget.width,
       );
+    } else {
+      content = _buildPlaceholder(context, isEInk: isEInk);
     }
 
-    return _buildPlaceholder(context);
+    if (isEInk) {
+      return Container(
+        height: widget.height,
+        width: widget.width,
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+          borderRadius: BorderRadius.circular(0),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: content,
+      );
+    }
+
+    return content;
   }
 
-  Widget _buildPlaceholder(BuildContext context) {
+  Widget _buildPlaceholder(BuildContext context, {bool isEInk = false}) {
     final colors = _getColorGradient(widget.book.title);
     final displayHeight = widget.height ?? 200;
 
     final titleFontSize = (displayHeight * 0.08).clamp(11.0, 16.0);
     final authorFontSize = (displayHeight * 0.06).clamp(9.0, 12.0);
     final isCompact = displayHeight < 100;
+
+    if (isEInk) {
+      return Container(
+        height: widget.height,
+        width: widget.width,
+        color: const Color(0xFFE0DCD3),
+        padding: const EdgeInsets.all(8),
+        child: isCompact
+            ? Center(
+                child: Icon(
+                  _getFormatIcon(widget.book.format),
+                  size: displayHeight * 0.4,
+                  color: const Color(0xFF1A1A18),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Text(
+                        widget.book.format.toUpperCase(),
+                        style: const TextStyle(
+                          color: Color(0xFF1A1A18),
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    widget.book.title,
+                    style: GoogleFonts.robotoSlab(
+                      color: const Color(0xFF1A1A18),
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                      letterSpacing: -0.1,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.book.author,
+                    style: GoogleFonts.robotoSlab(
+                      color: const Color(0xFF3D3C38),
+                      fontSize: authorFontSize,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+      );
+    }
 
     if (isCompact) {
       return Container(

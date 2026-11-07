@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/core/constants/dimension_tokens.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:reader_app/features/settings/dimension_controller.dart';
 import 'package:reader_app/features/library/library_screen.dart';
 import 'package:reader_app/features/settings/settings_screen.dart';
@@ -67,6 +68,9 @@ class _AppShellState extends State<AppShell> {
     final isTopHud = config.navStyle == DimensionNavStyle.topTerminalHud;
     final isFloating = config.navStyle == DimensionNavStyle.floatingIslandDock;
 
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
     return Scaffold(
       extendBody: isFloating,
       body: SafeArea(
@@ -89,7 +93,7 @@ class _AppShellState extends State<AppShell> {
       ),
       bottomNavigationBar: isTopHud
           ? null
-          : _buildBottomNavigation(theme, config),
+          : _buildBottomNavigation(theme, config, isEInk: isEInk),
     );
   }
 
@@ -213,7 +217,7 @@ class _AppShellState extends State<AppShell> {
   // ==========================================
   // 2. BOTTOM NAVIGATION RESOLVER
   // ==========================================
-  Widget _buildBottomNavigation(ThemeData theme, DimensionConfig config) {
+  Widget _buildBottomNavigation(ThemeData theme, DimensionConfig config, {bool isEInk = false}) {
     switch (config.navStyle) {
       case DimensionNavStyle.floatingIslandDock:
         return _buildFloatingIslandDock(theme, config);
@@ -221,7 +225,7 @@ class _AppShellState extends State<AppShell> {
         return _buildAthenaeumRibbon(theme, config);
       case DimensionNavStyle.bottomStandard:
       default:
-        return _buildStandardBottomNav(theme, config);
+        return _buildStandardBottomNav(theme, config, isEInk: isEInk);
     }
   }
 
@@ -439,7 +443,36 @@ class _AppShellState extends State<AppShell> {
   // ==========================================
   // 5. STANDARD MODERNIST BOTTOM NAV
   // ==========================================
-  Widget _buildStandardBottomNav(ThemeData theme, DimensionConfig config) {
+  Widget _buildStandardBottomNav(ThemeData theme, DimensionConfig config, {bool isEInk = false}) {
+    final bool eInkMode = isEInk || config.dimension == AppDimension.compactSlate;
+    if (eInkMode) {
+      return Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFEAE6DF),
+          border: Border(
+            top: BorderSide(
+              color: Color(0xFF1A1A18),
+              width: 1.5,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStandardNavItem(0, 'Library', theme, config, isEInk: true),
+                _buildStandardNavItem(1, 'Annotations', theme, config, isEInk: true),
+                _buildStandardNavItem(2, 'Settings', theme, config, isEInk: true),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.92),
@@ -474,10 +507,12 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildStandardNavItem(int index, String label, ThemeData theme, DimensionConfig config) {
+  Widget _buildStandardNavItem(int index, String label, ThemeData theme, DimensionConfig config, {bool isEInk = false}) {
     final isSelected = _currentIndex == index;
-    final activeColor = theme.colorScheme.primary;
-    final inactiveColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+    final activeColor = isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary;
+    final inactiveColor = isEInk
+        ? const Color(0xFF4A4945)
+        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
 
     final outlineIcon = index == 0
         ? DimensionIcons.navLibrary(config.iconStyle, false)
@@ -503,9 +538,18 @@ class _AppShellState extends State<AppShell> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              if (isEInk && isSelected)
+                Container(
+                  height: 2,
+                  width: 28,
+                  margin: const EdgeInsets.only(bottom: 2),
+                  color: const Color(0xFF1A1A18),
+                )
+              else if (isEInk)
+                const SizedBox(height: 4),
               AnimatedScale(
-                scale: isSelected ? 1.05 : 1.0,
-                duration: const Duration(milliseconds: 200),
+                scale: isSelected && !isEInk ? 1.05 : 1.0,
+                duration: isEInk ? Duration.zero : const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
                 child: Icon(
                   isSelected ? filledIcon : outlineIcon,
@@ -519,7 +563,7 @@ class _AppShellState extends State<AppShell> {
                 style: TextStyle(
                   color: isSelected ? activeColor : inactiveColor,
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: -0.1,
                 ),
               ),

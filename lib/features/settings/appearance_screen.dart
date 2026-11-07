@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/settings/dimension_controller.dart';
@@ -53,17 +54,22 @@ class AppearanceScreen extends StatelessWidget {
           // Auto-Sync Switch Card
           Card(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(currentTheme == AppTheme.eInk ? 2 : 14),
               side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+                color: currentTheme == AppTheme.eInk
+                    ? const Color(0xFF1A1A18)
+                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+                width: currentTheme == AppTheme.eInk ? 1.5 : 1.0,
               ),
             ),
-            color: theme.colorScheme.surfaceContainerLow,
+            color: currentTheme == AppTheme.eInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
             child: SwitchListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              title: const Text(
+              title: Text(
                 "Auto-Sync Dimension with Theme",
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                style: currentTheme == AppTheme.eInk
+                    ? GoogleFonts.robotoSlab(fontSize: 14, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A18))
+                    : const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
                 dimensionState.autoSyncWithTheme
@@ -71,12 +77,12 @@ class AppearanceScreen extends StatelessWidget {
                     : "Independent: mix and match any color theme with any layout style.",
                 style: TextStyle(
                   fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  color: currentTheme == AppTheme.eInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 ),
               ),
               value: dimensionState.autoSyncWithTheme,
-              activeTrackColor: theme.colorScheme.primary.withValues(alpha: 0.5),
-              activeThumbColor: theme.colorScheme.primary,
+              activeTrackColor: currentTheme == AppTheme.eInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary.withValues(alpha: 0.5),
+              activeThumbColor: currentTheme == AppTheme.eInk ? const Color(0xFFEAE6DF) : theme.colorScheme.primary,
               onChanged: (enabled) {
                 HapticFeedback.lightImpact();
                 dimensionController.setAutoSync(enabled);
@@ -216,23 +222,30 @@ class _DimensionOption extends StatelessWidget {
     final theme = Theme.of(context);
     final isSelected = dimension == currentDimension;
     final primary = theme.colorScheme.primary;
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
         side: BorderSide(
-          color: isSelected ? primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+          color: isEInk
+              ? (isSelected ? const Color(0xFF1A1A18) : const Color(0xFF9E9A90))
+              : (isSelected ? primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.25)),
           width: isSelected ? 2.0 : 1.0,
         ),
       ),
-      color: isSelected
-          ? primary.withValues(alpha: 0.08)
-          : theme.colorScheme.surfaceContainerLow,
+      color: isEInk
+          ? (isSelected ? const Color(0xFFE0DCD3) : const Color(0xFFEAE6DF))
+          : (isSelected ? primary.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerLow),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -247,25 +260,35 @@ class _DimensionOption extends StatelessWidget {
                       children: [
                         Text(
                           config.name,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: config.isMonospace ? 'monospace' : (config.isSerif ? 'serif' : null),
-                          ),
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1A1A18),
+                                )
+                              : TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: config.isMonospace ? 'monospace' : (config.isSerif ? 'serif' : null),
+                                ),
                         ),
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: isSelected ? primary.withValues(alpha: 0.2) : theme.colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(6),
+                            color: isEInk
+                                ? Colors.transparent
+                                : (isSelected ? primary.withValues(alpha: 0.2) : theme.colorScheme.surfaceContainerHigh),
+                            borderRadius: BorderRadius.circular(isEInk ? 2 : 6),
+                            border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
                           ),
                           child: Text(
                             config.badge,
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
-                              color: isSelected ? primary : theme.colorScheme.onSurfaceVariant,
+                              letterSpacing: isEInk ? 0.5 : 0,
+                              color: isEInk ? const Color(0xFF1A1A18) : (isSelected ? primary : theme.colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ),
@@ -276,7 +299,7 @@ class _DimensionOption extends StatelessWidget {
                       config.subtitle,
                       style: TextStyle(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                        color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
                       ),
                     ),
                   ],
@@ -287,12 +310,13 @@ class _DimensionOption extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: primary,
-                    shape: BoxShape.circle,
+                    color: isEInk ? const Color(0xFF1A1A18) : primary,
+                    shape: isEInk ? BoxShape.rectangle : BoxShape.circle,
+                    borderRadius: isEInk ? BorderRadius.circular(2) : null,
                   ),
                   child: Icon(
                     Icons.check,
-                    color: theme.colorScheme.onPrimary,
+                    color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.onPrimary,
                     size: 14,
                   ),
                 ),
@@ -444,19 +468,21 @@ class _ThemeOption extends StatelessWidget {
       width: isSelected ? 2.0 : 1.0,
     );
 
+    final isCurrentEInk = currentTheme == AppTheme.eInk;
+
     return Theme(
       data: themeData,
       child: Card(
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(isCurrentEInk ? 2 : 16),
           side: effectiveBorderSide,
         ),
         color: effectiveCardColor,
         margin: const EdgeInsets.only(bottom: 12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(isCurrentEInk ? 2 : 16),
           splashColor: primary.withValues(alpha: 0.12),
           highlightColor: primary.withValues(alpha: 0.06),
           child: Padding(
@@ -471,15 +497,21 @@ class _ThemeOption extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: themeData.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: onSurface,
-                        ) ?? TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: onSurface,
-                        ),
+                        style: isCurrentEInk
+                            ? GoogleFonts.robotoSlab(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: onSurface,
+                              )
+                            : (themeData.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: onSurface,
+                              ) ?? TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: onSurface,
+                              )),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -501,7 +533,8 @@ class _ThemeOption extends StatelessWidget {
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: primary,
-                      shape: BoxShape.circle,
+                      shape: isCurrentEInk ? BoxShape.rectangle : BoxShape.circle,
+                      borderRadius: isCurrentEInk ? BorderRadius.circular(2) : null,
                     ),
                     child: Icon(
                       Icons.check,
@@ -534,7 +567,7 @@ class _ThemeOption extends StatelessWidget {
       case AppTheme.nord:
         return const Color(0xFF434C5E);
       case AppTheme.eInk:
-        return const Color(0xFFD0D0D0);
+        return const Color(0xFF9E9A90);
     }
   }
 
@@ -567,7 +600,7 @@ class _ThemeOption extends StatelessWidget {
         middleRingColor = const Color(0xFF3B4252);
         break;
       case AppTheme.eInk:
-        middleRingColor = const Color(0xFFEAEAEA);
+        middleRingColor = const Color(0xFFE0DCD3);
         break;
     }
 
@@ -578,7 +611,7 @@ class _ThemeOption extends StatelessWidget {
         shape: BoxShape.circle,
         color: bg,
         border: Border.all(
-          color: onSurface.withValues(alpha: 0.2),
+          color: theme == AppTheme.eInk ? const Color(0xFF1A1A18) : onSurface.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -589,13 +622,16 @@ class _ThemeOption extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: middleRingColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 3,
-                offset: const Offset(0, 1),
-              ),
-            ],
+            border: theme == AppTheme.eInk ? Border.all(color: const Color(0xFF9E9A90), width: 1) : null,
+            boxShadow: theme == AppTheme.eInk
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
           ),
           child: Center(
             child: Container(

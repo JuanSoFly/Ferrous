@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/core/models/annotation.dart';
@@ -8,6 +9,7 @@ import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/features/annotations/annotation_dialog.dart';
 import 'package:reader_app/features/library/widgets/book_cover.dart';
 import 'package:reader_app/features/reader/reader_screen.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class AnnotationsHubScreen extends StatefulWidget {
   const AnnotationsHubScreen({super.key});
@@ -86,9 +88,17 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
     }
     
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.04);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
+    final borderColor = isEInk
+        ? const Color(0xFF9E9A90)
+        : (isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.04));
 
     return Scaffold(
       appBar: AppBar(
@@ -109,8 +119,9 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 16),
               clipBehavior: Clip.antiAlias,
+              color: isEInk ? const Color(0xFFEAE6DF) : null,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.lg),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.lg),
                 side: BorderSide(color: borderColor, width: 1),
               ),
               child: Column(
@@ -121,7 +132,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                     child: Row(
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(AppRadius.xs),
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.xs),
                           child: SizedBox(
                             width: 38,
                             height: 52,
@@ -135,21 +146,33 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                             children: [
                               Text(
                                 book.title,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  letterSpacing: -0.2,
-                                ),
+                                style: isEInk
+                                    ? GoogleFonts.robotoSlab(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        letterSpacing: -0.2,
+                                        color: const Color(0xFF1A1A18),
+                                      )
+                                    : theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        letterSpacing: -0.2,
+                                      ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 book.author,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                                  fontSize: 13,
-                                ),
+                                style: isEInk
+                                    ? const TextStyle(
+                                        color: Color(0xFF3D3C38),
+                                        fontSize: 13,
+                                      )
+                                    : theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                        fontSize: 13,
+                                      ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -160,15 +183,16 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.pill),
+                            border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
                           ),
                           child: Text(
                             '${annotations.length}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: theme.colorScheme.primary,
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                             ),
                           ),
                         ),
@@ -193,7 +217,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                             endIndent: 16,
                             color: borderColor,
                           ),
-                        _buildAnnotationItem(context, a, book),
+                        _buildAnnotationItem(context, a, book, isEInk: isEInk),
                       ],
                     );
                   }),
@@ -206,7 +230,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
     );
   }
   
-  Widget _buildAnnotationItem(BuildContext context, Annotation annotation, Book book) {
+  Widget _buildAnnotationItem(BuildContext context, Annotation annotation, Book book, {required bool isEInk}) {
     final theme = Theme.of(context);
     final highlightColor = annotation.color != 0
         ? Color(annotation.color)
@@ -232,20 +256,33 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
           children: [
             Container(
               decoration: BoxDecoration(
-                color: highlightColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                border: Border(
-                  left: BorderSide(color: highlightColor, width: 3.5),
-                ),
+                color: isEInk ? const Color(0xFFE0DCD3) : highlightColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
+                border: isEInk
+                    ? const Border(
+                        left: BorderSide(color: Color(0xFF1A1A18), width: 3.0),
+                        top: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                        right: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                        bottom: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                      )
+                    : Border(
+                        left: BorderSide(color: highlightColor, width: 3.5),
+                      ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text(
                 annotation.selectedText,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  height: 1.4,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.88),
-                ),
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                        color: const Color(0xFF1A1A18),
+                      )
+                    : theme.textTheme.bodyMedium?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.88),
+                      ),
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -259,16 +296,21 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                     Icon(
                       Icons.sticky_note_2_outlined,
                       size: 16,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                      color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary.withValues(alpha: 0.8),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         annotation.note!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: isEInk
+                            ? GoogleFonts.robotoSlab(
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0xFF1A1A18),
+                              )
+                            : theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.onSurface,
+                              ),
                       ),
                     ),
                   ],
@@ -281,13 +323,14 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(AppRadius.xs),
+                      color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.xs),
+                      border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
                     ),
                     child: Text(
                       'Chapter ${annotation.chapterIndex + 1}',
                       style: TextStyle(
-                        color: theme.colorScheme.primary,
+                        color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -297,16 +340,21 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                 ],
                 Text(
                   _formatDate(annotation.createdAt),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                    fontSize: 12,
-                  ),
+                  style: isEInk
+                      ? const TextStyle(
+                          color: Color(0xFF3D3C38),
+                          fontSize: 12,
+                        )
+                      : theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          fontSize: 12,
+                        ),
                 ),
                 const Spacer(),
                 IconButton(
                   tooltip: 'Edit note',
                   icon: const Icon(Icons.edit_outlined, size: 18),
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
                   constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                   padding: const EdgeInsets.all(10),
                   splashRadius: 20,
@@ -315,7 +363,7 @@ class _AnnotationsHubScreenState extends State<AnnotationsHubScreen> {
                 IconButton(
                   tooltip: 'Delete annotation',
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  color: theme.colorScheme.error,
+                  color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.error,
                   constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                   padding: const EdgeInsets.all(10),
                   splashRadius: 20,

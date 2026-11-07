@@ -25,6 +25,7 @@ import 'package:reader_app/features/reader/widgets/epub_reader_top_bar.dart';
 import 'package:reader_app/features/reader/widgets/epub_reader_bottom_controls.dart';
 import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
 import 'package:reader_app/features/reader/widgets/tap_selection_overlay.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class EpubReaderScreen extends StatefulWidget {
   final Book book;
@@ -302,27 +303,53 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
       initialScrollOffset: (initialIndex * 56.0).clamp(0.0, double.infinity),
     );
 
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.read<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
     showModalBottomSheet(
       context: context,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => ListView.builder(
+      backgroundColor: isEInk ? const Color(0xFFEAE6DF) : null,
+      shape: isEInk
+          ? const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
+              side: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+            )
+          : null,
+      builder: (context) => ListView.separated(
         controller: scrollController,
         itemCount: chapters.length,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          thickness: 1,
+          color: isEInk ? const Color(0xFFC2BEB4) : Theme.of(context).dividerColor.withValues(alpha: 0.3),
+        ),
         itemBuilder: (context, index) {
           final chapter = chapters[index];
           final isSelected = index == _chapterController.currentChapterIndex;
           return ListTile(
             title: Text(
               chapter.Title ?? 'Chapter ${index + 1}',
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
+              style: isEInk
+                  ? GoogleFonts.robotoSlab(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: const Color(0xFF1A1A18),
+                      fontSize: 14.0,
+                    )
+                  : TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
             ),
             selected: isSelected,
-            selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+            selectedTileColor: isEInk
+                ? const Color(0xFFE0DCD3)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
             trailing: isSelected
-                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                ? Icon(Icons.check, color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary)
                 : null,
             onTap: () {
               Navigator.pop(context);

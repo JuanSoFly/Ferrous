@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/constants/book_textures.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 /// Renders authentic physical book page background textures, lighting,
 /// book spine gutter shadow, and stacked page edge depth.
@@ -23,11 +25,17 @@ class RealBookBackground extends StatelessWidget {
     final theme = Theme.of(context);
     final isDarkTheme = theme.brightness == Brightness.dark;
     final textureInfo = BookTextures.getById(textureId);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
 
     // If 'none', use theme scaffold background color
     final effectiveColor = textureId == BookTextures.none
         ? theme.scaffoldBackgroundColor
         : textureInfo.baseColor;
+
+    final isEInk = currentTheme == AppTheme.eInk || effectiveColor.toARGB32() == 0xFFEAE6DF;
 
     return Stack(
       fit: StackFit.expand,
@@ -37,9 +45,10 @@ class RealBookBackground extends StatelessWidget {
             painter: _BookPaperPainter(
               textureId: textureId,
               baseColor: effectiveColor,
-              showSpine: showSpine,
+              showSpine: showSpine && !isEInk,
               isLeftPage: isLeftPage,
               isDarkTheme: isDarkTheme,
+              isEInk: isEInk,
             ),
           ),
         ),
@@ -59,6 +68,7 @@ class _BookPaperPainter extends CustomPainter {
   final bool showSpine;
   final bool isLeftPage;
   final bool isDarkTheme;
+  final bool isEInk;
 
   // Pre-allocated static paints to enforce 60fps/120fps zero-allocation discipline
   static final Paint _basePaint = Paint()..style = PaintingStyle.fill;
@@ -83,6 +93,7 @@ class _BookPaperPainter extends CustomPainter {
     required this.showSpine,
     required this.isLeftPage,
     required this.isDarkTheme,
+    this.isEInk = false,
   });
 
   static List<_FiberParticle> _generateFibers(int count) {
@@ -114,6 +125,12 @@ class _BookPaperPainter extends CustomPainter {
     _basePaint.color = baseColor;
     _basePaint.shader = null;
     canvas.drawRect(rect, _basePaint);
+
+    if (isEInk) {
+      // In E-Ink Paper mode, completely hide or disable spine shadows, page leaves, and vignettes.
+      // A real Kindle screen is a flat matte sheet of e-paper (#EAE6DF) edge-to-edge.
+      return;
+    }
 
     if (textureId != BookTextures.none) {
       _paintPaperTexture(canvas, size);

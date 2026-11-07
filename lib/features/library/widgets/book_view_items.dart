@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/core/constants/app_constants.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/core/models/library_location.dart';
 import 'package:reader_app/core/widgets/delete_book_dialog.dart';
@@ -211,6 +213,56 @@ class BookItemActionHandler {
   }
 }
 
+Widget _buildFormatBadge(BuildContext context, String format, {required bool isEInk}) {
+  final theme = Theme.of(context);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: isEInk ? Colors.transparent : theme.colorScheme.primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(isEInk ? 2 : 4),
+      border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
+    ),
+    child: Text(
+      format.toUpperCase(),
+      style: TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.5,
+        color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+      ),
+    ),
+  );
+}
+
+Widget _buildCoverProgressBar(BuildContext context, double progress, {required bool isEInk, double height = 4.0}) {
+  final theme = Theme.of(context);
+  return Container(
+    height: height,
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.primary.withValues(alpha: 0.2),
+      border: isEInk ? const Border(top: BorderSide(color: Color(0xFF1A1A18), width: 1.0)) : null,
+    ),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: FractionallySizedBox(
+        widthFactor: progress.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isEInk ? const Color(0xFF1A1A18) : null,
+            borderRadius: isEInk ? BorderRadius.zero : const BorderRadius.horizontal(right: Radius.circular(2)),
+            gradient: isEInk
+                ? null
+                : LinearGradient(
+                    colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+                  ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 1. Extra Large Icons Card
 // ---------------------------------------------------------------------------
@@ -223,10 +275,19 @@ class BookExtraLargeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.lg),
+        side: isEInk ? const BorderSide(color: Color(0xFF9E9A90), width: 1.0) : BorderSide.none,
+      ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
@@ -238,7 +299,7 @@ class BookExtraLargeCard extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(isEInk ? 2 : AppRadius.lg)),
                   child: BookCover(
                     book: book,
                     height: 270,
@@ -247,24 +308,7 @@ class BookExtraLargeCard extends StatelessWidget {
                   ),
                 ),
                 if (book.progress > 0)
-                  Container(
-                    height: 5,
-                    width: double.infinity,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: book.progress.clamp(0.0, 1.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildCoverProgressBar(context, book.progress, isEInk: isEInk, height: 5),
               ],
             ),
             Padding(
@@ -278,11 +322,17 @@ class BookExtraLargeCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           book.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.2,
-                          ),
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1A1A18),
+                                )
+                              : theme.textTheme.titleMedium?.copyWith(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.2,
+                                ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -295,7 +345,7 @@ class BookExtraLargeCard extends StatelessWidget {
                           child: Icon(
                             Icons.more_vert,
                             size: 20,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
                       ),
@@ -304,10 +354,15 @@ class BookExtraLargeCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     book.author.isNotEmpty ? book.author : 'Unknown Author',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                      fontSize: 13,
-                    ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(
+                            fontSize: 13,
+                            color: const Color(0xFF3D3C38),
+                          )
+                        : theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                            fontSize: 13,
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -317,28 +372,13 @@ class BookExtraLargeCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              book.format.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
+                          _buildFormatBadge(context, book.format, isEInk: isEInk),
                           const SizedBox(width: 8),
                           Text(
                             LibraryLocation.formatBytes(book.safeFileSize),
                             style: TextStyle(
                               fontSize: 11,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -348,7 +388,7 @@ class BookExtraLargeCard extends StatelessWidget {
                           "${(book.progress * 100).toInt()}% read",
                           style: TextStyle(
                             fontSize: 12,
-                            color: theme.colorScheme.primary,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -376,9 +416,19 @@ class BookLargeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
+        side: isEInk ? const BorderSide(color: Color(0xFF9E9A90), width: 1.0) : BorderSide.none,
+      ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
@@ -389,29 +439,11 @@ class BookLargeCard extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(isEInk ? 2 : 15)),
                   child: BookCoverCard(book: book),
                 ),
                 if (book.progress > 0)
-                  Container(
-                    height: 4,
-                    width: double.infinity,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: book.progress.clamp(0.0, 1.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(2)),
-                            gradient: LinearGradient(
-                              colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildCoverProgressBar(context, book.progress, isEInk: isEInk, height: 4),
               ],
             ),
             Padding(
@@ -425,11 +457,17 @@ class BookLargeCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           book.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.1,
-                          ),
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1A1A18),
+                                )
+                              : theme.textTheme.titleMedium?.copyWith(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.1,
+                                ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -442,7 +480,7 @@ class BookLargeCard extends StatelessWidget {
                           child: Icon(
                             Icons.more_vert,
                             size: 18,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
                       ),
@@ -451,10 +489,15 @@ class BookLargeCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     book.author,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      fontSize: 11,
-                    ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(
+                            fontSize: 11,
+                            color: const Color(0xFF3D3C38),
+                          )
+                        : theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            fontSize: 11,
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -462,28 +505,13 @@ class BookLargeCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          book.format.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
+                      _buildFormatBadge(context, book.format, isEInk: isEInk),
                       if (book.progress > 0)
                         Text(
                           "${(book.progress * 100).toInt()}% read",
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -511,10 +539,19 @@ class BookMediumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
+        side: isEInk ? const BorderSide(color: Color(0xFF9E9A90), width: 1.0) : BorderSide.none,
+      ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
@@ -525,7 +562,7 @@ class BookMediumCard extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(isEInk ? 2 : AppRadius.md)),
                   child: BookCover(
                     book: book,
                     height: 135,
@@ -534,20 +571,7 @@ class BookMediumCard extends StatelessWidget {
                   ),
                 ),
                 if (book.progress > 0)
-                  Container(
-                    height: 3,
-                    width: double.infinity,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: book.progress.clamp(0.0, 1.0),
-                        child: Container(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildCoverProgressBar(context, book.progress, isEInk: isEInk, height: 3),
               ],
             ),
             Padding(
@@ -557,21 +581,33 @@ class BookMediumCard extends StatelessWidget {
                 children: [
                   Text(
                     book.title,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                    ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1A1A18),
+                            height: 1.2,
+                          )
+                        : theme.textTheme.bodyMedium?.copyWith(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     book.author.isNotEmpty ? book.author : 'Unknown',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      fontSize: 10,
-                    ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(
+                            fontSize: 10,
+                            color: const Color(0xFF3D3C38),
+                          )
+                        : theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            fontSize: 10,
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -579,27 +615,13 @@ class BookMediumCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          book.format.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 8,
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                      _buildFormatBadge(context, book.format, isEInk: isEInk),
                       if (book.progress > 0)
                         Text(
                           "${(book.progress * 100).toInt()}%",
                           style: TextStyle(
                             fontSize: 9,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -626,11 +648,19 @@ class BookSmallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
-    final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
+        side: isEInk ? const BorderSide(color: Color(0xFF9E9A90), width: 1.0) : BorderSide.none,
+      ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
@@ -641,7 +671,7 @@ class BookSmallCard extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sm)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(isEInk ? 2 : AppRadius.sm)),
                   child: BookCover(
                     book: book,
                     height: 90,
@@ -650,22 +680,25 @@ class BookSmallCard extends StatelessWidget {
                   ),
                 ),
                 if (book.progress > 0)
-                  Container(
-                    height: 2.5,
-                    width: double.infinity,
-                    color: theme.colorScheme.primary,
-                  ),
+                  _buildCoverProgressBar(context, book.progress, isEInk: isEInk, height: 2.5),
               ],
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 4.0),
               child: Text(
                 book.title,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  height: 1.1,
-                ),
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A1A18),
+                        height: 1.1,
+                      )
+                    : const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        height: 1.1,
+                      ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -690,26 +723,32 @@ class BookListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
+          color: isEInk ? const Color(0xFF9E9A90) : theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
+          width: 1.0,
         ),
       ),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : 4),
                 child: BookCover(
                   book: book,
                   height: 48,
@@ -724,20 +763,31 @@ class BookListItem extends StatelessWidget {
                   children: [
                     Text(
                       book.title,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
+                      style: isEInk
+                          ? GoogleFonts.robotoSlab(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: const Color(0xFF1A1A18),
+                            )
+                          : theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       book.author.isNotEmpty ? book.author : 'Unknown Author',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                        fontSize: 11,
-                      ),
+                      style: isEInk
+                          ? const TextStyle(
+                              color: Color(0xFF3D3C38),
+                              fontSize: 11,
+                            )
+                          : theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              fontSize: 11,
+                            ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -745,28 +795,14 @@ class BookListItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  book.format.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              _buildFormatBadge(context, book.format, isEInk: isEInk),
               if (book.progress > 0) ...[
                 const SizedBox(width: 8),
                 Text(
                   "${(book.progress * 100).toInt()}%",
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.colorScheme.primary,
+                    color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -775,7 +811,7 @@ class BookListItem extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.more_vert, size: 18),
                 onPressed: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 padding: EdgeInsets.zero,
               ),
@@ -796,13 +832,19 @@ class BookDetailsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
+        border: isEInk ? Border.all(color: const Color(0xFF9E9A90), width: 1.0) : null,
       ),
       child: Row(
         children: [
@@ -813,7 +855,7 @@ class BookDetailsHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -824,7 +866,7 @@ class BookDetailsHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
@@ -836,7 +878,7 @@ class BookDetailsHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.right,
             ),
@@ -848,7 +890,7 @@ class BookDetailsHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurfaceVariant,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.right,
             ),
@@ -869,20 +911,26 @@ class BookDetailsItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.1),
+          color: isEInk ? const Color(0xFF9E9A90) : theme.colorScheme.outlineVariant.withValues(alpha: 0.1),
+          width: 1.0,
         ),
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
@@ -892,7 +940,7 @@ class BookDetailsItem extends StatelessWidget {
                 child: Row(
                   children: [
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(isEInk ? 2 : 3),
                       child: BookCover(
                         book: book,
                         height: 36,
@@ -907,10 +955,16 @@ class BookDetailsItem extends StatelessWidget {
                         children: [
                           Text(
                             book.title,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF1A1A18),
+                                  )
+                                : const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -918,7 +972,7 @@ class BookDetailsItem extends StatelessWidget {
                             book.author.isNotEmpty ? book.author : 'Unknown',
                             style: TextStyle(
                               fontSize: 10,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -932,21 +986,7 @@ class BookDetailsItem extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      book.format.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
+                  child: _buildFormatBadge(context, book.format, isEInk: isEInk),
                 ),
               ),
               Expanded(
@@ -955,7 +995,7 @@ class BookDetailsItem extends StatelessWidget {
                   LibraryLocation.formatBytes(book.safeFileSize),
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                   ),
                   textAlign: TextAlign.right,
                 ),
@@ -966,20 +1006,20 @@ class BookDetailsItem extends StatelessWidget {
                   BookItemActionHandler.formatDate(book.lastOpened),
                   style: TextStyle(
                     fontSize: 10,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                   ),
                   textAlign: TextAlign.right,
                 ),
               ),
               InkWell(
                 onTap: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : 12),
                 child: Padding(
                   padding: const EdgeInsets.all(4.0),
                   child: Icon(
                     Icons.more_vert,
                     size: 16,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -1003,20 +1043,30 @@ class BookTileItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+      color: isEInk ? const Color(0xFFE0DCD3) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
+        side: isEInk ? const BorderSide(color: Color(0xFF9E9A90), width: 1.0) : BorderSide.none,
+      ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.xs),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.xs),
                 child: BookCover(
                   book: book,
                   height: 62,
@@ -1032,11 +1082,18 @@ class BookTileItem extends StatelessWidget {
                   children: [
                     Text(
                       book.title,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        height: 1.15,
-                      ),
+                      style: isEInk
+                          ? GoogleFonts.robotoSlab(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              height: 1.15,
+                              color: const Color(0xFF1A1A18),
+                            )
+                          : const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              height: 1.15,
+                            ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1045,7 +1102,7 @@ class BookTileItem extends StatelessWidget {
                       book.author.isNotEmpty ? book.author : 'Unknown Author',
                       style: TextStyle(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1053,27 +1110,13 @@ class BookTileItem extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            book.format.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 8,
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        _buildFormatBadge(context, book.format, isEInk: isEInk),
                         const SizedBox(width: 6),
                         Text(
                           LibraryLocation.formatBytes(book.safeFileSize),
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                           ),
                         ),
                         if (book.progress > 0) ...[
@@ -1083,7 +1126,7 @@ class BookTileItem extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.primary,
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                             ),
                           ),
                         ],
@@ -1094,13 +1137,13 @@ class BookTileItem extends StatelessWidget {
               ),
               InkWell(
                 onTap: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
                 child: Padding(
                   padding: const EdgeInsets.all(4.0),
                   child: Icon(
                     Icons.more_vert,
                     size: 18,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -1124,20 +1167,26 @@ class BookContentItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
     final theme = Theme.of(context);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.lg),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+          color: isEInk ? const Color(0xFF9E9A90) : theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+          width: 1.0,
         ),
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
         onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.lg),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Row(
@@ -1146,7 +1195,7 @@ class BookContentItem extends StatelessWidget {
               Column(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
                     child: BookCover(
                       book: book,
                       height: 96,
@@ -1159,12 +1208,12 @@ class BookContentItem extends StatelessWidget {
                     SizedBox(
                       width: 68,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
+                        borderRadius: BorderRadius.circular(isEInk ? 0 : 2),
                         child: LinearProgressIndicator(
                           value: book.progress.clamp(0.0, 1.0),
                           minHeight: 3,
-                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
-                          valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
+                          backgroundColor: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.primary.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary),
                         ),
                       ),
                     ),
@@ -1182,40 +1231,32 @@ class BookContentItem extends StatelessWidget {
                         Expanded(
                           child: Text(
                             book.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -0.1,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF1A1A18),
+                                  )
+                                : theme.textTheme.titleMedium?.copyWith(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: -0.1,
+                                  ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            book.format.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        _buildFormatBadge(context, book.format, isEInk: isEInk),
                         InkWell(
                           onTap: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
                           child: Padding(
                             padding: const EdgeInsets.only(left: 6.0, top: 2.0),
                             child: Icon(
                               Icons.more_vert,
                               size: 18,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
                           ),
                         ),
@@ -1224,10 +1265,15 @@ class BookContentItem extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       book.author.isNotEmpty ? book.author : 'Unknown Author',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                        fontSize: 12,
-                      ),
+                      style: isEInk
+                          ? const TextStyle(
+                              color: Color(0xFF3D3C38),
+                              fontSize: 12,
+                            )
+                          : theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              fontSize: 12,
+                            ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1239,7 +1285,7 @@ class BookContentItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
+                          color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                         ),
                       )
                     else
@@ -1248,30 +1294,30 @@ class BookContentItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontStyle: FontStyle.italic,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                          color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                       ),
                     const SizedBox(height: 8),
                     // Metadata chips / row
                     Row(
                       children: [
-                        Icon(Icons.sd_storage_outlined, size: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                        Icon(Icons.sd_storage_outlined, size: 12, color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                         const SizedBox(width: 4),
                         Text(
                           LibraryLocation.formatBytes(book.safeFileSize),
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(Icons.access_time, size: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                        Icon(Icons.access_time, size: 12, color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                         const SizedBox(width: 4),
                         Text(
                           BookItemActionHandler.formatDate(book.lastOpened),
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1279,7 +1325,7 @@ class BookContentItem extends StatelessWidget {
                           "• ${book.sourceType == BookSourceType.linked ? 'Linked' : 'Imported'}",
                           style: TextStyle(
                             fontSize: 10,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
                       ],

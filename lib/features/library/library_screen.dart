@@ -20,6 +20,7 @@ import 'package:reader_app/data/services/saf_service.dart';
 import 'package:reader_app/core/models/book_format.dart';
 import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/features/library/widgets/book_view_items.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -66,6 +67,8 @@ class _LibraryViewState extends State<_LibraryView> {
     final theme = Theme.of(context);
     final dimensionState = context.watch<DimensionState>();
     final dimensionConfig = dimensionState.config;
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
 
     // Sync search controller if cleared externally
     if (state.searchQuery.isEmpty && _searchController.text.isNotEmpty) {
@@ -74,13 +77,17 @@ class _LibraryViewState extends State<_LibraryView> {
 
     final hasActiveSearch = _searchController.text.isNotEmpty || state.searchQuery.isNotEmpty;
 
-    final searchRadius = dimensionConfig.cardRadius <= 0
-        ? BorderRadius.zero
-        : BorderRadius.circular(dimensionConfig.cardRadius.clamp(4.0, 24.0));
+    final searchRadius = isEInk
+        ? BorderRadius.circular(2)
+        : (dimensionConfig.cardRadius <= 0
+            ? BorderRadius.zero
+            : BorderRadius.circular(dimensionConfig.cardRadius.clamp(4.0, 24.0)));
 
-    final searchHint = dimensionConfig.isMonospace
-        ? '> search library_'
-        : (dimensionConfig.isSerif ? 'Search catalog...' : 'Search library...');
+    final searchHint = isEInk
+        ? 'Search library...'
+        : (dimensionConfig.isMonospace
+            ? '> search library_'
+            : (dimensionConfig.isSerif ? 'Search catalog...' : 'Search library...'));
 
     return PopScope(
       canPop: !hasActiveSearch,
@@ -100,15 +107,17 @@ class _LibraryViewState extends State<_LibraryView> {
           title: Container(
             height: 44,
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainer,
+              color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surfaceContainer,
               borderRadius: searchRadius,
               border: Border.all(
-                color: dimensionConfig.cardBorderWidth > 1
-                    ? theme.colorScheme.primary.withValues(alpha: 0.35)
-                    : (theme.brightness == Brightness.dark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.05)),
-                width: dimensionConfig.cardBorderWidth > 1 ? 1.5 : 1,
+                color: isEInk
+                    ? const Color(0xFF1A1A18)
+                    : (dimensionConfig.cardBorderWidth > 1
+                        ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                        : (theme.brightness == Brightness.dark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.black.withValues(alpha: 0.05))),
+                width: isEInk ? 1.5 : (dimensionConfig.cardBorderWidth > 1 ? 1.5 : 1),
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -116,7 +125,7 @@ class _LibraryViewState extends State<_LibraryView> {
               children: [
                 Icon(
                   DimensionIcons.search(dimensionConfig.iconStyle),
-                  color: theme.colorScheme.primary,
+                  color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -125,27 +134,34 @@ class _LibraryViewState extends State<_LibraryView> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: searchHint,
-                      hintStyle: dimensionConfig.isMonospace
-                          ? GoogleFonts.firaCode(
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                              fontSize: 13,
-                            )
-                          : TextStyle(
-                              fontFamily: dimensionConfig.isSerif ? 'serif' : null,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      hintStyle: isEInk
+                          ? GoogleFonts.robotoSlab(
+                              color: const Color(0xFF1A1A18).withValues(alpha: 0.7),
                               fontSize: 14,
-                            ),
+                            )
+                          : (dimensionConfig.isMonospace
+                              ? GoogleFonts.firaCode(
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  fontSize: 13,
+                                )
+                              : TextStyle(
+                                  fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  fontSize: 14,
+                                )),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
-                    style: dimensionConfig.isMonospace
-                        ? GoogleFonts.firaCode(fontSize: 13)
-                        : TextStyle(
-                            fontFamily: dimensionConfig.isSerif ? 'serif' : null,
-                            fontSize: 14,
-                          ),
+                    style: isEInk
+                        ? GoogleFonts.robotoSlab(fontSize: 14, color: const Color(0xFF1A1A18))
+                        : (dimensionConfig.isMonospace
+                            ? GoogleFonts.firaCode(fontSize: 13)
+                            : TextStyle(
+                                fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                                fontSize: 14,
+                              )),
                     onChanged: (value) => controller.setSearchQuery(value),
                   ),
                 ),
@@ -158,7 +174,7 @@ class _LibraryViewState extends State<_LibraryView> {
                     },
                     child: Icon(
                       CupertinoIcons.clear_thick_circled,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       size: 18,
                     ),
                   ),
@@ -193,41 +209,52 @@ class _LibraryViewState extends State<_LibraryView> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Container(
                 height: 36,
-                padding: const EdgeInsets.all(2),
+                padding: isEInk ? EdgeInsets.zero : const EdgeInsets.all(2),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainer,
-                  borderRadius: dimensionConfig.cardRadius <= 0
-                      ? BorderRadius.zero
-                      : BorderRadius.circular(AppRadius.sm),
+                  color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainer,
+                  borderRadius: isEInk
+                      ? BorderRadius.circular(2)
+                      : (dimensionConfig.cardRadius <= 0
+                          ? BorderRadius.zero
+                          : BorderRadius.circular(AppRadius.sm)),
+                  border: isEInk
+                      ? Border.all(color: const Color(0xFF1A1A18), width: 1.5)
+                      : null,
                 ),
                 child: TabBar(
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicator: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: dimensionConfig.cardRadius <= 0
+                    color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                    borderRadius: isEInk
                         ? BorderRadius.zero
-                        : BorderRadius.circular(AppRadius.xs),
+                        : (dimensionConfig.cardRadius <= 0
+                            ? BorderRadius.zero
+                            : BorderRadius.circular(AppRadius.xs)),
                   ),
-                  labelColor: theme.colorScheme.onPrimary,
-                  unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-                  labelStyle: dimensionConfig.isMonospace
-                      ? GoogleFonts.firaCode(fontWeight: FontWeight.bold, fontSize: 12)
-                      : TextStyle(
-                          fontFamily: dimensionConfig.isSerif ? 'serif' : null,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                  unselectedLabelStyle: dimensionConfig.isMonospace
-                      ? GoogleFonts.firaCode(fontWeight: FontWeight.w500, fontSize: 12)
-                      : TextStyle(
-                          fontFamily: dimensionConfig.isSerif ? 'serif' : null,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
+                  labelColor: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.onPrimary,
+                  unselectedLabelColor: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.onSurfaceVariant,
+                  labelStyle: isEInk
+                      ? GoogleFonts.robotoSlab(fontWeight: FontWeight.bold, fontSize: 13)
+                      : (dimensionConfig.isMonospace
+                          ? GoogleFonts.firaCode(fontWeight: FontWeight.bold, fontSize: 12)
+                          : TextStyle(
+                              fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            )),
+                  unselectedLabelStyle: isEInk
+                      ? GoogleFonts.robotoSlab(fontWeight: FontWeight.w500, fontSize: 13)
+                      : (dimensionConfig.isMonospace
+                          ? GoogleFonts.firaCode(fontWeight: FontWeight.w500, fontSize: 12)
+                          : TextStyle(
+                              fontFamily: dimensionConfig.isSerif ? 'serif' : null,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            )),
                   dividerColor: Colors.transparent,
                   tabs: [
-                    Tab(text: dimensionConfig.isMonospace ? "[BOOKS]" : "Books"),
-                    Tab(text: dimensionConfig.isMonospace ? "[COLLECTIONS]" : "Collections"),
+                    Tab(text: isEInk ? "Books" : (dimensionConfig.isMonospace ? "[BOOKS]" : "Books")),
+                    Tab(text: isEInk ? "Collections" : (dimensionConfig.isMonospace ? "[COLLECTIONS]" : "Collections")),
                   ],
                 ),
               ),
@@ -583,6 +610,8 @@ class _LibraryViewState extends State<_LibraryView> {
 
   Widget _buildSortFilterBar(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
     
     // Check if any filters are active
     final hasActiveFilters = state.selectedFormats.isNotEmpty ||
@@ -603,14 +632,17 @@ class _LibraryViewState extends State<_LibraryView> {
                   // Sort Trigger
                   InkWell(
                     onTap: () => _showSortBottomSheet(context, state, controller),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
+                        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                         border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          color: isEInk
+                              ? const Color(0xFF1A1A18)
+                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          width: 1.0,
                         ),
                       ),
                       child: Row(
@@ -619,15 +651,21 @@ class _LibraryViewState extends State<_LibraryView> {
                           Icon(
                             Icons.sort,
                             size: 16,
-                            color: theme.colorScheme.primary,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             _getSortLabel(state.sortBy),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1A1A18),
+                                    fontSize: 13,
+                                  )
+                                : theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
                           ),
                           const SizedBox(width: 4),
                           Icon(
@@ -635,7 +673,7 @@ class _LibraryViewState extends State<_LibraryView> {
                                 ? Icons.arrow_upward 
                                 : Icons.arrow_downward,
                             size: 12,
-                            color: theme.colorScheme.primary,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                           ),
                         ],
                       ),
@@ -645,18 +683,23 @@ class _LibraryViewState extends State<_LibraryView> {
                   // Filter Trigger (Matches Photo Modal launcher)
                   InkWell(
                     onTap: () => _showFilterDialog(context, state, controller),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: hasActiveFilters 
-                            ? theme.colorScheme.primary.withValues(alpha: 0.15) 
-                            : theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
+                        color: isEInk
+                            ? const Color(0xFFEAE6DF)
+                            : (hasActiveFilters 
+                                ? theme.colorScheme.primary.withValues(alpha: 0.15) 
+                                : theme.colorScheme.surfaceContainerLow),
+                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                         border: Border.all(
-                          color: hasActiveFilters 
-                              ? theme.colorScheme.primary 
-                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          color: isEInk
+                              ? const Color(0xFF1A1A18)
+                              : (hasActiveFilters 
+                                  ? theme.colorScheme.primary 
+                                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                          width: isEInk ? 1.0 : 1.0,
                         ),
                       ),
                       child: Row(
@@ -665,29 +708,38 @@ class _LibraryViewState extends State<_LibraryView> {
                           Icon(
                             Icons.filter_alt,
                             size: 16,
-                            color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                            color: isEInk
+                                ? const Color(0xFF1A1A18)
+                                : (hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'Filter',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1A1A18),
+                                    fontSize: 13,
+                                  )
+                                : theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                  ),
                           ),
                           if (hasActiveFilters) ...[
                             const SizedBox(width: 4),
                             Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary,
-                                shape: BoxShape.circle,
+                                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                                shape: isEInk ? BoxShape.rectangle : BoxShape.circle,
+                                borderRadius: isEInk ? BorderRadius.circular(2) : null,
                               ),
                               child: Text(
                                 '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
                                 style: TextStyle(
                                   fontSize: 9,
-                                  color: theme.colorScheme.onPrimary,
+                                  color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.onPrimary,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -701,14 +753,17 @@ class _LibraryViewState extends State<_LibraryView> {
                   // View Trigger
                   InkWell(
                     onTap: () => _showViewModeBottomSheet(context, state, controller),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
+                        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
                         border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          color: isEInk
+                              ? const Color(0xFF1A1A18)
+                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          width: 1.0,
                         ),
                       ),
                       child: Row(
@@ -717,15 +772,21 @@ class _LibraryViewState extends State<_LibraryView> {
                           Icon(
                             state.viewMode.icon,
                             size: 16,
-                            color: theme.colorScheme.primary,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'View',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface,
-                            ),
+                            style: isEInk
+                                ? GoogleFonts.robotoSlab(
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1A1A18),
+                                    fontSize: 13,
+                                  )
+                                : theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
                           ),
                         ],
                       ),
@@ -738,10 +799,16 @@ class _LibraryViewState extends State<_LibraryView> {
           const SizedBox(width: 8),
           Text(
             '${state.filteredBooks.length} books',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              fontWeight: FontWeight.w500,
-            ),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(
+                    color: const Color(0xFF3D3C38),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  )
+                : theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w500,
+                  ),
           ),
         ],
       ),

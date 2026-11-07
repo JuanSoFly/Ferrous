@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/annotation.dart';
 import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/features/annotations/annotation_dialog.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 Future<void> showAnnotationDetailSheet(BuildContext context, Annotation annotation) async {
   await showModalBottomSheet(
@@ -88,12 +90,20 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = Color(_annotation.color);
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.watch<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+    final color = isEInk ? const Color(0xFF1A1A18) : Color(_annotation.color);
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
+        borderRadius: isEInk
+            ? const BorderRadius.vertical(top: Radius.circular(2))
+            : const BorderRadius.vertical(top: Radius.circular(20)),
+        border: isEInk ? const Border(top: BorderSide(color: Color(0xFF1A1A18), width: 1.5)) : null,
       ),
       padding: EdgeInsets.only(
         left: 20,
@@ -111,7 +121,7 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: theme.colorScheme.outlineVariant,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -127,22 +137,33 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
-                  border: Border.all(color: theme.colorScheme.outline, width: 1),
+                  border: Border.all(color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.outline, width: 1),
                 ),
               ),
               const SizedBox(width: 10),
               Text(
                 'Annotation',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: const Color(0xFF1A1A18),
+                      )
+                    : theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
               ),
               const Spacer(),
               Text(
                 _formatDate(_annotation.createdAt),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: isEInk
+                    ? const TextStyle(
+                        color: Color(0xFF3D3C38),
+                        fontSize: 12,
+                      )
+                    : theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
               ),
             ],
           ),
@@ -153,17 +174,29 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border(
-                left: BorderSide(color: color, width: 4),
-              ),
+              color: isEInk ? const Color(0xFFE0DCD3) : color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(isEInk ? 2 : 8),
+              border: isEInk
+                  ? const Border(
+                      left: BorderSide(color: Color(0xFF1A1A18), width: 3.0),
+                      top: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                      right: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                      bottom: BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+                    )
+                  : Border(
+                      left: BorderSide(color: color, width: 4),
+                    ),
             ),
             child: Text(
               _annotation.selectedText,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontStyle: FontStyle.italic,
-              ),
+              style: isEInk
+                  ? GoogleFonts.robotoSlab(
+                      fontStyle: FontStyle.italic,
+                      color: const Color(0xFF1A1A18),
+                    )
+                  : theme.textTheme.bodyMedium?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
               maxLines: 6,
               overflow: TextOverflow.ellipsis,
             ),
@@ -174,22 +207,30 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
           if (_annotation.note != null && _annotation.note!.isNotEmpty) ...[
             Text(
               'Note',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
+              style: isEInk
+                  ? GoogleFonts.robotoSlab(
+                      color: const Color(0xFF1A1A18),
+                      fontWeight: FontWeight.w600,
+                    )
+                  : theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
             ),
             const SizedBox(height: 6),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(8),
+                color: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(isEInk ? 2 : 8),
+                border: isEInk ? Border.all(color: const Color(0xFF9E9A90), width: 1.0) : null,
               ),
               child: Text(
                 _annotation.note!,
-                style: theme.textTheme.bodyMedium,
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(color: const Color(0xFF1A1A18))
+                    : theme.textTheme.bodyMedium,
               ),
             ),
             const SizedBox(height: 20),
@@ -199,10 +240,15 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 'No note attached.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
-                ),
+                style: isEInk
+                    ? const TextStyle(
+                        color: Color(0xFF3D3C38),
+                        fontStyle: FontStyle.italic,
+                      )
+                    : theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                      ),
               ),
             ),
             const SizedBox(height: 12),
@@ -216,7 +262,8 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Delete'),
                 style: TextButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
+                  foregroundColor: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.error,
+                  shape: isEInk ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)) : null,
                 ),
                 onPressed: _handleDelete,
               ),
@@ -224,6 +271,13 @@ class _AnnotationDetailSheetState extends State<_AnnotationDetailSheet> {
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('Edit'),
+                style: isEInk
+                    ? FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1A1A18),
+                        foregroundColor: const Color(0xFFEAE6DF),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+                      )
+                    : null,
                 onPressed: _handleEdit,
               ),
             ],
