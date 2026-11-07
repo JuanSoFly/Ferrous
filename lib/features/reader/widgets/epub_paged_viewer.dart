@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
@@ -41,11 +40,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   void initState() {
     super.initState();
     widget.chapterController.addListener(_onChapterControllerChanged);
-    final book = widget.chapterController.book;
-    final isFirstOpen = book.sectionIndex == 0 &&
-        book.scrollPosition == 0.0 &&
-        book.lastReadingSentenceStart == -1;
-    _activePage = isFirstOpen ? 0 : widget.chapterController.currentChapterIndex + 1;
+    final isCover = widget.chapterController.currentChapterIndex == 0 &&
+        widget.chapterController.lastReadingSentenceStart == -1;
+    _activePage = isCover ? 0 : widget.chapterController.currentChapterIndex + 1;
     _viewPageController = PageController(initialPage: _activePage);
   }
 
@@ -85,7 +82,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   }
 
   void _syncActivePage() {
-    final targetPage = widget.chapterController.currentChapterIndex + 1;
+    final isCover = widget.chapterController.currentChapterIndex == 0 &&
+        widget.chapterController.lastReadingSentenceStart == -1;
+    final targetPage = isCover ? 0 : widget.chapterController.currentChapterIndex + 1;
     if (_activePage != targetPage) {
       if (mounted) {
         setState(() {
@@ -234,17 +233,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       final chapterIndex = index - 1;
       widget.chapterController.loadChapter(chapterIndex, userInitiated: false);
     } else {
-      widget.chapterController.book.sectionIndex = 0;
-      widget.chapterController.book.lastReadingSentenceStart = -1;
-      widget.chapterController.book.lastReadingSentenceEnd = -1;
-      widget.chapterController.book.scrollPosition = 0.0;
-      unawaited(widget.chapterController.repository.updateReadingProgress(
-        widget.chapterController.book.id,
-        sectionIndex: 0,
-        scrollPosition: 0.0,
-        lastReadingSentenceStart: -1,
-        lastReadingSentenceEnd: -1,
-      ));
+      widget.chapterController.onNavigatedToCover();
     }
     if (_viewPageController.hasClients &&
         _viewPageController.page?.round() != index) {

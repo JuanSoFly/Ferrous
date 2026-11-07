@@ -1,4 +1,13 @@
-## [1.3.0-alpha.4] - 2026-11-07
+## [1.3.0-alpha.4] - 2026-11-08
+
+### Added
+- Initialize continuous reader `ScrollController` directly with saved offset to eliminate initial scroll flicker on launch.
+- Encapsulate cover page navigation state via `onNavigatedToCover()` in chapter controllers.
+
+### Fixed
+- Prevent transient layout crashes by verifying `RenderBox` attachment and dimension bounds before coordinate calculations.
+- Fix continuous scroll restoration overshooting past target chapter during lazy sliver layouts.
+- Resolve cover page index synchronization issues when switching between paged and continuous reader modes.
 
 ### Changed
 - Optimize EPUB and MOBI chapter navigation with instant jumping and zero animation delay.

@@ -247,9 +247,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       if (switchingToPaged) {
         _pageController.dispose();
         final isCover = _chapterController.currentChapterIndex == 0 &&
-            widget.book.sectionIndex == 0 &&
-            widget.book.scrollPosition == 0.0 &&
-            widget.book.lastReadingSentenceStart == -1;
+            _chapterController.lastReadingSentenceStart == -1;
         _pageController = PageController(
           initialPage: isCover ? 0 : _chapterController.currentChapterIndex + 1,
         );
