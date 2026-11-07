@@ -247,23 +247,20 @@ class MobiChapterController extends ChangeNotifier {
       if (context != null) {
         Scrollable.ensureVisible(
           context,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+          duration: Duration.zero,
           alignment: 0.0,
         ).then((_) {
           _isProgrammaticScroll = false;
           if (_scrollController.hasClients) {
             final currentContext = key.currentContext;
             if (currentContext != null && currentContext.mounted) {
-              updateCurrentChapterFromScroll(currentContext);
+              updateCurrentChapterFromScroll(currentContext, force: true);
             }
           }
         });
-      } else if (attempt < 30) {
+      } else {
         final currentOffset = _scrollController.offset;
         final maxExtent = _scrollController.position.maxScrollExtent;
-        final viewportDim = _scrollController.position.viewportDimension;
-        final step = viewportDim > 0 ? viewportDim * 2.5 : 2000.0;
 
         double charsBefore = 0;
         for (int i = 0; i < index && i < _allChapterPlainTexts.length; i++) {
@@ -271,28 +268,31 @@ class MobiChapterController extends ChangeNotifier {
         }
         final estimatedPixelTarget = 700.0 + charsBefore * 0.5;
 
-        if (estimatedPixelTarget > currentOffset) {
-          final nextJump = (currentOffset + step).clamp(0.0, maxExtent);
-          _scrollController.jumpTo(nextJump);
+        final targetJump = (maxExtent > 0 && estimatedPixelTarget > maxExtent)
+            ? maxExtent
+            : estimatedPixelTarget.clamp(0.0, maxExtent);
+
+        if ((currentOffset - targetJump).abs() > 1.0) {
+          _scrollController.jumpTo(targetJump);
+        }
+
+        if (attempt < 25) {
+          _scrollToChapter(index, attempt: attempt + 1);
         } else {
-          final nextJump = (currentOffset - step).clamp(0.0, maxExtent);
-          _scrollController.jumpTo(nextJump);
+          _isProgrammaticScroll = false;
+          _currentChapterIndex = index;
+          if (index < _allChapterContents.length) {
+            _currentContent = _allChapterContents[index];
+            _currentPlainText = _allChapterPlainTexts[index];
+            _sentenceSpans = _allChapterSentenceSpans[index];
+          }
+          notifyListeners();
+          unawaited(repository.updateReadingProgress(
+            book.id,
+            sectionIndex: index,
+            totalPages: _chapters?.length ?? 0,
+          ));
         }
-        _scrollToChapter(index, attempt: attempt + 1);
-      } else {
-        _isProgrammaticScroll = false;
-        _currentChapterIndex = index;
-        if (index < _allChapterContents.length) {
-          _currentContent = _allChapterContents[index];
-          _currentPlainText = _allChapterPlainTexts[index];
-          _sentenceSpans = _allChapterSentenceSpans[index];
-        }
-        notifyListeners();
-        unawaited(repository.updateReadingProgress(
-          book.id,
-          sectionIndex: index,
-          totalPages: _chapters?.length ?? 0,
-        ));
       }
     });
   }
@@ -521,7 +521,7 @@ class MobiChapterController extends ChangeNotifier {
       }
 
       // If target chapter is not yet laid out in lazy ListView.builder:
-      if (attempt < 30) {
+      if (attempt < 25) {
         _markRestoringPosition();
         final maxExtent = _scrollController.position.maxScrollExtent;
         final currentOffset = _scrollController.offset;
@@ -536,19 +536,12 @@ class MobiChapterController extends ChangeNotifier {
 
         final estimatedPixelTarget = 700.0 + charsBefore * 0.5;
 
-        if (chapterIndex > 0) {
-          if (estimatedPixelTarget > currentOffset) {
-            final nextJump = estimatedPixelTarget.clamp(0.0, maxExtent);
-            if (nextJump > currentOffset) {
-              _scrollController.jumpTo(nextJump);
-            } else if (maxExtent > currentOffset) {
-              _scrollController.jumpTo(maxExtent);
-            }
-          } else if (maxExtent > currentOffset) {
-            _scrollController.jumpTo(maxExtent);
-          }
-        } else {
-          _scrollController.jumpTo(estimatedPixelTarget.clamp(0.0, maxExtent));
+        final targetJump = (maxExtent > 0 && estimatedPixelTarget > maxExtent)
+            ? maxExtent
+            : estimatedPixelTarget.clamp(0.0, maxExtent);
+
+        if ((currentOffset - targetJump).abs() > 1.0) {
+          _scrollController.jumpTo(targetJump);
         }
 
         _restoreContinuousPosition(attempt: attempt + 1);

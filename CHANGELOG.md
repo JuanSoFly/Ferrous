@@ -1,3 +1,9 @@
+## [1.3.0-alpha.4] - 2026-11-07
+
+### Changed
+- Optimize EPUB and MOBI chapter navigation with instant jumping and zero animation delay.
+- Streamline continuous reader position restoration by directly calculating target offsets instead of incremental stepped jumps.
+
 ## [1.3.0-alpha.3] - 2026-11-07
 
 ### Added
