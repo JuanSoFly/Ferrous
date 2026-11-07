@@ -43,6 +43,17 @@ class CbzPageController extends ChangeNotifier {
   double _lastScrollPosition;
   double get scrollPosition => scrollController.hasClients ? scrollController.offset : _lastScrollPosition;
   
+  double _inPageScrollOffset = 0.0;
+  double get inPageScrollOffset => _inPageScrollOffset;
+
+  double? _viewportWidth;
+  double? _viewportHeight;
+
+  void updateViewportDimensions(double width, double height) {
+    _viewportWidth = width;
+    _viewportHeight = height;
+  }
+
   CbzCacheController? _cacheController;
   CbzCacheController? get cacheController => _cacheController;
 
@@ -58,11 +69,10 @@ class CbzPageController extends ChangeNotifier {
   }) : _currentPage = book.currentPage,
        _readingMode = book.readingMode,
        _lastScrollPosition = book.scrollPosition {
-    final isContinuous = _readingMode == ReadingMode.verticalContinuous ||
-        _readingMode == ReadingMode.webtoon ||
-        _readingMode == ReadingMode.horizontalContinuous;
-    final initialOffset = (isContinuous && _lastScrollPosition > 0) ? _lastScrollPosition : 0.0;
-    scrollController = ScrollController(initialScrollOffset: initialOffset);
+    _inPageScrollOffset = book.lastReadingSentenceStart >= 0
+        ? book.lastReadingSentenceStart.toDouble()
+        : 0.0;
+    scrollController = ScrollController(initialScrollOffset: 0.0);
     scrollController.addListener(_handleScrollUpdate);
   }
 
@@ -100,7 +110,12 @@ class CbzPageController extends ChangeNotifier {
 
         if (_currentPage >= names.length) {
           _currentPage = 0;
+          _inPageScrollOffset = 0.0;
         }
+
+        // Pre-warm the target reading page before revealing content
+        final targetIndex = (_currentPage >= 0 && _currentPage < names.length) ? _currentPage : 0;
+        await _cacheController!.loadPage(targetIndex, 1080);
 
         _isLoading = false;
         notifyListeners();
@@ -198,10 +213,24 @@ class CbzPageController extends ChangeNotifier {
       }
     }
 
-    if (bestIndex != null && bestIndex != _currentPage) {
-      _currentPage = bestIndex;
-      book.currentPage = bestIndex;
-      notifyListeners();
+    if (bestIndex != null) {
+      final key = _pageKeys[bestIndex];
+      final ctx = key.currentContext;
+      if (ctx != null) {
+        final renderBox = ctx.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          final itemStart = isHorizontal
+              ? renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx
+              : renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+          _inPageScrollOffset = itemStart < 0 ? -itemStart : 0.0;
+        }
+      }
+
+      if (bestIndex != _currentPage) {
+        _currentPage = bestIndex;
+        book.currentPage = bestIndex;
+        notifyListeners();
+      }
     }
   }
 
@@ -215,6 +244,7 @@ class CbzPageController extends ChangeNotifier {
     book.scrollPosition = offset;
     book.currentPage = _currentPage;
     book.readingMode = _readingMode;
+    book.lastReadingSentenceStart = _inPageScrollOffset.round();
 
     repository.updateReadingProgress(
       book.id,
@@ -222,103 +252,112 @@ class CbzPageController extends ChangeNotifier {
       totalPages: _pageCount,
       scrollPosition: offset,
       readingMode: _readingMode,
+      lastReadingSentenceStart: _inPageScrollOffset.round(),
     );
   }
 
-  void restoreContinuousScroll({int attempt = 0}) {
-    if (!isContinuousMode) return;
-    if (_pageCount == 0) return;
-    if (_currentPage <= 0 && _lastScrollPosition <= 0) return;
-
+  void _anchorToPage(int targetPage, double inPageOffset, {int attempt = 0}) {
+    if (targetPage < 0 || targetPage >= _pageCount) {
+      isRestoringScroll = false;
+      return;
+    }
     if (!scrollController.hasClients) {
       if (attempt < 12) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          restoreContinuousScroll(attempt: attempt + 1);
+          _anchorToPage(targetPage, inPageOffset, attempt: attempt + 1);
         });
+      } else {
+        isRestoringScroll = false;
       }
       return;
     }
 
     isRestoringScroll = true;
 
-    if (_lastScrollPosition > 0) {
-      final position = scrollController.position;
-      final maxExtent = position.maxScrollExtent;
-      final target = (_lastScrollPosition > maxExtent && maxExtent > 0)
-          ? maxExtent
-          : _lastScrollPosition;
-
-      if ((position.pixels - target).abs() > 1.0) {
-        scrollController.jumpTo(target);
-      }
-
-      if (_lastScrollPosition > maxExtent && attempt < 15) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          restoreContinuousScroll(attempt: attempt + 1);
-        });
-        return;
-      }
-
-      isRestoringScroll = false;
-    } else if (_currentPage > 0) {
-      scrollToPage(_currentPage);
-    } else {
-      isRestoringScroll = false;
-    }
-  }
-
-  void scrollToPage(int targetPage, {int attempt = 0}) {
-    if (targetPage < 0 || targetPage >= _pageCount) return;
-    if (!scrollController.hasClients) {
-      if (attempt < 12) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          scrollToPage(targetPage, attempt: attempt + 1);
-        });
-      }
-      return;
-    }
-
-    isRestoringScroll = true;
-
-    // Check if target page already has a mounted context in viewport/cache
     final key = targetPage < _pageKeys.length ? _pageKeys[targetPage] : null;
     final targetContext = key?.currentContext;
     if (targetContext != null) {
-      Scrollable.ensureVisible(
-        targetContext,
-        duration: Duration.zero,
-        alignment: 0.0,
-      ).then((_) {
-        isRestoringScroll = false;
+      final renderBox = targetContext.findRenderObject() as RenderBox?;
+      RenderBox? viewportBox;
+      try {
+        final scrollable = Scrollable.maybeOf(targetContext);
+        viewportBox = scrollable?.context.findRenderObject() as RenderBox?;
+      } catch (_) {}
+
+      if (viewportBox == null && scrollController.hasClients) {
+        try {
+          final scrollCtx = scrollController.position.context.notificationContext;
+          viewportBox = scrollCtx?.findRenderObject() as RenderBox?;
+        } catch (_) {}
+      }
+
+      if (renderBox != null && renderBox.hasSize && viewportBox != null && viewportBox.hasSize) {
+        final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+        final currentItemStart = isHorizontal
+            ? renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx
+            : renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+        final delta = currentItemStart + inPageOffset;
+        final targetOffset = (scrollController.offset + delta).clamp(
+          0.0,
+          scrollController.position.maxScrollExtent,
+        );
+
+        if ((scrollController.offset - targetOffset).abs() > 0.5) {
+          scrollController.jumpTo(targetOffset);
+        }
+
+        if (targetOffset == scrollController.position.maxScrollExtent && delta > 1.0 && attempt < 10) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _anchorToPage(targetPage, inPageOffset, attempt: attempt + 1);
+          });
+          return;
+        }
+
         _currentPage = targetPage;
+        _inPageScrollOffset = inPageOffset;
         book.currentPage = targetPage;
+        book.lastReadingSentenceStart = inPageOffset.round();
+        isRestoringScroll = false;
         notifyListeners();
-      });
-      return;
+        return;
+      }
     }
 
-    // Estimate offset to target page
+    // Target context is not yet mounted; jump toward estimated offset so Flutter builds it
     final position = scrollController.position;
     final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
     final isWebtoon = _readingMode == ReadingMode.webtoon;
     final spacing = isWebtoon ? 1.0 : 12.0;
 
-    double avgExtent;
-    if (_pageExtents.isNotEmpty) {
-      avgExtent = _pageExtents.values.reduce((a, b) => a + b) / _pageExtents.length;
-    } else if (_cacheController != null && _cacheController!.getEstimatedAspectRatio(targetPage) != null) {
-      final ar = _cacheController!.getEstimatedAspectRatio(targetPage)!;
-      avgExtent = isHorizontal ? position.viewportDimension * ar : position.viewportDimension / ar;
-    } else {
-      avgExtent = position.viewportDimension > 0
-          ? (isHorizontal ? position.viewportDimension * 0.7 : position.viewportDimension * 0.85)
-          : 600.0;
+    // Cross-axis dimension: for vertical continuous, it's viewport width; for horizontal, viewport height.
+    double crossAxis = 0.0;
+    try {
+      final scrollCtx = position.context.notificationContext;
+      final box = scrollCtx?.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        crossAxis = isHorizontal ? box.size.height : box.size.width;
+      }
+    } catch (_) {}
+
+    if (crossAxis <= 0) {
+      crossAxis = isHorizontal
+          ? (_viewportHeight ?? 800.0)
+          : (_viewportWidth ?? 500.0);
     }
+
+    final defaultAr = _cacheController?.getEstimatedAspectRatio(targetPage) ?? 0.70;
 
     double estimatedOffset = 0.0;
     for (int i = 0; i < targetPage; i++) {
-      estimatedOffset += (_pageExtents[i] ?? avgExtent) + spacing;
+      if (_pageExtents.containsKey(i)) {
+        estimatedOffset += _pageExtents[i]! + spacing;
+      } else {
+        final ar = _cacheController?.getEstimatedAspectRatio(i) ?? defaultAr;
+        final extent = isHorizontal ? (crossAxis * ar) : (crossAxis / ar);
+        estimatedOffset += extent + spacing;
+      }
     }
+    estimatedOffset += inPageOffset;
 
     final maxExtent = position.maxScrollExtent;
     final targetJump = (maxExtent > 0 && estimatedOffset > maxExtent)
@@ -334,24 +373,25 @@ class CbzPageController extends ChangeNotifier {
         isRestoringScroll = false;
         return;
       }
-      final newContext = targetPage < _pageKeys.length ? _pageKeys[targetPage].currentContext : null;
-      if (newContext != null) {
-        Scrollable.ensureVisible(
-          newContext,
-          duration: Duration.zero,
-          alignment: 0.0,
-        ).then((_) {
-          isRestoringScroll = false;
-          _currentPage = targetPage;
-          book.currentPage = targetPage;
-          notifyListeners();
-        });
-      } else if (attempt < 20) {
-        scrollToPage(targetPage, attempt: attempt + 1);
+      if (attempt < 15) {
+        _anchorToPage(targetPage, inPageOffset, attempt: attempt + 1);
       } else {
         isRestoringScroll = false;
       }
     });
+  }
+
+  void restoreContinuousScroll({int attempt = 0}) {
+    if (!isContinuousMode) return;
+    if (_pageCount == 0) return;
+    if (isRestoringScroll && attempt == 0) return;
+    _anchorToPage(_currentPage, _inPageScrollOffset, attempt: attempt);
+  }
+
+  void scrollToPage(int targetPage, {int attempt = 0}) {
+    if (targetPage < 0 || targetPage >= _pageCount) return;
+    _inPageScrollOffset = 0.0;
+    _anchorToPage(targetPage, 0.0, attempt: attempt);
   }
 
   void jumpToPage(int page) {
@@ -380,8 +420,12 @@ class CbzPageController extends ChangeNotifier {
   void updateReadingMode(ReadingMode mode, {BuildContext? context}) {
     if (_readingMode == mode) return;
 
+    final wasContinuous = isContinuousMode;
+    final wasVertical = _readingMode == ReadingMode.verticalContinuous ||
+        _readingMode == ReadingMode.webtoon;
+
     // 1. Accurately save progress in current mode BEFORE switching
-    if (isContinuousMode) {
+    if (wasContinuous) {
       if (context != null) {
         updateCurrentPageFromScroll(context, force: true);
       }
@@ -398,18 +442,23 @@ class CbzPageController extends ChangeNotifier {
 
     _readingMode = mode;
     book.readingMode = mode;
+    _pageExtents.clear(); // Reset measured extents as layout/direction/spacing changed
     repository.updateReadingProgress(book.id, readingMode: mode);
 
-    final nowContinuous = mode == ReadingMode.verticalContinuous ||
-        mode == ReadingMode.webtoon ||
-        mode == ReadingMode.horizontalContinuous;
+    final nowContinuous = isContinuousMode;
+    final nowVertical = mode == ReadingMode.verticalContinuous ||
+        mode == ReadingMode.webtoon;
 
     if (nowContinuous) {
+      isRestoringScroll = true; // Lock scroll listener to prevent progress clobbering during rebuild
+      final preserveInPageOffset = wasVertical && nowVertical;
+      final targetInPageOffset = preserveInPageOffset ? _inPageScrollOffset : 0.0;
+      _inPageScrollOffset = targetInPageOffset;
       _lastScrollPosition = 0.0;
       book.scrollPosition = 0.0;
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        scrollToPage(_currentPage);
+        _anchorToPage(_currentPage, targetInPageOffset);
       });
     }
 

@@ -319,7 +319,7 @@ class MobiChapterController extends ChangeNotifier {
     }
     _lastScrollCheckTime = now;
 
-    int visibleChapter = _currentChapterIndex;
+    int? visibleChapter;
 
     try {
       final scrollableBox = _scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
@@ -345,7 +345,7 @@ class MobiChapterController extends ChangeNotifier {
           break;
         }
         if (chapterTop > viewportMiddle) {
-          visibleChapter = (i > 0) ? i - 1 : 0;
+          visibleChapter ??= (i > 0) ? i - 1 : 0;
           break;
         }
         visibleChapter = i;
@@ -355,7 +355,8 @@ class MobiChapterController extends ChangeNotifier {
       return;
     }
 
-    if (visibleChapter >= 0 &&
+    if (visibleChapter != null &&
+        visibleChapter >= 0 &&
         visibleChapter < _allChapterContents.length &&
         visibleChapter != _currentChapterIndex) {
       _currentChapterIndex = visibleChapter;
@@ -394,7 +395,7 @@ class MobiChapterController extends ChangeNotifier {
     return controller;
   }
 
-  void saveReadingPositionForMode(ReadingMode mode, {bool refreshChapter = true, BuildContext? context}) {
+  void saveReadingPositionForMode(ReadingMode mode, {bool refreshChapter = false, BuildContext? context}) {
     final isPaged = mode == ReadingMode.vertical || mode == ReadingMode.leftToRight;
     if (isPaged) {
       _saveReadingPositionFromPagedController(_currentChapterIndex);
@@ -417,6 +418,8 @@ class MobiChapterController extends ChangeNotifier {
     final fraction = _chapterFractionAtViewportAnchor(_currentChapterIndex);
     if (fraction == null) {
       _lastScrollPosition = _scrollController.offset;
+      book.sectionIndex = _currentChapterIndex;
+      book.scrollPosition = _lastScrollPosition;
       unawaited(repository.updateReadingProgress(
         book.id,
         sectionIndex: _currentChapterIndex,
@@ -430,6 +433,10 @@ class MobiChapterController extends ChangeNotifier {
     _lastScrollPosition = _scrollController.offset;
     _lastReadingSentenceStart = span.start;
     _lastReadingSentenceEnd = span.end;
+    book.sectionIndex = _currentChapterIndex;
+    book.scrollPosition = _lastScrollPosition;
+    book.lastReadingSentenceStart = span.start;
+    book.lastReadingSentenceEnd = span.end;
 
     unawaited(repository.updateReadingProgress(
       book.id,

@@ -650,7 +650,7 @@ class _LibraryViewState extends State<_LibraryView> {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: hasActiveFilters 
-                            ? theme.colorScheme.primaryContainer 
+                            ? theme.colorScheme.primary.withValues(alpha: 0.15) 
                             : theme.colorScheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
@@ -672,7 +672,7 @@ class _LibraryViewState extends State<_LibraryView> {
                             'Filter',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: hasActiveFilters ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
+                              color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurface,
                             ),
                           ),
                           if (hasActiveFilters) ...[
@@ -1042,7 +1042,7 @@ class _LibraryViewState extends State<_LibraryView> {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: isSelected 
-                                  ? theme.colorScheme.primaryContainer 
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.15) 
                                   : theme.colorScheme.surfaceContainer,
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -1155,7 +1155,7 @@ class _LibraryViewState extends State<_LibraryView> {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: isSelected 
-                              ? theme.colorScheme.primaryContainer 
+                              ? theme.colorScheme.primary.withValues(alpha: 0.15) 
                               : theme.colorScheme.surfaceContainer,
                           borderRadius: BorderRadius.circular(10),
                         ),

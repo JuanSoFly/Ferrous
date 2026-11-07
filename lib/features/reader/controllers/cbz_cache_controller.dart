@@ -26,16 +26,16 @@ class CbzCacheController {
 
   /// Get estimated aspect ratio for a page, or the global average if unknown.
   double? getEstimatedAspectRatio(int index) {
-    return _aspectRatios[index] ?? _averageAspectRatio;
+    return _aspectRatios[index] ?? _averageAspectRatio ?? 0.70;
   }
 
-  String _getCacheKey(int index, int maxWidth) {
+  String _getCacheKey(int index, [int? maxWidth]) {
     if (index < 0 || index >= pageNames.length) return '';
-    return '$archivePath:${pageNames[index]}:$maxWidth';
+    return '$archivePath:${pageNames[index]}';
   }
 
   /// Get an image for a specific page. Returns null if loading or not in cache.
-  ui.Image? getCachedImage(int index, int maxWidth) {
+  ui.Image? getCachedImage(int index, [int? maxWidth]) {
     final key = _getCacheKey(index, maxWidth);
     if (_imageCache.containsKey(key)) {
       _touchCache(key);

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -569,8 +570,10 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final note = (result['note'] as String?)?.trim();
       final color = result['color'] as int? ?? 0xFFFFF176;
 
-      int start = _plainText.indexOf(selectedText);
-      int end = start != -1 ? start + selectedText.length : selectedText.length;
+      final cleanSelected = selectedText.replaceAll('\u00AD', '');
+      int start = _plainText.indexOf(cleanSelected);
+      if (start == -1) start = _plainText.indexOf(selectedText);
+      int end = start != -1 ? start + cleanSelected.length : cleanSelected.length;
       if (start == -1) start = 0;
 
       final annotation = Annotation(
@@ -875,28 +878,41 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     );
                   },
                 ),
-                TagExtension(
+                TagExtension.inline(
                   tagsToExtend: {AnnotationHighlightHelper.highlightTag},
                   builder: (ctx) {
                     final text = ctx.node.text ?? '';
                     final id = ctx.attributes['data-id'] ?? '';
                     final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
+                    final color = Color(colorVal);
                     final style = ctx.style?.generateTextStyle() ?? const TextStyle();
-                    return _AnnotationHighlightSpan(
-                      annotationId: id,
+                    final highlightStyle = style.copyWith(
+                      backgroundColor: color.withValues(alpha: 0.35),
+                    );
+
+                    void handleTap() {
+                      final all = annotationRepo.getAllAnnotations();
+                      final target = all.cast<Annotation?>().firstWhere(
+                            (a) => a?.id == id,
+                            orElse: () => null,
+                          );
+                      if (target != null) {
+                        showAnnotationDetailSheet(context, target);
+                      }
+                    }
+
+                    final children = ctx.inlineSpanChildren;
+                    if (children != null && children.isNotEmpty) {
+                      return TextSpan(
+                        children: children,
+                        style: highlightStyle,
+                        recognizer: TapGestureRecognizer()..onTap = handleTap,
+                      );
+                    }
+                    return TextSpan(
                       text: text,
-                      color: Color(colorVal),
-                      textStyle: style,
-                      onTap: () {
-                        final all = annotationRepo.getAllAnnotations();
-                        final target = all.cast<Annotation?>().firstWhere(
-                              (a) => a?.id == id,
-                              orElse: () => null,
-                            );
-                        if (target != null) {
-                          showAnnotationDetailSheet(context, target);
-                        }
-                      },
+                      style: highlightStyle,
+                      recognizer: TapGestureRecognizer()..onTap = handleTap,
                     );
                   },
                 ),
@@ -1294,47 +1310,4 @@ class _TtsHighlightSpan extends StatelessWidget {
   }
 }
 
-class _AnnotationHighlightSpan extends StatelessWidget {
-  final String annotationId;
-  final String text;
-  final Color color;
-  final TextStyle textStyle;
-  final VoidCallback onTap;
-
-  const _AnnotationHighlightSpan({
-    required this.annotationId,
-    required this.text,
-    required this.color,
-    required this.textStyle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(3),
-          border: Border(
-            bottom: BorderSide(
-              color: color,
-              width: 2.0,
-            ),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-        child: Text(
-          text,
-          style: textStyle.copyWith(
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
-    );
-  }
-}
 

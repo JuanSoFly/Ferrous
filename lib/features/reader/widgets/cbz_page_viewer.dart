@@ -105,6 +105,9 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    widget.pageController.updateViewportDimensions(size.width, size.height);
+
     return ListenableBuilder(
       listenable: widget.pageController,
       builder: (context, _) {
@@ -147,7 +150,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
   Widget _buildGallery() {
     final mode = widget.pageController.readingMode;
 
-    if (widget.modeController.isPagedMode) {
+    if (mode == ReadingMode.vertical || mode == ReadingMode.leftToRight) {
       return _buildPagedView();
     }
 
@@ -168,12 +171,14 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final maxWidth = (size.width * devicePixelRatio).round();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final useRealisticCurl = !widget.modeController.useVerticalSwipe &&
+    final isVertical = widget.pageController.readingMode == ReadingMode.vertical;
+    final useRealisticCurl = !isVertical &&
         themeRepo.config.pageFlip &&
         _canSwipePages();
 
     if (useRealisticCurl) {
       return RealisticPageTurn(
+        key: const ValueKey('cbz-page-turn'),
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
@@ -191,8 +196,9 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     }
 
     return PageView.builder(
+      key: ValueKey('cbz-paged-$isVertical'),
       controller: _getOrUpdatePageController(),
-      scrollDirection: widget.modeController.useVerticalSwipe
+      scrollDirection: isVertical
           ? Axis.vertical
           : Axis.horizontal,
       physics: _canSwipePages()
@@ -242,10 +248,9 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
+        key: ValueKey('cbz-vertical-continuous-${widget.pageController.readingMode.name}'),
         scrollCacheExtent: ScrollCacheExtent.pixels(size.height * 2),
         controller: widget.pageController.scrollController,
-        key: PageStorageKey(
-            'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         padding: const EdgeInsets.symmetric(vertical: 16),
         itemCount: widget.pageController.pageCount,
         addAutomaticKeepAlives: false,
@@ -288,10 +293,9 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         return false;
       },
       child: ListView.separated(
+        key: const ValueKey('cbz-horizontal-continuous'),
         scrollCacheExtent: ScrollCacheExtent.pixels(size.width * 2),
         controller: widget.pageController.scrollController,
-        key: PageStorageKey(
-            'cbz-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: widget.pageController.pageCount,

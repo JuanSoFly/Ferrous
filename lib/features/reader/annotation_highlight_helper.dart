@@ -28,18 +28,20 @@ class AnnotationHighlightHelper {
       final root = document.body ?? document.documentElement;
       if (root == null) return html;
 
-      final textNodes = DomTextUtils.collectTextNodes(root);
-      if (textNodes.isEmpty) return html;
-
       for (final annotation in annotations) {
         final targetText = annotation.selectedText.trim();
         if (targetText.isEmpty) continue;
 
-        _highlightInDom(root, textNodes, annotation, targetText);
+        final textNodes = DomTextUtils.collectTextNodes(root)
+            .where((n) => n.parent != null && n.data.isNotEmpty)
+            .toList();
+        if (textNodes.isEmpty) continue;
+
+        _highlightInDom(textNodes, annotation, targetText);
       }
 
       final result = root.outerHtml;
-      if (_cache.length > 30) {
+      if (_cache.length > 50) {
         _cache.remove(_cache.keys.first);
       }
       _cache[key] = result;
@@ -50,72 +52,211 @@ class AnnotationHighlightHelper {
     }
   }
 
+  static String _normalize(String s) {
+    return s
+        .replaceAll('\u00AD', '') // soft hyphen
+        .replaceAll('\u200B', '') // zero-width space
+        .replaceAll('\u00A0', ' ') // non-breaking space
+        .replaceAll('’', "'")
+        .replaceAll('‘', "'")
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('—', '-')
+        .replaceAll('–', '-')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static ({String normalized, List<int> rawOffsets}) _buildNormalizedNodeMap(String raw) {
+    final buffer = StringBuffer();
+    final rawOffsets = <int>[];
+    var inWhitespace = false;
+    var rawOffset = 0;
+
+    for (final rune in raw.runes) {
+      final ch = String.fromCharCode(rune);
+      final codeUnitLen = ch.length;
+
+      if (ch == '\u00AD' || ch == '\u200B') {
+        rawOffset += codeUnitLen;
+        continue;
+      }
+
+      var charToUse = ch;
+      if (ch == '\u00A0') {
+        charToUse = ' ';
+      } else if (ch == '’' || ch == '‘') {
+        charToUse = "'";
+      } else if (ch == '“' || ch == '”') {
+        charToUse = '"';
+      } else if (ch == '—' || ch == '–') {
+        charToUse = '-';
+      }
+
+      final isWhitespace = charToUse.trim().isEmpty;
+      if (isWhitespace) {
+        if (buffer.isEmpty) {
+          rawOffset += codeUnitLen;
+          continue;
+        }
+        if (inWhitespace) {
+          rawOffset += codeUnitLen;
+          continue;
+        }
+
+        buffer.write(' ');
+        rawOffsets.add(rawOffset);
+        inWhitespace = true;
+        rawOffset += codeUnitLen;
+        continue;
+      }
+
+      inWhitespace = false;
+      buffer.write(charToUse);
+      for (int k = 0; k < codeUnitLen; k++) {
+        rawOffsets.add(rawOffset + k);
+      }
+      rawOffset += codeUnitLen;
+    }
+
+    var normalized = buffer.toString();
+    if (normalized.endsWith(' ') && rawOffsets.isNotEmpty) {
+      normalized = normalized.substring(0, normalized.length - 1);
+      rawOffsets.removeLast();
+    }
+
+    return (normalized: normalized, rawOffsets: rawOffsets);
+  }
+
   static void _highlightInDom(
-    dom.Node root,
     List<dom.Text> textNodes,
     Annotation annotation,
     String targetText,
   ) {
-    // 1. Try fast single-node match first
+    // 1. Try fast single-node direct match
     for (int i = 0; i < textNodes.length; i++) {
       final node = textNodes[i];
       if (node.parent == null) continue;
-
       final nodeText = node.data;
       if (nodeText.isEmpty) continue;
 
-      // Direct match
       final directIdx = nodeText.indexOf(targetText);
       if (directIdx != -1) {
-        _splitAndWrapNode(node, directIdx, directIdx + targetText.length, annotation, textNodes, i);
+        _splitAndWrapNode(node, directIdx, directIdx + targetText.length, annotation);
         return;
       }
+    }
 
-      // Soft-hyphen / whitespace aware match
-      if (nodeText.contains('\u00AD') || nodeText.contains('\u00A0')) {
-        final cleanText = nodeText.replaceAll('\u00AD', '').replaceAll('\u00A0', ' ');
-        final cleanIdx = cleanText.indexOf(targetText);
-        if (cleanIdx != -1) {
-          final range = _mapCleanRangeToRaw(nodeText, cleanIdx, cleanIdx + targetText.length);
-          if (range != null) {
-            _splitAndWrapNode(node, range.$1, range.$2, annotation, textNodes, i);
-            return;
-          }
-        }
+    // 2. Single-node normalized match
+    final normTarget = _normalize(targetText);
+    if (normTarget.isEmpty) return;
+
+    for (int i = 0; i < textNodes.length; i++) {
+      final node = textNodes[i];
+      if (node.parent == null) continue;
+      final nodeText = node.data;
+      if (nodeText.isEmpty) continue;
+
+      final nodeMap = _buildNormalizedNodeMap(nodeText);
+      final matchIdx = nodeMap.normalized.indexOf(normTarget);
+      if (matchIdx != -1) {
+        final matchEnd = matchIdx + normTarget.length;
+        final rawStart = nodeMap.rawOffsets[matchIdx];
+        final rawEnd = nodeMap.rawOffsets[matchEnd - 1] + 1;
+        _splitAndWrapNode(node, rawStart, rawEnd, annotation);
+        return;
       }
     }
 
-    // 2. Fallback to multi-node match across inline elements
-    _highlightAcrossNodes(textNodes, annotation, targetText);
+    // 3. Multi-node match across inline elements
+    _highlightAcrossNodes(textNodes, annotation, normTarget);
   }
 
-  static (int, int)? _mapCleanRangeToRaw(String raw, int cleanStart, int cleanEnd) {
-    int rawIdx = 0;
-    int cleanIdx = 0;
-    int? mappedStart;
-    int? mappedEnd;
+  static void _highlightAcrossNodes(
+    List<dom.Text> textNodes,
+    Annotation annotation,
+    String normTarget,
+  ) {
+    final buffer = StringBuffer();
+    final mappings = <({int nodeIndex, int rawOffset})>[];
+    var inWhitespace = false;
 
-    while (rawIdx <= raw.length) {
-      if (cleanIdx == cleanStart && mappedStart == null) {
-        mappedStart = rawIdx;
-      }
-      if (cleanIdx == cleanEnd && mappedEnd == null) {
-        mappedEnd = rawIdx;
-        break;
-      }
-      if (rawIdx >= raw.length) break;
+    for (int nodeIdx = 0; nodeIdx < textNodes.length; nodeIdx++) {
+      final raw = textNodes[nodeIdx].data;
+      var rawOffset = 0;
 
-      final code = raw.codeUnitAt(rawIdx);
-      if (code != 0x00AD) {
-        cleanIdx++;
+      for (final rune in raw.runes) {
+        final ch = String.fromCharCode(rune);
+        final codeUnitLen = ch.length;
+
+        if (ch == '\u00AD' || ch == '\u200B') {
+          rawOffset += codeUnitLen;
+          continue;
+        }
+
+        var charToUse = ch;
+        if (ch == '\u00A0') {
+          charToUse = ' ';
+        } else if (ch == '’' || ch == '‘') {
+          charToUse = "'";
+        } else if (ch == '“' || ch == '”') {
+          charToUse = '"';
+        } else if (ch == '—' || ch == '–') {
+          charToUse = '-';
+        }
+
+        final isWhitespace = charToUse.trim().isEmpty;
+        if (isWhitespace) {
+          if (buffer.isEmpty) {
+            rawOffset += codeUnitLen;
+            continue;
+          }
+          if (inWhitespace) {
+            rawOffset += codeUnitLen;
+            continue;
+          }
+
+          buffer.write(' ');
+          mappings.add((nodeIndex: nodeIdx, rawOffset: rawOffset));
+          inWhitespace = true;
+          rawOffset += codeUnitLen;
+          continue;
+        }
+
+        inWhitespace = false;
+        buffer.write(charToUse);
+        for (int k = 0; k < codeUnitLen; k++) {
+          mappings.add((nodeIndex: nodeIdx, rawOffset: rawOffset + k));
+        }
+        rawOffset += codeUnitLen;
       }
-      rawIdx++;
     }
 
-    if (mappedStart != null && mappedEnd != null && mappedStart < mappedEnd) {
-      return (mappedStart, mappedEnd);
+    var combinedNormalized = buffer.toString();
+    if (combinedNormalized.endsWith(' ') && mappings.isNotEmpty) {
+      combinedNormalized = combinedNormalized.substring(0, combinedNormalized.length - 1);
+      mappings.removeLast();
     }
-    return null;
+
+    final matchIdx = combinedNormalized.indexOf(normTarget);
+    if (matchIdx == -1) return;
+
+    final matchEnd = matchIdx + normTarget.length;
+    final nodeSlices = <int, List<int>>{};
+    for (int i = matchIdx; i < matchEnd; i++) {
+      final m = mappings[i];
+      nodeSlices.putIfAbsent(m.nodeIndex, () => []).add(m.rawOffset);
+    }
+
+    final sortedNodeIndices = nodeSlices.keys.toList()..sort((a, b) => b.compareTo(a));
+    for (final nodeIdx in sortedNodeIndices) {
+      final offsets = nodeSlices[nodeIdx]!;
+      final node = textNodes[nodeIdx];
+      if (node.parent == null) continue;
+      final rawStart = offsets.first;
+      final rawEnd = offsets.last + 1;
+      _splitAndWrapNode(node, rawStart, rawEnd, annotation);
+    }
   }
 
   static void _splitAndWrapNode(
@@ -123,8 +264,6 @@ class AnnotationHighlightHelper {
     int start,
     int end,
     Annotation annotation,
-    List<dom.Text> textNodes,
-    int nodeIndex,
   ) {
     final parent = node.parent;
     if (parent == null) return;
@@ -132,6 +271,8 @@ class AnnotationHighlightHelper {
     if (indexInParent < 0) return;
 
     final nodeText = node.data;
+    if (start < 0 || end > nodeText.length || start >= end) return;
+
     final before = nodeText.substring(0, start);
     final mid = nodeText.substring(start, end);
     final after = nodeText.substring(end);
@@ -145,59 +286,11 @@ class AnnotationHighlightHelper {
     highlightEl.append(dom.Text(mid));
     newNodes.add(highlightEl);
 
-    dom.Text? remainingText;
     if (after.isNotEmpty) {
-      remainingText = dom.Text(after);
-      newNodes.add(remainingText);
+      newNodes.add(dom.Text(after));
     }
 
     parent.nodes.removeAt(indexInParent);
     parent.nodes.insertAll(indexInParent, newNodes);
-
-    if (remainingText != null && nodeIndex < textNodes.length) {
-      textNodes[nodeIndex] = remainingText;
-    }
-  }
-
-  static void _highlightAcrossNodes(
-    List<dom.Text> textNodes,
-    Annotation annotation,
-    String targetText,
-  ) {
-    final buffer = StringBuffer();
-    final nodeStarts = <int>[];
-    final nodeEnds = <int>[];
-
-    for (final node in textNodes) {
-      final start = buffer.length;
-      final clean = node.data.replaceAll('\u00AD', '').replaceAll('\u00A0', ' ');
-      buffer.write(clean);
-      nodeStarts.add(start);
-      nodeEnds.add(buffer.length);
-    }
-
-    final fullText = buffer.toString();
-    final matchStart = fullText.indexOf(targetText);
-    if (matchStart == -1) return;
-    final matchEnd = matchStart + targetText.length;
-
-    for (int i = 0; i < textNodes.length; i++) {
-      final nStart = nodeStarts[i];
-      final nEnd = nodeEnds[i];
-      if (matchEnd <= nStart || matchStart >= nEnd) continue;
-
-      final node = textNodes[i];
-      final parent = node.parent;
-      if (parent == null) continue;
-
-      final localCleanStart = (matchStart - nStart).clamp(0, nEnd - nStart);
-      final localCleanEnd = (matchEnd - nStart).clamp(0, nEnd - nStart);
-      if (localCleanStart >= localCleanEnd) continue;
-
-      final range = _mapCleanRangeToRaw(node.data, localCleanStart, localCleanEnd);
-      if (range == null) continue;
-
-      _splitAndWrapNode(node, range.$1, range.$2, annotation, textNodes, i);
-    }
   }
 }

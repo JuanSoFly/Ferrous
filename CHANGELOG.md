@@ -1,3 +1,19 @@
+## [1.3.0-alpha.5] - 2026-11-08
+
+### Added
+- Cryptographic Sigstore build provenance attestation and automatic `SHA256SUMS.txt` generation in release CI.
+- Sub-page scroll offset tracking (`_inPageScrollOffset`) for accurate position restoration in CBZ continuous/webtoon reading.
+- Synchronous cached image cloning in CBZ reader widgets to eliminate flashing during re-renders.
+
+### Fixed
+- Convert HTML annotation highlights to inline `TextSpan` extensions to prevent line-breaking and layout shifts in EPUB and MOBI.
+- Resolve cross-node annotation text matching with comprehensive Unicode normalization (soft hyphens, zero-width spaces, typographer quotes).
+- Fix CBZ continuous scroll anchor jumps and aspect ratio estimation fallbacks during lazy loading.
+
+### Changed
+- Refined library filter pill badges with theme-aware alpha blending.
+- Updated documentation with APK integrity verification and attestation guides.
+
 ## [1.3.0-alpha.4] - 2026-11-08
 
 ### Added

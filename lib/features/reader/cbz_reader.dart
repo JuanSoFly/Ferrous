@@ -88,6 +88,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     widget.book.currentPage = _pageController.pageIndex;
     widget.book.scrollPosition = _pageController.scrollPosition;
     widget.book.readingMode = _pageController.readingMode;
+    widget.book.lastReadingSentenceStart = _pageController.inPageScrollOffset.round();
   }
 
   @override
@@ -123,8 +124,10 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
     );
     if (!mounted || selected == null || selected == _pageController.readingMode) return;
     
+    setState(() {
+      _modeController.mode = selected;
+    });
     _pageController.updateReadingMode(selected, context: context);
-    _modeController.mode = selected;
   }
 
   void _toggleLockModeWithFeedback() {

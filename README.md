@@ -59,6 +59,18 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 > [!TIP]
 > If you are unsure which build your phone requires, choose **`arm64-v8a`**, which works on virtually all modern Android devices.
 
+> [!NOTE]
+> **Verifying Release Integrity:**
+> Every GitHub Release includes an official `SHA256SUMS.txt` manifest as well as individual `.sha256` files. You can verify that your downloaded package matches the official build using:
+> ```bash
+> # Verify integrity with the checksum manifest
+> sha256sum -c SHA256SUMS.txt
+>
+> # Or verify build provenance with the GitHub CLI (Sigstore attestation)
+> gh attestation verify ferrous-v<version>-arm64-v8a.apk --repo JuanSoFly/Ferrous
+> ```
+> *(F-Droid packaging metadata is also tracked in [`fdroid/com.juansofly.ferrous.yml`](fdroid/com.juansofly.ferrous.yml) for repository inclusion).*
+
 ---
 
 ## Overview

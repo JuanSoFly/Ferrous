@@ -165,7 +165,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+      _chapterController.saveReadingPositionForMode(_readingMode, refreshChapter: false);
       _ttsController.saveCurrentTtsSentence();
     }
   }
@@ -237,7 +237,8 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     if (selected == null || selected == _readingMode) return;
     if (!mounted) return;
     
-    _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+    final targetChapter = _chapterController.currentChapterIndex;
+    _chapterController.saveReadingPositionForMode(_readingMode, refreshChapter: false);
 
     final switchingToPaged = selected == ReadingMode.vertical || selected == ReadingMode.leftToRight;
 
@@ -246,10 +247,10 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       _modeController = ReaderModeController(selected);
       if (switchingToPaged) {
         _pageController.dispose();
-        final isCover = _chapterController.currentChapterIndex == 0 &&
+        final isCover = targetChapter == 0 &&
             _chapterController.lastReadingSentenceStart == -1;
         _pageController = PageController(
-          initialPage: isCover ? 0 : _chapterController.currentChapterIndex + 1,
+          initialPage: isCover ? 0 : targetChapter + 1,
         );
       }
     });
@@ -397,8 +398,10 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       final color = result['color'] as int? ?? 0xFFFFF176;
 
       final plainText = _chapterController.currentPlainText;
-      int start = plainText.indexOf(selectedText);
-      int end = start != -1 ? start + selectedText.length : selectedText.length;
+      final cleanSelected = selectedText.replaceAll('\u00AD', '');
+      int start = plainText.indexOf(cleanSelected);
+      if (start == -1) start = plainText.indexOf(selectedText);
+      int end = start != -1 ? start + cleanSelected.length : cleanSelected.length;
       if (start == -1) start = 0;
 
       final annotation = Annotation(
@@ -461,7 +464,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
         canPop: true,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) {
-            _chapterController.saveReadingPositionForMode(_readingMode, context: context);
+            _chapterController.saveReadingPositionForMode(_readingMode, refreshChapter: false);
             _ttsController.saveCurrentTtsSentence();
           }
         },

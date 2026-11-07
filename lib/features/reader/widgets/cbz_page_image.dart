@@ -30,7 +30,14 @@ class _CbzPageImageState extends State<CbzPageImage> {
   @override
   void initState() {
     super.initState();
-    _loadPage();
+    final cached = widget.cacheController.getCachedImage(widget.pageIndex, widget.maxWidth);
+    if (cached != null) {
+      _image = cached.clone();
+      _isLoading = false;
+      _error = null;
+    } else {
+      _loadPage();
+    }
   }
 
   @override
@@ -39,7 +46,17 @@ class _CbzPageImageState extends State<CbzPageImage> {
     if (oldWidget.pageIndex != widget.pageIndex ||
         oldWidget.pageName != widget.pageName ||
         oldWidget.maxWidth != widget.maxWidth) {
-      _loadPage();
+      final cached = widget.cacheController.getCachedImage(widget.pageIndex, widget.maxWidth);
+      if (cached != null) {
+        setState(() {
+          _image?.dispose();
+          _image = cached.clone();
+          _isLoading = false;
+          _error = null;
+        });
+      } else {
+        _loadPage();
+      }
     }
   }
 
@@ -94,22 +111,16 @@ class _CbzPageImageState extends State<CbzPageImage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      final estimatedAr = widget.cacheController.getEstimatedAspectRatio(widget.pageIndex);
-      if (estimatedAr != null && estimatedAr > 0) {
-        return AspectRatio(
-          aspectRatio: estimatedAr,
-          child: const Center(
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.0),
-            ),
+      final estimatedAr = widget.cacheController.getEstimatedAspectRatio(widget.pageIndex) ?? 0.70;
+      return AspectRatio(
+        aspectRatio: estimatedAr,
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.0),
           ),
-        );
-      }
-      return const SizedBox(
-        height: 300,
-        child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
