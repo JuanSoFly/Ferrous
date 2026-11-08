@@ -222,10 +222,10 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
         final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
         final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
 
-        if (_accumulatedOverscroll < -threshold || (isAtTop && _accumulatedOverscroll < -10)) {
+        if (isAtTop && _accumulatedOverscroll < -threshold) {
           _lastPageTurnTime = now;
           _goToPreviousPage();
-        } else if (_accumulatedOverscroll > threshold || (isAtBottom && _accumulatedOverscroll > 10)) {
+        } else if (isAtBottom && _accumulatedOverscroll > threshold) {
           _lastPageTurnTime = now;
           _goToNextPage();
         }
@@ -331,6 +331,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       scrollDirection: widget.readingMode == ReadingMode.vertical
           ? Axis.vertical
           : Axis.horizontal,
+      physics: widget.readingMode == ReadingMode.vertical
+          ? const NeverScrollableScrollPhysics()
+          : null,
       itemCount: totalPages,
       onPageChanged: _handlePageChanged,
       itemBuilder: (context, index) {
@@ -339,15 +342,19 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
             onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
-                _goToNextPage();
+              if (widget.readingMode == ReadingMode.leftToRight) {
+                final velocity = details.primaryVelocity ?? 0.0;
+                if (velocity < -200) {
+                  _goToNextPage();
+                }
               }
             },
             onVerticalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
-                _goToNextPage();
+              if (widget.readingMode == ReadingMode.vertical) {
+                final velocity = details.primaryVelocity ?? 0.0;
+                if (velocity < -200) {
+                  _goToNextPage();
+                }
               }
             },
             child: BookCoverPage(
@@ -367,23 +374,34 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
           behavior: HitTestBehavior.translucent,
           onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
           onHorizontalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0.0;
-            if (velocity < -200) {
-              _goToNextPage();
-            } else if (velocity > 200) {
-              _goToPreviousPage();
+            if (widget.readingMode == ReadingMode.leftToRight) {
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
+              } else if (velocity > 200) {
+                _goToPreviousPage();
+              }
             }
           },
           onVerticalDragEnd: (details) {
             if (widget.readingMode == ReadingMode.vertical) {
+              if (!scrollController.hasClients) return;
               final velocity = details.primaryVelocity ?? 0.0;
-              final metrics = scrollController.hasClients ? scrollController.position : null;
-              final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
-              final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
-              if (velocity < -200 && isAtBottom) {
-                _goToNextPage();
-              } else if (velocity > 200 && isAtTop) {
-                _goToPreviousPage();
+              final metrics = scrollController.position;
+              if (metrics.maxScrollExtent > 0) {
+                final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
+                final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
+                if (velocity < -200 && isAtBottom) {
+                  _goToNextPage();
+                } else if (velocity > 200 && isAtTop) {
+                  _goToPreviousPage();
+                }
+              } else {
+                if (velocity < -200) {
+                  _goToNextPage();
+                } else if (velocity > 200) {
+                  _goToPreviousPage();
+                }
               }
             }
           },

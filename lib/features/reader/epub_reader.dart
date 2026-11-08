@@ -251,6 +251,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     setState(() {
       _readingMode = selected;
       _modeController = ReaderModeController(selected);
+      widget.book.readingMode = selected;
+      _chapterController.book.readingMode = selected;
       if (switchingToPaged) {
         final isCover = targetChapter == 0 &&
             _chapterController.lastReadingSentenceStart == -1;

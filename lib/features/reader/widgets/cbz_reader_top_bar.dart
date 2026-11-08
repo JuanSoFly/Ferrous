@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:reader_app/features/settings/dimension_controller.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 
@@ -23,8 +25,9 @@ class CbzReaderTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentTheme = context.watch<AppTheme>();
-    final isEInk = currentTheme == AppTheme.eInk;
+    final currentTheme = context.watch<AppTheme?>();
+    final dimState = context.watch<DimensionState?>();
+    final isEInk = currentTheme == AppTheme.eInk || dimState?.dimension == AppDimension.compactSlate;
 
     return Positioned(
       top: 0,

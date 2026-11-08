@@ -177,7 +177,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
               listenable: _chromeController,
               builder: (context, _) {
                 final showChrome = _chromeController.showChrome && !_chromeController.isLocked;
-                final showBottomControls = showChrome && _modeController.isPagedMode;
+                final showBottomControls = showChrome;
 
                 return Stack(
                   children: [

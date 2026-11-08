@@ -1,6 +1,9 @@
 ## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added
+- `CbzThumbnailService` with LRU in-memory caching and bounded task queue for asynchronous comic page thumbnail generation.
+- `CbzPageSelectSheet` modal with direct numeric page jump and visual thumbnail grid with E-Ink high-contrast support.
+- Upgraded `CbzPageControls` with interactive page scrubber slider, floating counter preview, stepping buttons, and tappable page badge.
 - `_KindleSheetOptionRow` with 0ms instantaneous physical ledger inversion for library view mode and sort bottom sheets on E-Ink.
 - Pre-warming CBZ target page and immediate neighbor pages before rendering for instant comic and manga reading.
 - Synchronous scroll position syncing (`_syncCurrentPageFromScrollSynchronous`) and sub-page offset anchoring for CBZ webtoon and continuous modes.
@@ -14,6 +17,10 @@
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
 
 ### Changed
+- Disambiguated `ReaderModeController` horizontal and vertical swipe flags to prevent gesture interference during continuous and webtoon reading.
+- Refined vertical paged gesture navigation in `EpubPagedViewer` and `MobiPagedViewer` with velocity and scroll boundary guards.
+- Ensured bottom HUD controls remain accessible in continuous and webtoon CBZ comic modes.
+- Re-ordered reading mode sheet options for text formats to prioritize vertical scroll.
 - Overhauled library sort and view mode sheets with tactile E-Ink mechanical styling, clamping scroll physics, and sharp square ink frames.
 - Enabled realistic page curl and book spine rendering across reader themes with consistent physics.
 - Fine-tuned CBZ sliver layout settled geometry and aspect ratio estimation fallbacks across all orientation modes.
