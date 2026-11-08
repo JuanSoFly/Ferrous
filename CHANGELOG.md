@@ -2,14 +2,16 @@
 
 ### Added
 - Kindle Carta 1300 E-Ink Paper mode architecture with dedicated design tokens, palette curves, and physical e-paper physics (`EInkTokens`).
-- Full-viewport fractal noise overlay (`EInkPaperNoiseOverlay`) simulating physical micro-texture via multi-octave procedural generation.
 - Grayscale (100%), contrast (125%), and brightness (95%) matrix color filter for book covers to eliminate RGB color leakage in E-Ink mode.
 - Editorial fallback book cover layout with high-contrast typography, carbon borders, and format markers.
+- `RepaintBoundary` isolation around paged EPUB and MOBI content viewers to prevent unnecessary layer repaints during page transitions.
 
 ### Changed
 - Refactored `AppThemes.eInk` with instant page transitions (`_eInkPageTransitionsTheme`), Kindle typography (Roboto Slab), and carbon hairline borders.
 - Optimized `RealisticPageTurn` to instantly flip pages in E-Ink mode without drop shadows or curvature lighting shaders to prevent e-paper ghosting.
 - Adapted `HtmlReaderScreen`, `EpubReader`, and `MobiReader` with halftone highlight surfaces, boxed carbon borders, and zero RGB text color leaks.
+- Streamlined E-Ink typography and highlights by removing artificial ink bleed text shadows and underline text decorations.
+- Removed procedural noise overlay from root app builder to eliminate rendering overhead on low-power devices.
 - Enhanced annotation detail sheets, annotation dialogs, and the Annotations Hub with dedicated E-Ink high-contrast styling and carbon ink palettes.
 - Upgraded library screen and dimension book views with editorial leader lines, high-contrast badges, and instant cover rendering.
 

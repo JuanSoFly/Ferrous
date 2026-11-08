@@ -298,11 +298,13 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
                 top: 16.0,
                 bottom: 100.0,
               ),
-              child: MobiContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
+              child: RepaintBoundary(
+                child: MobiContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: htmlContent,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                ),
               ),
             ),
           );
@@ -374,11 +376,13 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
                 top: 16.0,
                 bottom: 100.0,
               ),
-              child: MobiContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
+              child: RepaintBoundary(
+                child: MobiContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: htmlContent,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                ),
               ),
             ),
           ),

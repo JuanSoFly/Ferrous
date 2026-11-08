@@ -298,11 +298,13 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                 top: 16.0,
                 bottom: 100.0,
               ),
-              child: EpubContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
+              child: RepaintBoundary(
+                child: EpubContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: htmlContent,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                ),
               ),
             ),
           );
@@ -374,11 +376,13 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                 top: 16.0,
                 bottom: 100.0,
               ),
-              child: EpubContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
+              child: RepaintBoundary(
+                child: EpubContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: htmlContent,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                ),
               ),
             ),
           ),

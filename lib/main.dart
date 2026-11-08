@@ -16,7 +16,6 @@ import 'package:provider/provider.dart';
 import 'package:flutter_state_notifier/flutter_state_notifier.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
 import 'package:reader_app/features/settings/dimension_controller.dart';
-import 'package:reader_app/core/constants/e_ink_tokens.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
@@ -164,17 +163,7 @@ class ReaderApp extends StatelessWidget {
           title: 'Ferrous',
           theme: AppThemes.themeData[currentTheme] ?? AppThemes.themeData[AppTheme.ferrous],
           builder: (context, child) {
-            return Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                if (currentTheme == AppTheme.eInk)
-                  const Positioned.fill(
-                    child: IgnorePointer(
-                      child: EInkPaperNoiseOverlay(),
-                    ),
-                  ),
-              ],
-            );
+            return child ?? const SizedBox.shrink();
           },
           home: initError != null
               ? Scaffold(

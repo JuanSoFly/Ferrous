@@ -194,9 +194,6 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
         backgroundColor: Color(0xFFD5D0C5),
         color: Color(0xFF1A1A18),
         fontWeight: FontWeight.w600,
-        decoration: TextDecoration.underline,
-        decorationColor: Color(0xFF1A1A18),
-        decorationThickness: 1.5,
       );
     } else {
       switch (highlightStyle) {

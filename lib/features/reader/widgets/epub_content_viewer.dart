@@ -19,7 +19,6 @@ import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart'
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/core/constants/e_ink_tokens.dart';
 
 class EpubContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -207,15 +206,11 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             textAlign: parseTextAlign(themeConfig.textAlign),
             letterSpacing: themeConfig.wordSpacing,
             color: effectiveTextColor,
-            textShadow: isEInk ? const [EInkTokens.inkBleed] : null,
             padding: HtmlPaddings.zero,
             margin: Margins.zero,
           ),
           "a": Style(
             color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
-            textDecoration: TextDecoration.underline,
-            textDecorationColor: isEInk ? const Color(0xFF1A1A18) : null,
-            textDecorationThickness: isEInk ? 1.0 : null,
           ),
           "tts-highlight": Style(
             backgroundColor: isEInk
@@ -253,36 +248,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
           "img": Style(
             width: Width(100, Unit.percent),
             margin: Margins.only(bottom: 24.0),
-          ),
-          "table": Style(
-            width: Width(100, Unit.percent),
-            margin: Margins.symmetric(vertical: 14.0),
-            border: Border.all(
-              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
-              width: 1.0,
-            ),
-          ),
-          "th": Style(
-            padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 6.0),
-            backgroundColor: isEInk ? const Color(0xFFE0DCD3) : Theme.of(context).colorScheme.surfaceContainerHigh,
-            fontWeight: FontWeight.bold,
-            fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
-            lineHeight: LineHeight(1.25),
-            color: effectiveTextColor,
-            border: Border.all(
-              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
-              width: 0.5,
-            ),
-          ),
-          "td": Style(
-            padding: HtmlPaddings.symmetric(horizontal: 8.0, vertical: 5.0),
-            fontSize: FontSize((themeConfig.fontSize * 0.85).clamp(11.0, 15.0)),
-            lineHeight: LineHeight(1.25),
-            color: effectiveTextColor,
-            border: Border.all(
-              color: isEInk ? const Color(0xFF9E9A90) : Theme.of(context).colorScheme.outlineVariant,
-              width: 0.5,
-            ),
           ),
         },
       ),
@@ -359,9 +324,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
           final highlightStyle = style.copyWith(
             backgroundColor: isEInk ? const Color(0xFFD5D0C5) : color.withValues(alpha: 0.35),
             color: isEInk ? const Color(0xFF1A1A18) : null,
-            decoration: isEInk ? TextDecoration.underline : null,
-            decorationColor: isEInk ? const Color(0xFF1A1A18) : null,
-            decorationThickness: isEInk ? 1.5 : null,
           );
 
           void handleTap() {
@@ -477,8 +439,6 @@ class _TtsHighlightSpan extends StatelessWidget {
       highlightedTextStyle = textStyle.copyWith(
         color: const Color(0xFF1A1A18),
         fontWeight: FontWeight.w600,
-        decoration: TextDecoration.underline,
-        decorationColor: const Color(0xFF1A1A18),
       );
       padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5);
     } else {
