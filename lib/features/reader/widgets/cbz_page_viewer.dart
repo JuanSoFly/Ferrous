@@ -8,6 +8,7 @@ import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
 import 'cbz_page_image.dart';
 import 'realistic_page_turn.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class CbzPageViewer extends StatefulWidget {
   final CbzPageController pageController;
@@ -171,8 +172,11 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final maxWidth = (size.width * devicePixelRatio).round();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
+    final currentTheme = context.watch<AppTheme?>();
+    final isEInk = currentTheme == AppTheme.eInk;
     final isVertical = widget.pageController.readingMode == ReadingMode.vertical;
-    final useRealisticCurl = !isVertical &&
+    final useRealisticCurl = !isEInk &&
+        !isVertical &&
         themeRepo.config.pageFlip &&
         _canSwipePages();
 
@@ -182,7 +186,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
-        showSpine: themeRepo.config.showBookSpine,
+        showSpine: !isEInk && themeRepo.config.showBookSpine,
         onPageChanged: _onPageViewChanged,
         onToggleChrome: () => widget.chromeController.toggleChrome(),
         pageBuilder: (context, index) {

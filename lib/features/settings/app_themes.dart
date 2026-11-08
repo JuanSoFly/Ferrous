@@ -774,8 +774,8 @@ class AppThemes {
     tabBarTheme: TabBarThemeData(
       dividerColor: Colors.transparent,
       indicatorColor: const Color(0xFF1A1A18),
-      labelColor: const Color(0xFFEAE6DF),
-      unselectedLabelColor: const Color(0xFF1A1A18),
+      labelColor: const Color(0xFF1A1A18),
+      unselectedLabelColor: const Color(0xFF4A4945),
       labelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w700, fontSize: 14),
       unselectedLabelStyle: GoogleFonts.robotoSlab(fontWeight: FontWeight.w500, fontSize: 14),
     ),

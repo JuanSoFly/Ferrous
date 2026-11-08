@@ -6,6 +6,7 @@ import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/settings/dimension_controller.dart';
 import 'package:reader_app/features/settings/theme_controller.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 
 class AppearanceScreen extends StatelessWidget {
   const AppearanceScreen({super.key});
@@ -88,6 +89,15 @@ class AppearanceScreen extends StatelessWidget {
                 dimensionController.setAutoSync(enabled);
                 if (enabled) {
                   dimensionController.onThemeChanged(currentTheme);
+                  if (currentTheme == AppTheme.eInk) {
+                    final readerRepo = context.read<ReaderThemeRepository>();
+                    readerRepo.updateConfig(
+                      readerRepo.config.copyWith(
+                        pageFlip: false,
+                        showBookSpine: false,
+                      ),
+                    );
+                  }
                 }
               },
             ),

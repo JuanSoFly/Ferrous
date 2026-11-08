@@ -1,3 +1,18 @@
+## [1.3.0-alpha.7] - 2026-11-08
+
+### Added
+- `KindleBookActionSheet` with `HalftoneScrimPainter` for Carta e-paper displays, featuring subtle halftone dots, zero-blur hard offset shadows, and 0ms instant inversion.
+- `KindlePopupShape` and `KindlePopupItem` delivering crisp physical popup menus and action sheets with tactile borders and high-contrast carbon styling.
+- `_KindleSliderTrackShape` with mechanical slider thumbs, tactile segmented font size steppers, line spacing selectors, and carbon borders in Reader Settings.
+- E-Ink high-contrast support for `CollectionDetailScreen`, `CollectionsTab`, and `_showAddToCollectionDialog` with physical checkboxes and Roboto Slab typography.
+- E-Ink mechanical styling for `LibraryLocationsScreen` and `LocationCard` with high-contrast cards, custom action popups, and instant feedback.
+- Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
+
+### Changed
+- Adapted reader top bars and bottom controls (`cbz_reader_top_bar`, `epub_reader_top_bar`, `mobi_reader_top_bar`, `pdf_reader_top_bar`) with `KindlePopupShape`.
+- Enhanced `BookViewItems` with automatic theme detection to route book actions to either Kindle action sheets or Cupertino sheets.
+- Updated reader settings sheets and reading mode sheets with high-contrast E-Ink themes and mechanical controls.
+
 ## [1.3.0-alpha.6] - 2026-11-08
 
 ### Added

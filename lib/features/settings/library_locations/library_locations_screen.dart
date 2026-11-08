@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/library_location.dart';
 import 'package:reader_app/data/repositories/library_location_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
+import 'package:reader_app/features/reader/widgets/kindle_popup_menu.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:reader_app/features/settings/library_locations/widgets/add_location_dialog.dart';
 import 'package:reader_app/features/settings/library_locations/widgets/location_books_sheet.dart';
 import 'package:reader_app/features/settings/library_locations/widgets/location_card.dart';
@@ -15,11 +18,16 @@ class LibraryLocationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
     final repo = context.watch<LibraryLocationRepository>();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Library Locations'),
+        title: Text(
+          'Library Locations',
+          style: isEInk ? GoogleFonts.robotoSlab(fontWeight: FontWeight.bold) : null,
+        ),
         actions: [
           // Rescan All Button
           if (repo.isScanningAll)
@@ -33,7 +41,7 @@ class LibraryLocationsScreen extends StatelessWidget {
             )
           else
             IconButton(
-              icon: const Icon(Icons.sync_rounded),
+              icon: Icon(Icons.sync_rounded, color: isEInk ? const Color(0xFF1A1A18) : null),
               tooltip: 'Rescan All Locations',
               onPressed: repo.isLoading
                   ? null
@@ -41,8 +49,12 @@ class LibraryLocationsScreen extends StatelessWidget {
             ),
           // More Options
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            icon: Icon(Icons.more_vert_rounded, color: isEInk ? const Color(0xFF1A1A18) : null),
+            shape: isEInk
+                ? const KindlePopupShape()
+                : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: isEInk ? Colors.transparent : null,
+            elevation: isEInk ? 0 : 4,
             onSelected: (val) {
               if (val == 'cleanup') {
                 _handleCleanupStale(context, repo);
@@ -50,51 +62,115 @@ class LibraryLocationsScreen extends StatelessWidget {
                 _showSupportedFormatsDialog(context);
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'cleanup',
-                child: Row(
-                  children: [
-                    Icon(Icons.cleaning_services_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Clean Up Stale Locations'),
+            itemBuilder: (context) => isEInk
+                ? [
+                    const PopupMenuItem(
+                      value: 'cleanup',
+                      padding: EdgeInsets.zero,
+                      height: 42,
+                      child: KindlePopupItem(
+                        icon: Icons.cleaning_services_outlined,
+                        label: 'Clean Up Stale Locations',
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'formats',
+                      padding: EdgeInsets.zero,
+                      height: 42,
+                      child: KindlePopupItem(
+                        icon: Icons.description_outlined,
+                        label: 'Supported Formats',
+                      ),
+                    ),
+                  ]
+                : [
+                    const PopupMenuItem(
+                      value: 'cleanup',
+                      child: Row(
+                        children: [
+                          Icon(Icons.cleaning_services_outlined, size: 18),
+                          SizedBox(width: 12),
+                          Text('Clean Up Stale Locations'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'formats',
+                      child: Row(
+                        children: [
+                          Icon(Icons.description_outlined, size: 18),
+                          SizedBox(width: 12),
+                          Text('Supported Formats'),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'formats',
-                child: Row(
-                  children: [
-                    Icon(Icons.description_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Supported Formats'),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'Add Folder',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        onPressed: () => _handleAddLocation(context, repo),
-      ),
+      floatingActionButton: isEInk
+          ? Container(
+              decoration: const BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xFF9E9A90),
+                    offset: Offset(2, 2),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Material(
+                color: const Color(0xFF1A1A18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(2),
+                  side: const BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(2),
+                  splashColor: Colors.transparent,
+                  highlightColor: const Color(0xFF3D3C38),
+                  onTap: () => _handleAddLocation(context, repo),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add, size: 20, color: Color(0xFFEAE6DF)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Add Folder',
+                          style: GoogleFonts.robotoSlab(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: const Color(0xFFEAE6DF),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : FloatingActionButton.extended(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Add Folder',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: () => _handleAddLocation(context, repo),
+            ),
       body: RefreshIndicator(
         onRefresh: () => repo.refreshLocations(),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, isEInk ? 120 : 96),
           children: [
             // Summary Header Card
-            _buildSummaryHeader(context, theme, repo),
+            _buildSummaryHeader(context, theme, repo, isEInk: isEInk),
             const SizedBox(height: 20),
             // Section Header
-            _buildSectionHeader(theme, 'CONFIGURED FOLDERS', count: repo.locations.length),
+            _buildSectionHeader(theme, 'CONFIGURED FOLDERS', count: repo.locations.length, isEInk: isEInk),
             const SizedBox(height: 10),
             // Locations List or Empty State
             if (repo.isLoading && repo.locations.isEmpty)
@@ -103,7 +179,7 @@ class LibraryLocationsScreen extends StatelessWidget {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (repo.locations.isEmpty)
-              _buildEmptyState(context, theme, repo)
+              _buildEmptyState(context, theme, repo, isEInk: isEInk)
             else
               ...repo.locations.map(
                 (loc) => LocationCard(
@@ -119,7 +195,7 @@ class LibraryLocationsScreen extends StatelessWidget {
               ),
             const SizedBox(height: 24),
             // Storage Modes & Help Card
-            _buildHelpCard(context, theme),
+            _buildHelpCard(context, theme, isEInk: isEInk),
           ],
         ),
       ),
@@ -129,8 +205,9 @@ class LibraryLocationsScreen extends StatelessWidget {
   Widget _buildSummaryHeader(
     BuildContext context,
     ThemeData theme,
-    LibraryLocationRepository repo,
-  ) {
+    LibraryLocationRepository repo, {
+    bool isEInk = false,
+  }) {
     final isDark = theme.brightness == Brightness.dark;
     final totalBooks = repo.totalBooksInLocations;
     final totalSize = LibraryLocation.formatBytes(repo.totalStorageBytes);
@@ -139,10 +216,15 @@ class LibraryLocationsScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: isEInk
+            ? const Color(0xFFE0DCD3)
+            : (isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
         border: Border.all(
-          color: isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED),
+          color: isEInk
+              ? const Color(0xFF1A1A18)
+              : (isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED)),
+          width: 1.0,
         ),
       ),
       child: Column(
@@ -153,12 +235,14 @@ class LibraryLocationsScreen extends StatelessWidget {
               Icon(
                 Icons.storage_rounded,
                 size: 20,
-                color: theme.colorScheme.primary,
+                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
               ),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 'Library Storage Overview',
-                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(fontSize: 14.5, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A18))
+                    : const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -170,20 +254,23 @@ class LibraryLocationsScreen extends StatelessWidget {
                 label: 'FOLDERS',
                 value: '$totalFolders',
                 icon: Icons.folder_outlined,
+                isEInk: isEInk,
               ),
-              _buildMetricDivider(theme),
+              _buildMetricDivider(theme, isEInk: isEInk),
               _buildMetricTile(
                 theme: theme,
                 label: 'BOOKS LINKED',
                 value: '$totalBooks',
                 icon: Icons.auto_stories_outlined,
+                isEInk: isEInk,
               ),
-              _buildMetricDivider(theme),
+              _buildMetricDivider(theme, isEInk: isEInk),
               _buildMetricTile(
                 theme: theme,
                 label: 'TOTAL SIZE',
                 value: totalSize,
                 icon: Icons.data_usage_rounded,
+                isEInk: isEInk,
               ),
             ],
           ),
@@ -197,6 +284,7 @@ class LibraryLocationsScreen extends StatelessWidget {
     required String label,
     required String value,
     required IconData icon,
+    bool isEInk = false,
   }) {
     return Expanded(
       child: Column(
@@ -204,63 +292,92 @@ class LibraryLocationsScreen extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1A1A18),
+                  )
+                : const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
           ),
           const SizedBox(height: 3),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-            ),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: const Color(0xFF4A4945),
+                  )
+                : TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMetricDivider(ThemeData theme) {
+  Widget _buildMetricDivider(ThemeData theme, {bool isEInk = false}) {
     return Container(
       width: 1,
       height: 32,
-      color: theme.brightness == Brightness.dark
-          ? const Color(0xFF2B2824)
-          : const Color(0xFFE2E7ED),
+      color: isEInk
+          ? const Color(0xFF9E9A90)
+          : (theme.brightness == Brightness.dark
+              ? const Color(0xFF2B2824)
+              : const Color(0xFFE2E7ED)),
     );
   }
 
-  Widget _buildSectionHeader(ThemeData theme, String title, {int? count}) {
+  Widget _buildSectionHeader(ThemeData theme, String title, {int? count, bool isEInk = false}) {
     return Row(
       children: [
         Text(
           title,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.1,
-            color: theme.colorScheme.primary,
-          ),
+          style: isEInk
+              ? GoogleFonts.robotoSlab(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                  color: const Color(0xFF1A1A18),
+                )
+              : TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                  color: theme.colorScheme.primary,
+                ),
         ),
         if (count != null) ...[
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(isEInk ? 2 : 10),
+              border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
             ),
             child: Text(
               '$count',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
-              ),
+              style: isEInk
+                  ? GoogleFonts.robotoSlab(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1A1A18),
+                    )
+                  : TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
             ),
           ),
         ],
@@ -271,17 +388,19 @@ class LibraryLocationsScreen extends StatelessWidget {
   Widget _buildEmptyState(
     BuildContext context,
     ThemeData theme,
-    LibraryLocationRepository repo,
-  ) {
+    LibraryLocationRepository repo, {
+    bool isEInk = false,
+  }) {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: isEInk ? const Color(0xFFE0DCD3) : (isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
         border: Border.all(
-          color: isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED),
+          color: isEInk ? const Color(0xFF1A1A18) : (isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED)),
+          width: 1.0,
         ),
       ),
       child: Column(
@@ -289,65 +408,112 @@ class LibraryLocationsScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+              color: isEInk
+                  ? const Color(0xFFEAE6DF)
+                  : theme.colorScheme.primary.withValues(alpha: 0.1),
+              shape: isEInk ? BoxShape.rectangle : BoxShape.circle,
+              borderRadius: isEInk ? BorderRadius.circular(2) : null,
+              border: isEInk ? Border.all(color: const Color(0xFF1A1A18), width: 1.0) : null,
             ),
             child: Icon(
               Icons.folder_open_rounded,
               size: 48,
-              color: theme.colorScheme.primary,
+              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'No Library Locations',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1A1A18),
+                  )
+                : const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
           ),
           const SizedBox(height: 8),
           Text(
             'Add folders from your device to scan for eBooks. You can link them directly to save storage or import books to app storage.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.4,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-            ),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: const Color(0xFF4A4945),
+                  )
+                : TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                  ),
           ),
           const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
+          if (isEInk)
+            Material(
+              color: const Color(0xFF1A1A18),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(2),
+                side: const BorderSide(color: Color(0xFF1A1A18), width: 1.5),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(2),
+                onTap: () => _handleAddLocation(context, repo),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.add, size: 20, color: Color(0xFFEAE6DF)),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Add Your First Folder',
+                        style: GoogleFonts.robotoSlab(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFEAE6DF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text(
+                'Add Your First Folder',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: () => _handleAddLocation(context, repo),
             ),
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text(
-              'Add Your First Folder',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            onPressed: () => _handleAddLocation(context, repo),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildHelpCard(BuildContext context, ThemeData theme) {
+  Widget _buildHelpCard(BuildContext context, ThemeData theme, {bool isEInk = false}) {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: isEInk ? const Color(0xFFE0DCD3) : (isDark ? const Color(0xFF1E1C19) : theme.colorScheme.surface),
+        borderRadius: BorderRadius.circular(isEInk ? 2 : 16),
         border: Border.all(
-          color: isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED),
+          color: isEInk ? const Color(0xFF1A1A18) : (isDark ? const Color(0xFF2B2824) : const Color(0xFFE2E7ED)),
+          width: 1.0,
         ),
       ),
       child: Column(
@@ -355,11 +521,13 @@ class LibraryLocationsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.info_outline_rounded, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.info_outline_rounded, size: 18, color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 'About Library Storage Modes',
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                style: isEInk
+                    ? GoogleFonts.robotoSlab(fontSize: 13.5, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A18))
+                    : const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -370,6 +538,8 @@ class LibraryLocationsScreen extends StatelessWidget {
             desc:
                 'Keeps original files in place on your device. Zero extra storage consumed. Ideal for SD cards and large collections.',
             badgeColor: const Color(0xFF10B981),
+            isEInk: isEInk,
+            isImported: false,
           ),
           const SizedBox(height: 8),
           _buildHelpBullet(
@@ -378,25 +548,29 @@ class LibraryLocationsScreen extends StatelessWidget {
             desc:
                 'Copies files into Ferrous private sandbox. Safe from accidental external deletion or cleanup apps.',
             badgeColor: const Color(0xFF8B5CF6),
+            isEInk: isEInk,
+            isImported: true,
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'SUPPORTED FORMATS',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+            style: isEInk
+                ? GoogleFonts.robotoSlab(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: const Color(0xFF1A1A18))
+                : const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.8),
           ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: const [
-              _FormatChip(ext: 'EPUB'),
-              _FormatChip(ext: 'PDF'),
-              _FormatChip(ext: 'CBZ'),
-              _FormatChip(ext: 'MOBI'),
-              _FormatChip(ext: 'AZW'),
-              _FormatChip(ext: 'AZW3'),
-              _FormatChip(ext: 'DOCX'),
-              _FormatChip(ext: 'TXT'),
+            children: [
+              _FormatChip(ext: 'EPUB', isEInk: isEInk),
+              _FormatChip(ext: 'PDF', isEInk: isEInk),
+              _FormatChip(ext: 'CBZ', isEInk: isEInk),
+              _FormatChip(ext: 'MOBI', isEInk: isEInk),
+              _FormatChip(ext: 'AZW', isEInk: isEInk),
+              _FormatChip(ext: 'AZW3', isEInk: isEInk),
+              _FormatChip(ext: 'DOCX', isEInk: isEInk),
+              _FormatChip(ext: 'TXT', isEInk: isEInk),
             ],
           ),
         ],
@@ -409,32 +583,57 @@ class LibraryLocationsScreen extends StatelessWidget {
     required String title,
     required String desc,
     required Color badgeColor,
+    bool isEInk = false,
+    bool isImported = false,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          margin: const EdgeInsets.only(top: 4),
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: badgeColor,
-            shape: BoxShape.circle,
+        if (isEInk)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isImported ? const Color(0xFFE0DCD3) : const Color(0xFF1A1A18),
+              borderRadius: BorderRadius.circular(1),
+              border: Border.all(
+                color: const Color(0xFF1A1A18),
+                width: 1.5,
+              ),
+            ),
+          )
+        else
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: badgeColor,
+              shape: BoxShape.circle,
+            ),
           ),
-        ),
         const SizedBox(width: 10),
         Expanded(
           child: Text.rich(
             TextSpan(
               text: '$title ',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+              style: isEInk
+                  ? GoogleFonts.robotoSlab(fontWeight: FontWeight.w700, fontSize: 12, color: const Color(0xFF1A1A18))
+                  : const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
               children: [
                 TextSpan(
                   text: desc,
-                  style: TextStyle(
-                    fontWeight: FontWeight.normal,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: isEInk
+                      ? GoogleFonts.robotoSlab(
+                          fontWeight: FontWeight.normal,
+                          fontSize: 12,
+                          color: const Color(0xFF4A4945),
+                        )
+                      : TextStyle(
+                          fontWeight: FontWeight.normal,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                 ),
               ],
             ),
@@ -678,11 +877,35 @@ class LibraryLocationsScreen extends StatelessWidget {
 
 class _FormatChip extends StatelessWidget {
   final String ext;
-  const _FormatChip({required this.ext});
+  final bool isEInk;
+  const _FormatChip({required this.ext, this.isEInk = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (isEInk) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAE6DF),
+          borderRadius: BorderRadius.circular(2),
+          border: Border.all(
+            color: const Color(0xFF1A1A18),
+            width: 1.0,
+          ),
+        ),
+        child: Text(
+          '.$ext',
+          style: GoogleFonts.robotoSlab(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A1A18),
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(

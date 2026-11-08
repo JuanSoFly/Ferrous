@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/constants/app_constants.dart';
 import 'package:reader_app/core/services/update_service.dart';
 import 'package:reader_app/core/widgets/update_dialog.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:reader_app/features/settings/library_locations/library_locations_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -74,6 +76,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentTheme = context.watch<AppTheme?>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -82,14 +87,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           children: [
-            _buildSectionHeader(theme, 'Aesthetics & Layout'),
+            _buildSectionHeader(theme, 'Aesthetics & Layout', isEInk: isEInk),
             const SizedBox(height: 8),
             _buildInsetGroup(
               theme: theme,
+              isEInk: isEInk,
               children: [
                 _buildSettingsTile(
                   context: context,
                   theme: theme,
+                  isEInk: isEInk,
                   icon: Icons.palette_outlined,
                   title: 'Appearance & Dimensions',
                   subtitle: 'Customize layouts, themes, dynamic dock, and typography',
@@ -100,10 +107,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                   showChevron: true,
                 ),
-                _buildDivider(theme),
+                _buildDivider(theme, isEInk: isEInk),
                 _buildSettingsTile(
                   context: context,
                   theme: theme,
+                  isEInk: isEInk,
                   icon: Icons.folder_open_outlined,
                   title: 'Library Locations',
                   subtitle: 'Configure book scan directories',
@@ -119,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            _buildSectionHeader(theme, 'Application Info'),
+            _buildSectionHeader(theme, 'Application Info', isEInk: isEInk),
             const SizedBox(height: 8),
             FutureBuilder<PackageInfo>(
               future: _packageInfoFuture,
@@ -127,19 +135,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final version = snapshot.data?.version ?? '1.1.0';
                 return _buildInsetGroup(
                   theme: theme,
+                  isEInk: isEInk,
                   children: [
                     _buildSettingsTile(
                       context: context,
                       theme: theme,
+                      isEInk: isEInk,
                       icon: Icons.info_outline,
                       title: 'About Ferrous',
                       subtitle: 'Version $version',
                       showChevron: false,
                     ),
-                    _buildDivider(theme),
+                    _buildDivider(theme, isEInk: isEInk),
                     _buildSettingsTile(
                       context: context,
                       theme: theme,
+                      isEInk: isEInk,
                       icon: Icons.system_update_outlined,
                       title: 'Check for Updates',
                       subtitle: _isCheckingForUpdates
@@ -151,7 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: theme.colorScheme.primary,
+                                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                               ),
                             )
                           : null,
@@ -168,15 +179,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSectionHeader(ThemeData theme, String title) {
+  Widget _buildSectionHeader(ThemeData theme, String title, {bool isEInk = false}) {
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: theme.colorScheme.primary,
+          fontWeight: isEInk ? FontWeight.w700 : FontWeight.w600,
+          color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
           letterSpacing: 1.1,
         ),
       ),
@@ -186,7 +197,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildInsetGroup({
     required ThemeData theme,
     required List<Widget> children,
+    bool isEInk = false,
   }) {
+    if (isEInk) {
+      return Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE0DCD3),
+          borderRadius: BorderRadius.circular(2),
+          border: Border.all(color: const Color(0xFF1A1A18), width: 1),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: Column(
+            children: children,
+          ),
+        ),
+      );
+    }
+
     final borderColor = theme.brightness == Brightness.dark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.04);
@@ -205,7 +233,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildDivider(ThemeData theme) {
+  Widget _buildDivider(ThemeData theme, {bool isEInk = false}) {
+    if (isEInk) {
+      return const Divider(
+        height: 1,
+        thickness: 1,
+        indent: 64,
+        endIndent: 0,
+        color: Color(0xFF9E9A90),
+      );
+    }
+
     return Divider(
       height: 1,
       thickness: 0.5,
@@ -226,36 +264,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     bool showChevron = false,
     Widget? trailing,
+    bool isEInk = false,
   }) {
+    final leadingWidget = isEInk
+        ? Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAE6DF),
+              borderRadius: BorderRadius.circular(2),
+              border: Border.all(color: const Color(0xFF1A1A18), width: 1),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF1A1A18),
+              size: 20,
+            ),
+          )
+        : Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Icon(
+              icon,
+              color: theme.colorScheme.primary,
+              size: 20,
+            ),
+          );
+
     return ListTile(
       minTileHeight: 60,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-        ),
-        child: Icon(
-          icon,
-          color: theme.colorScheme.primary,
-          size: 20,
-        ),
-      ),
+      leading: leadingWidget,
       title: Text(
         title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
+        style: TextStyle(
+          fontWeight: isEInk ? FontWeight.w700 : FontWeight.w600,
           fontSize: 15,
           letterSpacing: -0.2,
+          color: isEInk ? const Color(0xFF1A1A18) : null,
         ),
       ),
       subtitle: Text(
         subtitle,
         style: TextStyle(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+          color: isEInk
+              ? const Color(0xFF4A4945)
+              : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
           fontSize: 12,
         ),
       ),
@@ -263,7 +323,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           (showChevron
               ? Icon(
                   Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+                  color: isEInk
+                      ? const Color(0xFF1A1A18)
+                      : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
                   size: 20,
                 )
               : null),

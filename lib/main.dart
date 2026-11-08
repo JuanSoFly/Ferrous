@@ -19,6 +19,7 @@ import 'package:reader_app/features/settings/dimension_controller.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/reader_theme_config.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:reader_app/core/constants/e_ink_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 
 Future<void> main() async {
@@ -151,7 +152,17 @@ class ReaderApp extends StatelessWidget {
           create: (context) {
             final dimensionController = context.read<DimensionController>();
             return ThemeController(
-              onThemeChanged: (theme) => dimensionController.onThemeChanged(theme),
+              onThemeChanged: (theme) {
+                dimensionController.onThemeChanged(theme);
+                if (theme == AppTheme.eInk) {
+                  readerThemeRepository.updateConfig(
+                    readerThemeRepository.config.copyWith(
+                      pageFlip: false,
+                      showBookSpine: false,
+                    ),
+                  );
+                }
+              },
             );
           },
         ),
@@ -163,7 +174,19 @@ class ReaderApp extends StatelessWidget {
           title: 'Ferrous',
           theme: AppThemes.themeData[currentTheme] ?? AppThemes.themeData[AppTheme.ferrous],
           builder: (context, child) {
-            return child ?? const SizedBox.shrink();
+            final appWidget = child ?? const SizedBox.shrink();
+            if (currentTheme == AppTheme.eInk) {
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  appWidget,
+                  const IgnorePointer(
+                    child: EInkPaperNoiseOverlay(),
+                  ),
+                ],
+              );
+            }
+            return appWidget;
           },
           home: initError != null
               ? Scaffold(

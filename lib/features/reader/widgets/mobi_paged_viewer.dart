@@ -7,6 +7,7 @@ import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart'
 import 'book_cover_page.dart';
 import 'mobi_content_viewer.dart';
 import 'realistic_page_turn.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class MobiPagedViewer extends StatefulWidget {
   final MobiChapterController chapterController;
@@ -114,7 +115,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (_activePage > 0) {
       final target = _activePage - 1;
       final themeRepo = context.read<ReaderThemeRepository>();
-      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+      final currentTheme = context.read<AppTheme?>();
+      final isEInk = currentTheme == AppTheme.eInk;
+      final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
         _handlePageChanged(target);
@@ -135,7 +138,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (_activePage < totalPages - 1) {
       final target = _activePage + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
-      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+      final currentTheme = context.read<AppTheme?>();
+      final isEInk = currentTheme == AppTheme.eInk;
+      final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
         _handlePageChanged(target);
@@ -254,7 +259,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (widget.chapterController.chapters == null) return const SizedBox.shrink();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+    final currentTheme = context.watch<AppTheme?>();
+    final isEInk = currentTheme == AppTheme.eInk;
+    final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
         themeRepo.config.pageFlip;
 
     // Total page count is 1 cover page + N chapter pages
@@ -265,7 +272,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
         pageCount: totalPages,
         currentPage: _activePage,
         textureId: themeRepo.config.paperTexture,
-        showSpine: themeRepo.config.showBookSpine,
+        showSpine: !isEInk && themeRepo.config.showBookSpine,
         onPageChanged: _handlePageChanged,
         onToggleChrome: widget.onToggleChrome,
         onTapUp: widget.onTapUp,

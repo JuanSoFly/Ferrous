@@ -23,6 +23,7 @@ class ThemeController extends StateNotifier<AppTheme> {
         state = AppTheme.ferrous; // Fallback
       }
     }
+    onThemeChanged?.call(state);
   }
 
   Future<void> setTheme(AppTheme theme) async {

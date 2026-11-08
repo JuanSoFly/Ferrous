@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 import '../controllers/pdf_page_controller.dart';
 import '../controllers/pdf_tts_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
+import 'kindle_popup_menu.dart';
 
 class PdfReaderTopBar extends StatelessWidget {
   final Book book;
@@ -26,13 +29,17 @@ class PdfReaderTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
 
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
       child: Material(
-        color: theme.colorScheme.surface.withValues(alpha: 0.94),
+        color: isEInk
+            ? const Color(0xFFEAE6DF)
+            : theme.colorScheme.surface.withValues(alpha: 0.94),
         elevation: 0,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -73,6 +80,7 @@ class PdfReaderTopBar extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                   fontSize: pageController.pageCount > 0 ? 14 : 16,
                                   letterSpacing: -0.2,
+                                  color: isEInk ? const Color(0xFF1A1A18) : null,
                                 ),
                               ),
                               if (pageController.pageCount > 0)
@@ -82,7 +90,9 @@ class PdfReaderTopBar extends StatelessWidget {
                                     '${pageController.pageIndex + 1} / ${pageController.pageCount}',
                                     maxLines: 1,
                                     style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
+                                      color: isEInk
+                                          ? const Color(0xFF4A4945)
+                                          : theme.colorScheme.onSurfaceVariant,
                                       fontWeight: FontWeight.w500,
                                     ),
                                     textAlign: TextAlign.center,
@@ -109,19 +119,23 @@ class PdfReaderTopBar extends StatelessWidget {
                         icon: Icon(
                           Icons.more_horiz,
                           size: 22,
-                          color: (ttsController.showTtsControls || chromeController.isLocked || pageController.autoCrop)
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurface,
+                          color: isEInk
+                              ? const Color(0xFF1A1A18)
+                              : ((ttsController.showTtsControls || chromeController.isLocked || pageController.autoCrop)
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface),
                         ),
                         tooltip: 'More options',
                         constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                         position: PopupMenuPosition.under,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        color: theme.colorScheme.surfaceContainer,
+                        shape: isEInk
+                            ? const KindlePopupShape()
+                            : RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                        color: isEInk ? Colors.transparent : theme.colorScheme.surfaceContainer,
                         surfaceTintColor: Colors.transparent,
-                        elevation: 4,
+                        elevation: isEInk ? 0 : 4,
                         onSelected: (value) {
                           HapticFeedback.lightImpact();
                           switch (value) {
@@ -142,89 +156,132 @@ class PdfReaderTopBar extends StatelessWidget {
                               break;
                           }
                         },
-                        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                          PopupMenuItem<String>(
-                            value: 'reading_mode',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.view_carousel, size: 20, color: theme.colorScheme.onSurface),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'Reading Mode',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurface,
-                                    fontWeight: FontWeight.w500,
+                        itemBuilder: (BuildContext context) => isEInk
+                            ? <PopupMenuEntry<String>>[
+                                const PopupMenuItem<String>(
+                                  value: 'reading_mode',
+                                  padding: EdgeInsets.zero,
+                                  height: 42,
+                                  child: KindlePopupItem(
+                                    icon: Icons.view_carousel,
+                                    label: 'Reading Mode',
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'crop',
+                                  padding: EdgeInsets.zero,
+                                  height: 42,
+                                  child: KindlePopupItem(
+                                    icon: pageController.autoCrop ? Icons.crop_free : Icons.crop,
+                                    label: pageController.autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
+                                    isHighlighted: pageController.autoCrop,
+                                  ),
+                                ),
+                                const KindlePopupDivider(),
+                                PopupMenuItem<String>(
+                                  value: 'tts',
+                                  padding: EdgeInsets.zero,
+                                  height: 42,
+                                  child: KindlePopupItem(
+                                    icon: ttsController.showTtsControls ? Icons.volume_off : Icons.volume_up,
+                                    label: ttsController.showTtsControls ? 'Stop Listening' : 'Listen (Text-to-Speech)',
+                                    isHighlighted: ttsController.showTtsControls,
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'lock',
+                                  padding: EdgeInsets.zero,
+                                  height: 42,
+                                  child: KindlePopupItem(
+                                    icon: chromeController.isLocked ? Icons.lock_open : Icons.lock_outline,
+                                    label: chromeController.isLocked ? 'Unlock Controls' : 'Lock Reader',
+                                    isHighlighted: chromeController.isLocked,
+                                  ),
+                                ),
+                              ]
+                            : <PopupMenuEntry<String>>[
+                                PopupMenuItem<String>(
+                                  value: 'reading_mode',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.view_carousel, size: 20, color: theme.colorScheme.onSurface),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Reading Mode',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'crop',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        pageController.autoCrop ? Icons.crop_free : Icons.crop,
+                                        size: 20,
+                                        color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        pageController.autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuDivider(height: 1),
+                                PopupMenuItem<String>(
+                                  value: 'tts',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        ttsController.showTtsControls ? Icons.volume_off : Icons.volume_up,
+                                        size: 20,
+                                        color: ttsController.showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        ttsController.showTtsControls ? 'Stop Listening' : 'Listen (Text-to-Speech)',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: ttsController.showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'lock',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        chromeController.isLocked ? Icons.lock_open : Icons.lock_outline,
+                                        size: 20,
+                                        color: chromeController.isLocked ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        chromeController.isLocked ? 'Unlock Controls' : 'Lock Reader',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: chromeController.isLocked ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'crop',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  pageController.autoCrop ? Icons.crop_free : Icons.crop,
-                                  size: 20,
-                                  color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  pageController.autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuDivider(height: 1),
-                          PopupMenuItem<String>(
-                            value: 'tts',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  ttsController.showTtsControls ? Icons.volume_off : Icons.volume_up,
-                                  size: 20,
-                                  color: ttsController.showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  ttsController.showTtsControls ? 'Stop Listening' : 'Listen (Text-to-Speech)',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: ttsController.showTtsControls ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'lock',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  chromeController.isLocked ? Icons.lock_open : Icons.lock_outline,
-                                  size: 20,
-                                  color: chromeController.isLocked ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  chromeController.isLocked ? 'Unlock Controls' : 'Lock Reader',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: chromeController.isLocked ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -232,9 +289,11 @@ class PdfReaderTopBar extends StatelessWidget {
               ),
             ),
             Divider(
-              height: 0.5,
-              thickness: 0.5,
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+              height: isEInk ? 1.5 : 0.5,
+              thickness: isEInk ? 1.5 : 0.5,
+              color: isEInk
+                  ? const Color(0xFF1A1A18)
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
             ),
           ],
         ),

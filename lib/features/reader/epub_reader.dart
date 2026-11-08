@@ -272,10 +272,17 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _showSettingsSheet() {
+    AppTheme? currentTheme;
+    try {
+      currentTheme = context.read<AppTheme?>();
+    } catch (_) {}
+    final isEInk = currentTheme == AppTheme.eInk;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: isEInk ? Colors.transparent : null,
       builder: (context) => const ReaderSettingsSheet(),
     );
   }
