@@ -1,6 +1,11 @@
-## [1.3.0-alpha.7] - 2026-11-08
+## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added
+- `_KindleSheetOptionRow` with 0ms instantaneous physical ledger inversion for library view mode and sort bottom sheets on E-Ink.
+- Pre-warming CBZ target page and immediate neighbor pages before rendering for instant comic and manga reading.
+- Synchronous scroll position syncing (`_syncCurrentPageFromScrollSynchronous`) and sub-page offset anchoring for CBZ webtoon and continuous modes.
+- Page boundary drag gesture handling with top and bottom scroll boundary guards in paged EPUB and MOBI viewers.
+- Animation lock (`_isPageAnimating`) in paged EPUB and MOBI viewers to prevent race conditions during rapid page turns.
 - `KindleBookActionSheet` with `HalftoneScrimPainter` for Carta e-paper displays, featuring subtle halftone dots, zero-blur hard offset shadows, and 0ms instant inversion.
 - `KindlePopupShape` and `KindlePopupItem` delivering crisp physical popup menus and action sheets with tactile borders and high-contrast carbon styling.
 - `_KindleSliderTrackShape` with mechanical slider thumbs, tactile segmented font size steppers, line spacing selectors, and carbon borders in Reader Settings.
@@ -9,6 +14,9 @@
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
 
 ### Changed
+- Overhauled library sort and view mode sheets with tactile E-Ink mechanical styling, clamping scroll physics, and sharp square ink frames.
+- Enabled realistic page curl and book spine rendering across reader themes with consistent physics.
+- Fine-tuned CBZ sliver layout settled geometry and aspect ratio estimation fallbacks across all orientation modes.
 - Adapted reader top bars and bottom controls (`cbz_reader_top_bar`, `epub_reader_top_bar`, `mobi_reader_top_bar`, `pdf_reader_top_bar`) with `KindlePopupShape`.
 - Enhanced `BookViewItems` with automatic theme detection to route book actions to either Kindle action sheets or Cupertino sheets.
 - Updated reader settings sheets and reading mode sheets with high-contrast E-Ink themes and mechanical controls.

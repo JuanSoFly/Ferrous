@@ -45,7 +45,7 @@ class RealBookBackground extends StatelessWidget {
             painter: _BookPaperPainter(
               textureId: textureId,
               baseColor: effectiveColor,
-              showSpine: showSpine && !isEInk,
+              showSpine: showSpine,
               isLeftPage: isLeftPage,
               isDarkTheme: isDarkTheme,
               isEInk: isEInk,
@@ -126,12 +126,6 @@ class _BookPaperPainter extends CustomPainter {
     _basePaint.shader = null;
     canvas.drawRect(rect, _basePaint);
 
-    if (isEInk) {
-      // In E-Ink Paper mode, completely hide or disable spine shadows, page leaves, and vignettes.
-      // A real Kindle screen is a flat matte sheet of e-paper (#EAE6DF) edge-to-edge.
-      return;
-    }
-
     if (textureId != BookTextures.none) {
       _paintPaperTexture(canvas, size);
     }
@@ -143,7 +137,7 @@ class _BookPaperPainter extends CustomPainter {
     }
 
     // 3. Subtle page perimeter vignette
-    if (textureId != BookTextures.none) {
+    if (textureId != BookTextures.none && !isEInk) {
       _paintMarginVignette(canvas, size);
     }
   }

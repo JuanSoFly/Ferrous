@@ -8,6 +8,7 @@ class CbzPageImage extends StatefulWidget {
   final BoxFit fit;
   final int maxWidth;
   final CbzCacheController cacheController;
+  final double fallbackAspectRatio;
 
   const CbzPageImage({
     super.key,
@@ -16,6 +17,7 @@ class CbzPageImage extends StatefulWidget {
     required this.fit,
     required this.maxWidth,
     required this.cacheController,
+    this.fallbackAspectRatio = 0.70,
   });
 
   @override
@@ -111,7 +113,10 @@ class _CbzPageImageState extends State<CbzPageImage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      final estimatedAr = widget.cacheController.getEstimatedAspectRatio(widget.pageIndex) ?? 0.70;
+      final estimatedAr = widget.cacheController.getEstimatedAspectRatio(
+        widget.pageIndex,
+        fallback: widget.fallbackAspectRatio,
+      ) ?? widget.fallbackAspectRatio;
       return AspectRatio(
         aspectRatio: estimatedAr,
         child: const Center(

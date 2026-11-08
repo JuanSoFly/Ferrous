@@ -247,12 +247,15 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       _readingMode = selected;
       _modeController = ReaderModeController(selected);
       if (switchingToPaged) {
-        _pageController.dispose();
         final isCover = targetChapter == 0 &&
             _chapterController.lastReadingSentenceStart == -1;
-        _pageController = PageController(
-          initialPage: isCover ? 0 : targetChapter + 1,
-        );
+        final targetPage = isCover ? 0 : targetChapter + 1;
+        if (!_pageController.hasClients) {
+          _pageController.dispose();
+          _pageController = PageController(initialPage: targetPage);
+        } else if (_pageController.page?.round() != targetPage) {
+          _pageController.jumpToPage(targetPage);
+        }
       }
     });
 

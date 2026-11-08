@@ -8,7 +8,6 @@ import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
 import 'cbz_page_image.dart';
 import 'realistic_page_turn.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
 
 class CbzPageViewer extends StatefulWidget {
   final CbzPageController pageController;
@@ -172,10 +171,8 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final maxWidth = (size.width * devicePixelRatio).round();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final currentTheme = context.watch<AppTheme?>();
-    final isEInk = currentTheme == AppTheme.eInk;
     final isVertical = widget.pageController.readingMode == ReadingMode.vertical;
-    final useRealisticCurl = !isEInk &&
+    final useRealisticCurl =
         !isVertical &&
         themeRepo.config.pageFlip &&
         _canSwipePages();
@@ -186,7 +183,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
-        showSpine: !isEInk && themeRepo.config.showBookSpine,
+        showSpine: themeRepo.config.showBookSpine,
         onPageChanged: _onPageViewChanged,
         onToggleChrome: () => widget.chromeController.toggleChrome(),
         pageBuilder: (context, index) {
@@ -238,9 +235,11 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final size = MediaQuery.of(context).size;
     final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
     final maxWidth = (size.width * devicePixelRatio).round();
+    final fallbackAr = isWebtoon ? 0.30 : 0.70;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
+        if (widget.pageController.isRestoringScroll) return false;
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
@@ -272,6 +271,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
               fit: BoxFit.contain,
               maxWidth: maxWidth,
               cacheController: widget.pageController.cacheController!,
+              fallbackAspectRatio: fallbackAr,
             ),
           );
         },
@@ -286,6 +286,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
+        if (widget.pageController.isRestoringScroll) return false;
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
@@ -318,6 +319,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
               fit: BoxFit.contain,
               maxWidth: maxWidth,
               cacheController: widget.pageController.cacheController!,
+              fallbackAspectRatio: 1.40,
             ),
           );
         },

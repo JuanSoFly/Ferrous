@@ -620,183 +620,186 @@ class _LibraryViewState extends State<_LibraryView> {
         state.filterUnread;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: EdgeInsets.fromLTRB(isEInk ? 12 : 16, 8, isEInk ? 12 : 16, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  // Sort Trigger
-                  InkWell(
-                    onTap: () => _showSortBottomSheet(context, state, controller),
-                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                        border: Border.all(
-                          color: isEInk
-                              ? const Color(0xFF1A1A18)
-                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                          width: 1.0,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.sort,
-                            size: 16,
-                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _getSortLabel(state.sortBy),
-                            style: isEInk
-                                ? GoogleFonts.robotoSlab(
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF1A1A18),
-                                    fontSize: 13,
-                                  )
-                                : theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            state.sortOrder == SortOrder.ascending 
-                                ? Icons.arrow_upward 
-                                : Icons.arrow_downward,
-                            size: 12,
-                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Filter Trigger (Matches Photo Modal launcher)
-                  InkWell(
-                    onTap: () => _showFilterDialog(context, state, controller),
-                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isEInk
-                            ? const Color(0xFFEAE6DF)
-                            : (hasActiveFilters 
-                                ? theme.colorScheme.primary.withValues(alpha: 0.15) 
-                                : theme.colorScheme.surfaceContainerLow),
-                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                        border: Border.all(
-                          color: isEInk
-                              ? const Color(0xFF1A1A18)
-                              : (hasActiveFilters 
-                                  ? theme.colorScheme.primary 
-                                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-                          width: isEInk ? 1.0 : 1.0,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.filter_alt,
-                            size: 16,
+              child: Padding(
+                padding: EdgeInsets.only(right: isEInk ? 6 : 0),
+                child: Row(
+                  children: [
+                    // Sort Trigger
+                    InkWell(
+                      onTap: () => _showSortBottomSheet(context, state, controller),
+                      borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: isEInk ? 8 : 12, vertical: isEInk ? 5 : 6),
+                        decoration: BoxDecoration(
+                          color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                          border: Border.all(
                             color: isEInk
                                 ? const Color(0xFF1A1A18)
-                                : (hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                            width: 1.0,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Filter',
-                            style: isEInk
-                                ? GoogleFonts.robotoSlab(
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF1A1A18),
-                                    fontSize: 13,
-                                  )
-                                : theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                  ),
-                          ),
-                          if (hasActiveFilters) ...[
-                            const SizedBox(width: 4),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
-                                shape: isEInk ? BoxShape.rectangle : BoxShape.circle,
-                                borderRadius: isEInk ? BorderRadius.circular(2) : null,
-                              ),
-                              child: Text(
-                                '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.onPrimary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.sort,
+                              size: 16,
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
                             ),
-                          ]
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // View Trigger
-                  InkWell(
-                    onTap: () => _showViewModeBottomSheet(context, state, controller),
-                    borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-                        border: Border.all(
-                          color: isEInk
-                              ? const Color(0xFF1A1A18)
-                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                          width: 1.0,
+                            SizedBox(width: isEInk ? 4 : 6),
+                            Text(
+                              _getSortLabel(state.sortBy),
+                              style: isEInk
+                                  ? GoogleFonts.robotoSlab(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1A1A18),
+                                      fontSize: 13,
+                                    )
+                                  : theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                            ),
+                            SizedBox(width: isEInk ? 3 : 4),
+                            Icon(
+                              state.sortOrder == SortOrder.ascending 
+                                  ? Icons.arrow_upward 
+                                  : Icons.arrow_downward,
+                              size: 12,
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            state.viewMode.icon,
-                            size: 16,
-                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                    ),
+                    SizedBox(width: isEInk ? 6 : 8),
+                    // Filter Trigger (Matches Photo Modal launcher)
+                    InkWell(
+                      onTap: () => _showFilterDialog(context, state, controller),
+                      borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: isEInk ? 8 : 12, vertical: isEInk ? 5 : 6),
+                        decoration: BoxDecoration(
+                          color: isEInk
+                              ? const Color(0xFFEAE6DF)
+                              : (hasActiveFilters 
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.15) 
+                                  : theme.colorScheme.surfaceContainerLow),
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                          border: Border.all(
+                            color: isEInk
+                                ? const Color(0xFF1A1A18)
+                                : (hasActiveFilters 
+                                    ? theme.colorScheme.primary 
+                                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                            width: 1.0,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'View',
-                            style: isEInk
-                                ? GoogleFonts.robotoSlab(
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF1A1A18),
-                                    fontSize: 13,
-                                  )
-                                : theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.filter_alt,
+                              size: 16,
+                              color: isEInk
+                                  ? const Color(0xFF1A1A18)
+                                  : (hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                            ),
+                            SizedBox(width: isEInk ? 4 : 6),
+                            Text(
+                              'Filter',
+                              style: isEInk
+                                  ? GoogleFonts.robotoSlab(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1A1A18),
+                                      fontSize: 13,
+                                    )
+                                  : theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: hasActiveFilters ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                    ),
+                            ),
+                            if (hasActiveFilters) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                                  shape: isEInk ? BoxShape.rectangle : BoxShape.circle,
+                                  borderRadius: isEInk ? BorderRadius.circular(2) : null,
+                                ),
+                                child: Text(
+                                  '${(state.selectedFormats.length + (state.filterNoAuthor ? 1 : 0) + (state.filterNoCollection ? 1 : 0) + (state.filterUnread ? 1 : 0))}',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.onPrimary,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                          ),
-                        ],
+                                ),
+                              ),
+                            ]
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    SizedBox(width: isEInk ? 6 : 8),
+                    // View Trigger
+                    InkWell(
+                      onTap: () => _showViewModeBottomSheet(context, state, controller),
+                      borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: isEInk ? 8 : 12, vertical: isEInk ? 5 : 6),
+                        decoration: BoxDecoration(
+                          color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
+                          border: Border.all(
+                            color: isEInk
+                                ? const Color(0xFF1A1A18)
+                                : theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              state.viewMode.icon,
+                              size: 16,
+                              color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                            ),
+                            SizedBox(width: isEInk ? 4 : 6),
+                            Text(
+                              'View',
+                              style: isEInk
+                                  ? GoogleFonts.robotoSlab(
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1A1A18),
+                                      fontSize: 13,
+                                    )
+                                  : theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: isEInk ? 6 : 8),
           Text(
             '${state.filteredBooks.length} books',
             style: isEInk
@@ -821,6 +824,9 @@ class _LibraryViewState extends State<_LibraryView> {
     final collections = collectionRepo.getAllCollections();
     final bookIdsInCollections = collections.expand((c) => c.bookIds).toSet();
 
+    final currentTheme = context.read<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
     // Local temp states
     Set<String> tempSelectedFormats = Set<String>.from(state.selectedFormats);
     bool tempFilterNoAuthor = state.filterNoAuthor;
@@ -835,6 +841,7 @@ class _LibraryViewState extends State<_LibraryView> {
 
     showDialog(
       context: context,
+      barrierColor: isEInk ? const Color(0x331A1A18) : null,
       builder: (context) {
         final theme = Theme.of(context);
         return StatefulBuilder(
@@ -868,6 +875,41 @@ class _LibraryViewState extends State<_LibraryView> {
 
             Widget formatButton(String label, String formatValue) {
               final isSelected = tempSelectedFormats.contains(formatValue);
+              if (isEInk) {
+                return InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setModalState(() {
+                      if (isSelected) {
+                        tempSelectedFormats.remove(formatValue);
+                      } else {
+                        tempSelectedFormats.add(formatValue);
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(2),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF1A1A18) : const Color(0xFFE0DCD3),
+                      borderRadius: BorderRadius.circular(2),
+                      border: Border.all(
+                        color: const Color(0xFF1A1A18),
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      label.toUpperCase(),
+                      style: GoogleFonts.robotoSlab(
+                        color: isSelected ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18),
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
               return InkWell(
                 onTap: () {
                   setModalState(() {
@@ -901,6 +943,35 @@ class _LibraryViewState extends State<_LibraryView> {
             }
 
             Widget otherFilterButton(String label, bool isSelected, VoidCallback onTap) {
+              if (isEInk) {
+                return InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onTap();
+                  },
+                  borderRadius: BorderRadius.circular(2),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF1A1A18) : const Color(0xFFE0DCD3),
+                      borderRadius: BorderRadius.circular(2),
+                      border: Border.all(
+                        color: const Color(0xFF1A1A18),
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      label,
+                      style: GoogleFonts.robotoSlab(
+                        color: isSelected ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18),
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
               return InkWell(
                 onTap: onTap,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -927,9 +998,29 @@ class _LibraryViewState extends State<_LibraryView> {
             }
 
             return Dialog(
-              backgroundColor: dialogBgColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+              backgroundColor: isEInk ? Colors.transparent : dialogBgColor,
+              elevation: isEInk ? 0 : 24,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              shape: isEInk
+                  ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(2))
+                  : RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
               child: Container(
+                decoration: isEInk
+                    ? const BoxDecoration(
+                        color: Color(0xFFEAE6DF),
+                        borderRadius: BorderRadius.all(Radius.circular(2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0xFF1A1A18),
+                            offset: Offset(4, 4),
+                            blurRadius: 0,
+                          ),
+                        ],
+                        border: Border.fromBorderSide(
+                          BorderSide(color: Color(0xFF1A1A18), width: 2.0),
+                        ),
+                      )
+                    : null,
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                 width: double.infinity,
                 child: Column(
@@ -938,14 +1029,24 @@ class _LibraryViewState extends State<_LibraryView> {
                   children: [
                     Text(
                       'Filter',
-                      style: TextStyle(
-                        color: onSurface,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: isEInk
+                          ? GoogleFonts.robotoSlab(
+                              color: const Color(0xFF1A1A18),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            )
+                          : TextStyle(
+                              color: onSurface,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                     ),
-                    const SizedBox(height: 16),
-                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
+                    const SizedBox(height: 14),
+                    Divider(
+                      color: isEInk ? const Color(0xFF1A1A18) : onSurface.withValues(alpha: 0.12),
+                      height: 1,
+                      thickness: isEInk ? 1.5 : 1,
+                    ),
                     const SizedBox(height: 16),
                     
                     // Formats Grid
@@ -959,9 +1060,13 @@ class _LibraryViewState extends State<_LibraryView> {
                       children: formats.map((f) => formatButton(f, f)).toList(),
                     ),
 
-                    const SizedBox(height: 20),
-                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
+                    Divider(
+                      color: isEInk ? const Color(0xFF9E9A90) : onSurface.withValues(alpha: 0.12),
+                      height: 1,
+                      thickness: 1,
+                    ),
+                    const SizedBox(height: 18),
 
                     // Other Filters (No author, No collection, Unread)
                     Wrap(
@@ -986,8 +1091,12 @@ class _LibraryViewState extends State<_LibraryView> {
                       ],
                     ),
 
-                    const SizedBox(height: 24),
-                    Divider(color: onSurface.withValues(alpha: 0.12), height: 1),
+                    const SizedBox(height: 20),
+                    Divider(
+                      color: isEInk ? const Color(0xFF9E9A90) : onSurface.withValues(alpha: 0.12),
+                      height: 1,
+                      thickness: 1,
+                    ),
                     const SizedBox(height: 16),
 
                     // Bottom Action Bar
@@ -996,41 +1105,100 @@ class _LibraryViewState extends State<_LibraryView> {
                       children: [
                         Text(
                           '$matchCount ${matchCount == 1 ? 'match' : 'matches'}',
-                          style: TextStyle(
-                            color: onSurface,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  color: const Color(0xFF1A1A18),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                )
+                              : TextStyle(
+                                  color: onSurface,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
                         ),
                         Row(
                           children: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: Text(
-                                'Cancel',
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
+                            if (isEInk) ...[
+                              InkWell(
+                                onTap: () => Navigator.pop(context),
+                                borderRadius: BorderRadius.circular(2),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEAE6DF),
+                                    borderRadius: BorderRadius.circular(2),
+                                    border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+                                  ),
+                                  child: Text(
+                                    'Cancel',
+                                    style: GoogleFonts.robotoSlab(
+                                      color: const Color(0xFF1A1A18),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton(
-                              style: FilledButton.styleFrom(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () {
+                                  controller.applyFilters(
+                                    selectedFormats: tempSelectedFormats,
+                                    filterNoAuthor: tempFilterNoAuthor,
+                                    filterNoCollection: tempFilterNoCollection,
+                                    filterUnread: tempFilterUnread,
+                                    bookIdsInCollections: bookIdsInCollections,
+                                  );
+                                  Navigator.pop(context);
+                                },
+                                borderRadius: BorderRadius.circular(2),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1A1A18),
+                                    borderRadius: BorderRadius.circular(2),
+                                    border: Border.all(color: const Color(0xFF1A1A18), width: 1.5),
+                                  ),
+                                  child: Text(
+                                    'Apply',
+                                    style: GoogleFonts.robotoSlab(
+                                      color: const Color(0xFFEAE6DF),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              onPressed: () {
-                                controller.applyFilters(
-                                  selectedFormats: tempSelectedFormats,
-                                  filterNoAuthor: tempFilterNoAuthor,
-                                  filterNoCollection: tempFilterNoCollection,
-                                  filterUnread: tempFilterUnread,
-                                  bookIdsInCollections: bookIdsInCollections,
-                                );
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Apply'),
-                            ),
+                            ] else ...[
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                                ),
+                                onPressed: () {
+                                  controller.applyFilters(
+                                    selectedFormats: tempSelectedFormats,
+                                    filterNoAuthor: tempFilterNoAuthor,
+                                    filterNoCollection: tempFilterNoCollection,
+                                    filterUnread: tempFilterUnread,
+                                    bookIdsInCollections: bookIdsInCollections,
+                                  );
+                                  Navigator.pop(context);
+                                },
+                                child: const Text('Apply'),
+                              ),
+                            ],
                           ],
                         )
                       ],
@@ -1047,14 +1215,24 @@ class _LibraryViewState extends State<_LibraryView> {
 
   void _showSortBottomSheet(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
+    final currentTheme = context.read<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: theme.colorScheme.surface,
-      elevation: 4,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
-      ),
+      backgroundColor: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
+      elevation: isEInk ? 0 : 4,
+      showDragHandle: !isEInk,
+      barrierColor: isEInk ? const Color(0x331A1A18) : null,
+      clipBehavior: isEInk ? Clip.antiAlias : Clip.none,
+      shape: isEInk
+          ? const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: Color(0xFF1A1A18), width: 2.0),
+            )
+          : const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+            ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
@@ -1062,48 +1240,114 @@ class _LibraryViewState extends State<_LibraryView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+                  Container(
+                    padding: EdgeInsets.fromLTRB(isEInk ? 16 : 20, isEInk ? 12 : 4, isEInk ? 16 : 12, isEInk ? 12 : 8),
+                    decoration: isEInk
+                        ? const BoxDecoration(
+                            color: Color(0xFFEAE6DF),
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                            ),
+                          )
+                        : null,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           'Sort by',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                          ),
+                          style: isEInk
+                              ? GoogleFonts.robotoSlab(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                  color: const Color(0xFF1A1A18),
+                                )
+                              : theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                ),
                         ),
-                        TextButton.icon(
-                          icon: Icon(
-                            state.sortOrder == SortOrder.ascending 
-                                ? Icons.arrow_upward 
-                                : Icons.arrow_downward,
-                            size: 16,
+                        if (isEInk)
+                          InkWell(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              final nextOrder = state.sortOrder == SortOrder.ascending
+                                  ? SortOrder.descending
+                                  : SortOrder.ascending;
+                              controller.setSortOrder(nextOrder);
+                              setModalState(() {});
+                            },
+                            borderRadius: BorderRadius.circular(2),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0DCD3),
+                                borderRadius: BorderRadius.circular(2),
+                                border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    state.sortOrder == SortOrder.ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                                    size: 14,
+                                    color: const Color(0xFF1A1A18),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    state.sortOrder == SortOrder.ascending ? 'Ascending' : 'Descending',
+                                    style: GoogleFonts.robotoSlab(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: const Color(0xFF1A1A18),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          TextButton.icon(
+                            icon: Icon(
+                              state.sortOrder == SortOrder.ascending 
+                                  ? Icons.arrow_upward 
+                                  : Icons.arrow_downward,
+                              size: 16,
+                            ),
+                            label: Text(
+                              state.sortOrder == SortOrder.ascending ? 'Ascending' : 'Descending',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            onPressed: () {
+                              HapticFeedback.selectionClick();
+                              final nextOrder = state.sortOrder == SortOrder.ascending
+                                  ? SortOrder.descending
+                                  : SortOrder.ascending;
+                              controller.setSortOrder(nextOrder);
+                              setModalState(() {});
+                            },
                           ),
-                          label: Text(
-                            state.sortOrder == SortOrder.ascending ? 'Ascending' : 'Descending',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: () {
-                            HapticFeedback.selectionClick();
-                            final nextOrder = state.sortOrder == SortOrder.ascending
-                                ? SortOrder.descending
-                                : SortOrder.ascending;
-                            controller.setSortOrder(nextOrder);
-                            setModalState(() {});
-                          },
-                        ),
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  if (!isEInk) const Divider(height: 1),
                   Flexible(
                     child: ListView(
                       shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
+                      physics: isEInk ? const ClampingScrollPhysics() : const NeverScrollableScrollPhysics(),
                       children: SortType.values.map((type) {
                         final isSelected = state.sortBy == type;
+                        if (isEInk) {
+                          return _KindleSheetOptionRow(
+                            icon: _getSortIcon(type),
+                            label: _getSortLabel(type),
+                            isSelected: isSelected,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.setSortBy(type);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        }
                         return ListTile(
                           leading: Container(
                             padding: const EdgeInsets.all(8),
@@ -1138,11 +1382,11 @@ class _LibraryViewState extends State<_LibraryView> {
                       }).toList(),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: isEInk ? 8 : 12),
                 ],
               ),
             );
-          }
+          },
         );
       },
     );
@@ -1184,39 +1428,76 @@ class _LibraryViewState extends State<_LibraryView> {
 
   void _showViewModeBottomSheet(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
+    final currentTheme = context.read<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: theme.colorScheme.surface,
-      elevation: 4,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
-      ),
+      backgroundColor: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
+      elevation: isEInk ? 0 : 4,
+      showDragHandle: !isEInk,
+      barrierColor: isEInk ? const Color(0x331A1A18) : null,
+      clipBehavior: isEInk ? Clip.antiAlias : Clip.none,
+      shape: isEInk
+          ? const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: Color(0xFF1A1A18), width: 2.0),
+            )
+          : const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+            ),
       builder: (ctx) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+              Container(
+                padding: EdgeInsets.fromLTRB(isEInk ? 16 : 20, isEInk ? 12 : 4, isEInk ? 16 : 12, isEInk ? 12 : 8),
+                decoration: isEInk
+                    ? const BoxDecoration(
+                        color: Color(0xFFEAE6DF),
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                        ),
+                      )
+                    : null,
                 child: Row(
                   children: [
                     Text(
                       'View',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                      ),
+                      style: isEInk
+                          ? GoogleFonts.robotoSlab(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                              color: const Color(0xFF1A1A18),
+                            )
+                          : theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              if (!isEInk) const Divider(height: 1),
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
+                  physics: isEInk ? const ClampingScrollPhysics() : null,
                   children: BookViewMode.values.map((mode) {
                     final isSelected = state.viewMode == mode;
+                    if (isEInk) {
+                      return _KindleSheetOptionRow(
+                        icon: mode.icon,
+                        label: mode.label,
+                        isSelected: isSelected,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          controller.setViewMode(mode);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    }
                     return ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(8),
@@ -1251,7 +1532,7 @@ class _LibraryViewState extends State<_LibraryView> {
                   }).toList(),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: isEInk ? 8 : 12),
             ],
           ),
         );
@@ -1441,5 +1722,105 @@ class _LibraryViewState extends State<_LibraryView> {
           ),
         );
     }
+  }
+}
+
+/// Instantaneous (0ms) inverting ledger option row for Kindle Carta sheets.
+class _KindleSheetOptionRow extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _KindleSheetOptionRow({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  State<_KindleSheetOptionRow> createState() => _KindleSheetOptionRowState();
+}
+
+class _KindleSheetOptionRowState extends State<_KindleSheetOptionRow> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final invert = _isPressed;
+    final rowBg = invert
+        ? const Color(0xFF1A1A18)
+        : (widget.isSelected ? const Color(0xFFE0DCD3) : Colors.transparent);
+    final fgColor = invert ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18);
+    final iconBoxBg = invert ? const Color(0xFF1A1A18) : const Color(0xFFEAE6DF);
+    final iconBoxBorder = invert ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18);
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => setState(() => _isPressed = true),
+      onPointerUp: (_) => setState(() => _isPressed = false),
+      onPointerCancel: (_) => setState(() => _isPressed = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: rowBg,
+            border: Border(
+              left: BorderSide(
+                color: widget.isSelected ? const Color(0xFF1A1A18) : Colors.transparent,
+                width: 4.0,
+              ),
+              bottom: const BorderSide(color: Color(0xFF9E9A90), width: 1.0),
+            ),
+          ),
+          child: Row(
+            children: [
+              // Sharp 2px square ink frame behind icon
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: iconBoxBg,
+                  borderRadius: BorderRadius.circular(2),
+                  border: Border.all(color: iconBoxBorder, width: 1.0),
+                ),
+                child: Icon(widget.icon, size: 18, color: fgColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: GoogleFonts.robotoSlab(
+                    fontSize: 14.5,
+                    fontWeight: widget.isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: fgColor,
+                  ),
+                ),
+              ),
+              if (widget.isSelected)
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: invert ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18),
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(
+                      color: invert ? const Color(0xFFEAE6DF) : const Color(0xFF1A1A18),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.check,
+                    size: 15,
+                    color: invert ? const Color(0xFF1A1A18) : const Color(0xFFEAE6DF),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

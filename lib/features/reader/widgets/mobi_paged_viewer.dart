@@ -7,7 +7,6 @@ import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart'
 import 'book_cover_page.dart';
 import 'mobi_content_viewer.dart';
 import 'realistic_page_turn.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
 
 class MobiPagedViewer extends StatefulWidget {
   final MobiChapterController chapterController;
@@ -36,6 +35,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   late PageController _viewPageController;
   double _accumulatedOverscroll = 0.0;
   DateTime? _lastPageTurnTime;
+  bool _isPageAnimating = false;
 
   @override
   void initState() {
@@ -55,8 +55,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       widget.chapterController.addListener(_onChapterControllerChanged);
     }
     if (oldWidget.readingMode != widget.readingMode) {
-      _viewPageController.dispose();
-      _viewPageController = PageController(initialPage: _activePage);
+      if (_viewPageController.hasClients &&
+          _viewPageController.page?.round() != _activePage) {
+        _viewPageController.jumpToPage(_activePage);
+      }
     }
     _syncActivePage();
   }
@@ -112,21 +114,24 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   }
 
   void _goToPreviousPage() {
-    if (_activePage > 0) {
+    if (_activePage > 0 && !_isPageAnimating) {
       final target = _activePage - 1;
       final themeRepo = context.read<ReaderThemeRepository>();
-      final currentTheme = context.read<AppTheme?>();
-      final isEInk = currentTheme == AppTheme.eInk;
-      final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
         _handlePageChanged(target);
       } else if (_viewPageController.hasClients) {
+        _isPageAnimating = true;
         _viewPageController.animateToPage(
           target,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
-        );
+        ).then((_) {
+          _isPageAnimating = false;
+        }).catchError((_) {
+          _isPageAnimating = false;
+        });
       } else {
         _handlePageChanged(target);
       }
@@ -135,21 +140,24 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
   void _goToNextPage() {
     final totalPages = (widget.chapterController.chapters?.length ?? 0) + 1;
-    if (_activePage < totalPages - 1) {
+    if (_activePage < totalPages - 1 && !_isPageAnimating) {
       final target = _activePage + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
-      final currentTheme = context.read<AppTheme?>();
-      final isEInk = currentTheme == AppTheme.eInk;
-      final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
         _handlePageChanged(target);
       } else if (_viewPageController.hasClients) {
+        _isPageAnimating = true;
         _viewPageController.animateToPage(
           target,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
-        );
+        ).then((_) {
+          _isPageAnimating = false;
+        }).catchError((_) {
+          _isPageAnimating = false;
+        });
       } else {
         _handlePageChanged(target);
       }
@@ -240,7 +248,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     } else {
       widget.chapterController.onNavigatedToCover();
     }
-    if (_viewPageController.hasClients &&
+    if (!_isPageAnimating &&
+        _viewPageController.hasClients &&
         _viewPageController.page?.round() != index) {
       _viewPageController.jumpToPage(index);
     } else if (!_viewPageController.hasClients &&
@@ -259,9 +268,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     if (widget.chapterController.chapters == null) return const SizedBox.shrink();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final currentTheme = context.watch<AppTheme?>();
-    final isEInk = currentTheme == AppTheme.eInk;
-    final useRealisticCurl = !isEInk && widget.readingMode != ReadingMode.vertical &&
+    final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
         themeRepo.config.pageFlip;
 
     // Total page count is 1 cover page + N chapter pages
@@ -272,7 +279,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
         pageCount: totalPages,
         currentPage: _activePage,
         textureId: themeRepo.config.paperTexture,
-        showSpine: !isEInk && themeRepo.config.showBookSpine,
+        showSpine: themeRepo.config.showBookSpine,
         onPageChanged: _handlePageChanged,
         onToggleChrome: widget.onToggleChrome,
         onTapUp: widget.onTapUp,
@@ -360,11 +367,22 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
           behavior: HitTestBehavior.translucent,
           onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
           onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0.0;
+            if (velocity < -200) {
+              _goToNextPage();
+            } else if (velocity > 200) {
+              _goToPreviousPage();
+            }
+          },
+          onVerticalDragEnd: (details) {
             if (widget.readingMode == ReadingMode.vertical) {
               final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
+              final metrics = scrollController.hasClients ? scrollController.position : null;
+              final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
+              final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
+              if (velocity < -200 && isAtBottom) {
                 _goToNextPage();
-              } else if (velocity > 200) {
+              } else if (velocity > 200 && isAtTop) {
                 _goToPreviousPage();
               }
             }

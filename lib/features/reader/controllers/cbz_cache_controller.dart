@@ -25,9 +25,23 @@ class CbzCacheController {
   });
 
   /// Get estimated aspect ratio for a page, or the global average if unknown.
-  double? getEstimatedAspectRatio(int index) {
-    return _aspectRatios[index] ?? _averageAspectRatio ?? 0.70;
+  double? getEstimatedAspectRatio(int index, {double fallback = 0.70}) {
+    return _aspectRatios[index] ?? _averageAspectRatio ?? fallback;
   }
+
+  /// Get strictly verified known aspect ratio for a page, if already decoded.
+  double? getKnownAspectRatio(int index) {
+    return _aspectRatios[index];
+  }
+
+  /// Check whether an image is decoded in cache and immediately ready to render.
+  bool isPageDecoded(int index, [int? maxWidth]) {
+    final key = _getCacheKey(index, maxWidth);
+    return _imageCache.containsKey(key);
+  }
+
+  /// All currently learned aspect ratios for the comic.
+  Map<int, double> get allKnownAspectRatios => Map.unmodifiable(_aspectRatios);
 
   String _getCacheKey(int index, [int? maxWidth]) {
     if (index < 0 || index >= pageNames.length) return '';

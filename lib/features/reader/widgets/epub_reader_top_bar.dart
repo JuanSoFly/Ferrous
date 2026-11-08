@@ -125,7 +125,7 @@ class EpubReaderTopBar extends StatelessWidget {
                             : RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                        color: isEInk ? Colors.transparent : theme.colorScheme.surfaceContainer,
+                        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surfaceContainer,
                         surfaceTintColor: Colors.transparent,
                         elevation: isEInk ? 0 : 4,
                         onSelected: (value) {

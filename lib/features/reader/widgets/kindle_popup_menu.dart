@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -41,26 +42,26 @@ class KindlePopupShape extends ShapeBorder {
 
   @override
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    // 1. Draw hard zero-blur offset print shadow
+    // 1. Draw hard zero-blur offset print shadow strictly outside the menu bounds
+    canvas.save();
+    canvas.clipRect(rect, clipOp: ClipOp.difference);
     final shadowRRect = RRect.fromRectAndRadius(
       rect.shift(shadowOffset),
       Radius.circular(radius),
     );
     canvas.drawRRect(shadowRRect, Paint()..color = shadowColor);
+    canvas.restore();
 
-    // 2. Fill the main menu background with solid opaque paper color
-    final mainRRect = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(radius),
-    );
-    canvas.drawRRect(mainRRect, Paint()..color = const Color(0xFFEAE6DF));
-
-    // 3. Draw the crisp border stroke
+    // 2. Draw the crisp border stroke on top of the menu boundaries
     final borderPaint = Paint()
       ..color = borderColor
       ..strokeWidth = borderWidth
       ..style = PaintingStyle.stroke;
-    canvas.drawRRect(mainRRect, borderPaint);
+    final strokeRRect = RRect.fromRectAndRadius(
+      rect.deflate(borderWidth / 2),
+      Radius.circular(radius),
+    );
+    canvas.drawRRect(strokeRRect, borderPaint);
   }
 
   @override
@@ -107,8 +108,10 @@ class _KindlePopupItemState extends State<KindlePopupItem> {
       onPointerUp: (_) => setState(() => _isPressed = false),
       onPointerCancel: (_) => setState(() => _isPressed = false),
       child: Container(
+        height: 42,
         color: bgColor,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.centerLeft,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -121,6 +124,8 @@ class _KindlePopupItemState extends State<KindlePopupItem> {
                 fontWeight: widget.isHighlighted ? FontWeight.w700 : FontWeight.w600,
                 fontSize: 13.5,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

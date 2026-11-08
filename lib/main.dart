@@ -155,12 +155,14 @@ class ReaderApp extends StatelessWidget {
               onThemeChanged: (theme) {
                 dimensionController.onThemeChanged(theme);
                 if (theme == AppTheme.eInk) {
-                  readerThemeRepository.updateConfig(
-                    readerThemeRepository.config.copyWith(
-                      pageFlip: false,
-                      showBookSpine: false,
-                    ),
-                  );
+                  if (!readerThemeRepository.config.pageFlip || !readerThemeRepository.config.showBookSpine) {
+                    readerThemeRepository.updateConfig(
+                      readerThemeRepository.config.copyWith(
+                        pageFlip: true,
+                        showBookSpine: true,
+                      ),
+                    );
+                  }
                 }
               },
             );

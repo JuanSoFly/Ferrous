@@ -610,12 +610,10 @@ class _BookFeelTab extends StatelessWidget {
             theme: theme,
             isEInk: isEInk,
             title: 'Realistic Books Page Turn',
-            subtitle: isEInk
-                ? 'Realistic 3D curl animation is auto-suppressed in E-Ink mode to preserve flat physical e-paper display'
-                : 'Realistic 3D curl animation with dynamic paper lighting and shadows when swiping pages',
-            value: isEInk ? false : config.pageFlip,
+            subtitle: 'Realistic 3D curl animation with dynamic paper lighting and shadows when swiping pages',
+            value: config.pageFlip,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isEInk ? 2 : 16)),
-            onChanged: isEInk ? null : (val) => repo.setPageFlip(val),
+            onChanged: (val) => repo.setPageFlip(val),
           ),
         ),
 
@@ -661,12 +659,10 @@ class _BookFeelTab extends StatelessWidget {
             theme: theme,
             isEInk: isEInk,
             title: 'Book Spine & Page Edges',
-            subtitle: isEInk
-                ? 'Gutter shadows and stacked leaf edges are auto-suppressed in E-Ink mode'
-                : 'Show realistic book binding gutter shadow and stacked paper leaf edges along the margins',
-            value: isEInk ? false : config.showBookSpine,
+            subtitle: 'Show realistic book binding gutter shadow and stacked paper leaf edges along the margins',
+            value: config.showBookSpine,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isEInk ? 2 : 16)),
-            onChanged: isEInk ? null : (_) => repo.toggleBookSpine(),
+            onChanged: (_) => repo.toggleBookSpine(),
           ),
         ),
       ],

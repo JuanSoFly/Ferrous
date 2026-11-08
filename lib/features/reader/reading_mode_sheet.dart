@@ -23,7 +23,7 @@ Future<ReadingMode?> showReadingModeSheet(
     context: context,
     useSafeArea: true,
     showDragHandle: !isEInk,
-    barrierColor: isEInk ? Colors.transparent : null,
+    barrierColor: isEInk ? const Color(0x331A1A18) : null,
     backgroundColor: isEInk ? const Color(0xFFEAE6DF) : null,
     shape: isEInk
         ? const RoundedRectangleBorder(

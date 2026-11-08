@@ -76,7 +76,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
 
   void _saveProgress() {
     if (_pageController.isContinuousMode) {
-      _pageController.saveContinuousProgress();
+      _pageController.saveProgressImmediately();
     } else if (_pageController.pageCount > 0) {
       widget.repository.updateReadingProgress(
         widget.book.id,
@@ -95,6 +95,7 @@ class _CbzReaderScreenState extends State<CbzReaderScreen> with WidgetsBindingOb
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _saveProgress();
     }

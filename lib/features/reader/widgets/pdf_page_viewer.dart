@@ -11,7 +11,6 @@ import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'realistic_page_turn.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;
@@ -161,9 +160,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
   Widget _buildPagedView() {
     final themeRepo = context.watch<ReaderThemeRepository>();
-    final currentTheme = context.watch<AppTheme?>();
-    final isEInk = currentTheme == AppTheme.eInk;
-    final useRealisticCurl = !isEInk &&
+    final useRealisticCurl =
         !widget.modeController.useVerticalSwipe &&
         themeRepo.config.pageFlip &&
         _canSwipe();
@@ -173,7 +170,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
-        showSpine: !isEInk && themeRepo.config.showBookSpine,
+        showSpine: themeRepo.config.showBookSpine,
         onPageChanged: _onPageViewChanged,
         onToggleChrome: _handleToggleChrome,
         onTapUp: (details) => _handleTapUp(context, details),

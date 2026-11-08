@@ -53,7 +53,7 @@ class LibraryLocationsScreen extends StatelessWidget {
             shape: isEInk
                 ? const KindlePopupShape()
                 : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            color: isEInk ? Colors.transparent : null,
+            color: isEInk ? const Color(0xFFEAE6DF) : null,
             elevation: isEInk ? 0 : 4,
             onSelected: (val) {
               if (val == 'cleanup') {
