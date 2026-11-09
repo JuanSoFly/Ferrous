@@ -94,7 +94,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     return (scale - 1.0).abs() < 0.01;
   }
 
-  void _onPageViewChanged(int index) {
+  void _onPageViewSettled(int index) {
     if (_syncing) return;
     if (widget.pageController.pageIndex == index) return;
     _syncing = true;
@@ -184,10 +184,11 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
         showSpine: themeRepo.config.showBookSpine,
-        onPageChanged: _onPageViewChanged,
+        onPageChanged: _onPageViewSettled,
         onToggleChrome: () => widget.chromeController.toggleChrome(),
         pageBuilder: (context, index) {
           return InteractiveViewer(
+            key: ValueKey('cbz-interactive-$index'),
             transformationController: widget.transformController,
             maxScale: 5.0,
             child: _buildPageImage(index, maxWidth),
@@ -196,24 +197,42 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
       );
     }
 
-    return PageView.builder(
-      key: ValueKey('cbz-paged-$isVertical'),
-      controller: _getOrUpdatePageController(),
-      scrollDirection: isVertical
-          ? Axis.vertical
-          : Axis.horizontal,
-      physics: _canSwipePages()
-          ? const AlwaysScrollableScrollPhysics()
-          : const NeverScrollableScrollPhysics(),
-      itemCount: widget.pageController.pageCount,
-      onPageChanged: _onPageViewChanged,
-      itemBuilder: (context, index) {
-        return InteractiveViewer(
-          transformationController: widget.transformController,
-          maxScale: 5.0,
-          child: _buildPageImage(index, maxWidth),
-        );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification) {
+          final page = _viewPageController.page?.round();
+          if (page != null &&
+              page >= 0 &&
+              page < widget.pageController.pageCount &&
+              page != widget.pageController.pageIndex) {
+            _onPageViewSettled(page);
+          }
+        }
+        return false;
       },
+      child: PageView.builder(
+        key: ValueKey('cbz-paged-$isVertical'),
+        controller: _getOrUpdatePageController(),
+        scrollDirection: isVertical
+            ? Axis.vertical
+            : Axis.horizontal,
+        physics: _canSwipePages()
+            ? const AlwaysScrollableScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        itemCount: widget.pageController.pageCount,
+        onPageChanged: (candidateIndex) {
+          // Preload hint only: do NOT jumpToPage here to prevent transient out-of-sync jumps
+          widget.pageController.cacheController?.preloadAround(candidateIndex, maxWidth);
+        },
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            key: ValueKey('cbz-interactive-$index'),
+            transformationController: widget.transformController,
+            maxScale: 5.0,
+            child: _buildPageImage(index, maxWidth),
+          );
+        },
+      ),
     );
   }
 
@@ -221,6 +240,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
     final pageName = widget.pageController.pageNames[index];
 
     return CbzPageImage(
+      key: ValueKey('cbz-page-$index'),
       pageIndex: index,
       pageName: pageName,
       fit: BoxFit.contain,
@@ -266,6 +286,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
           return RepaintBoundary(
             key: key,
             child: CbzPageImage(
+              key: ValueKey('cbz-page-$index'),
               pageIndex: index,
               pageName: widget.pageController.pageNames[index],
               fit: BoxFit.contain,
@@ -314,6 +335,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
           return RepaintBoundary(
             key: key,
             child: CbzPageImage(
+              key: ValueKey('cbz-page-$index'),
               pageIndex: index,
               pageName: widget.pageController.pageNames[index],
               fit: BoxFit.contain,

@@ -336,27 +336,29 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
-          onHorizontalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0.0;
-            if (velocity < -200) {
-              _goToNextPage();
-            } else if (velocity > 200) {
-              _goToPreviousPage();
-            }
-          },
-          onVerticalDragEnd: (details) {
-            if (widget.readingMode == ReadingMode.vertical) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              final metrics = scrollController.hasClients ? scrollController.position : null;
-              final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
-              final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
-              if (velocity < -200 && isAtBottom) {
-                _goToNextPage();
-              } else if (velocity > 200 && isAtTop) {
-                _goToPreviousPage();
-              }
-            }
-          },
+          onHorizontalDragEnd: widget.readingMode == ReadingMode.vertical
+              ? null
+              : (details) {
+                  final velocity = details.primaryVelocity ?? 0.0;
+                  if (velocity < -200) {
+                    _goToNextPage();
+                  } else if (velocity > 200) {
+                    _goToPreviousPage();
+                  }
+                },
+          onVerticalDragEnd: widget.readingMode == ReadingMode.vertical
+              ? (details) {
+                  final velocity = details.primaryVelocity ?? 0.0;
+                  final metrics = scrollController.hasClients ? scrollController.position : null;
+                  final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
+                  final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
+                  if (velocity < -200 && isAtBottom) {
+                    _goToNextPage();
+                  } else if (velocity > 200 && isAtTop) {
+                    _goToPreviousPage();
+                  }
+                }
+              : null,
           child: NotificationListener<ScrollNotification>(
             onNotification: _onScrollNotification,
             child: SingleChildScrollView(

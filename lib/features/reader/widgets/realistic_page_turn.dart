@@ -57,8 +57,8 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
   final Map<int, Widget> _pageCache = {};
   final Map<int, GlobalKey> _pageKeys = {};
 
-  // Turn direction: 1 for forward (next page), -1 for backward (previous page)
-  int _turnDirection = 1;
+  // Turn direction: 1 for forward (next page), -1 for backward (previous page), 0 for unselected
+  int _turnDirection = 0;
   double _dragProgress = 0.0;
   bool _isDragging = false;
   bool _isAnimating = false;
@@ -110,8 +110,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     if (widget.textureId != oldWidget.textureId ||
         widget.showSpine != oldWidget.showSpine ||
         widget.pageCount != oldWidget.pageCount ||
-        widget.enabled != oldWidget.enabled ||
-        widget.pageBuilder != oldWidget.pageBuilder) {
+        widget.enabled != oldWidget.enabled) {
       _pageCache.clear();
       _pageKeys.clear();
     }
@@ -123,6 +122,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
         _dragProgress = 0.0;
         _progressNotifier.value = 0.0;
         _directionDetermined = false;
+        _turnDirection = 0;
       }
       _activePage = widget.currentPage.clamp(0, widget.pageCount - 1);
       _pruneCache();
@@ -147,6 +147,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
       _directionDetermined = false;
       _isAnimating = false;
       _isDragging = false;
+      _turnDirection = 0;
       _curlController.reset();
       widget.onPageChanged(_activePage);
       _pruneCache();
@@ -157,6 +158,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
       _directionDetermined = false;
       _isAnimating = false;
       _isDragging = false;
+      _turnDirection = 0;
       _curlController.reset();
       if (mounted) setState(() {});
     }
@@ -171,6 +173,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     _dragProgress = 0.0;
     _progressNotifier.value = 0.0;
     _directionDetermined = false;
+    _turnDirection = 0;
   }
 
   void _handleHorizontalDragUpdate(DragUpdateDetails details, double screenWidth) {
@@ -205,6 +208,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
       _directionDetermined = false;
+      _turnDirection = 0;
       setState(() {});
     } else {
       _dragProgress = newProgress.clamp(0.0, 1.0);
@@ -216,10 +220,11 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     if (!widget.enabled || !_isDragging || _isAnimating) return;
     _isDragging = false;
 
-    if (!_directionDetermined || _dragProgress <= 0.01) {
+    if (!_directionDetermined || _turnDirection == 0 || _dragProgress <= 0.01) {
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
       _directionDetermined = false;
+      _turnDirection = 0;
       setState(() {});
       return;
     }
@@ -257,6 +262,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     if (reduceMotion || !widget.enabled) {
       final newIndex = direction == 1 ? _activePage + 1 : _activePage - 1;
       _activePage = newIndex.clamp(0, widget.pageCount - 1);
+      _turnDirection = 0;
       widget.onPageChanged(_activePage);
       _pruneCache();
       if (mounted) setState(() {});

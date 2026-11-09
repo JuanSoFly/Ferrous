@@ -19,6 +19,8 @@
 - E-Ink high-contrast support for `CollectionDetailScreen`, `CollectionsTab`, and `_showAddToCollectionDialog` with physical checkboxes and Roboto Slab typography.
 - E-Ink mechanical styling for `LibraryLocationsScreen` and `LocationCard` with high-contrast cards, custom action popups, and instant feedback.
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
+- Serialized, priority-aware CBZ/CBR extraction queue in `CbzCacheController` with in-flight request sharing and automatic retry backoff.
+- Archive-level thread safety and concurrency locks in Rust (`cbz.rs`) to prevent race conditions during parallel ZIP and RAR extractions.
 
 ### Fixed
 - Fixed `RarArchive` type signature in Rust (`cbz.rs`) by removing invalid generic type argument.
@@ -27,6 +29,8 @@
 - Fixed HTML attribute resolution for `<img>` and `<image>` tags in Rust EPUB cover extraction (`covers.rs`).
 - Fixed chapter scroll offsets and paged indexing in EPUB and MOBI readers by removing artificial cover height and page padding shifts.
 - Refined comic page selection and scrubber interactions in `CbzPageControls` and `CbzPageSelectSheet`.
+- Fixed stuck page turn curl in `RealisticPageTurn` by resetting turn direction on drag cancel and animation completion.
+- Guarded comic page image decoding in Rust (`cbz.rs`) against empty or truncated archive buffers.
 
 ### Changed
 - Added mode transition guards (`isTransitioningMode`) and scroll epoch tracking to `EpubChapterController` and `MobiChapterController` to prevent race conditions and out-of-order page jumps during reading mode changes.

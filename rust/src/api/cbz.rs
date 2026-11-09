@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{Read, BufReader};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::num::NonZeroUsize;
+use std::collections::HashMap;
 use lru::LruCache;
 use crate::timed;
 use zip::ZipArchive;
@@ -10,6 +11,18 @@ use image::GenericImageView;
 use anyhow::{Result, Context, anyhow};
 
 static CBZ_ENTRIES_CACHE: OnceLock<Mutex<LruCache<String, Arc<Vec<String>>>>> = OnceLock::new();
+static ARCHIVE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+
+fn get_archive_lock(path: &str) -> Arc<Mutex<()>> {
+    let map = ARCHIVE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut lock = match map.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    lock.entry(path.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 fn get_entries_cache() -> &'static Mutex<LruCache<String, Arc<Vec<String>>>> {
     CBZ_ENTRIES_CACHE.get_or_init(|| {
@@ -81,6 +94,12 @@ fn read_rar_image_entries(path: &str) -> Result<Vec<String>> {
 }
 
 fn get_archive_image_entries(path: &str) -> Result<Vec<String>> {
+    let archive_lock = get_archive_lock(path);
+    let _guard = match archive_lock.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+
     if is_rar_file(path) {
         if let Ok(entries) = read_rar_image_entries(path) {
             return Ok(entries);
@@ -176,22 +195,41 @@ fn read_rar_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
 }
 
 fn read_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
-    if is_rar_file(path) {
+    let archive_lock = get_archive_lock(path);
+    let _guard = match archive_lock.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+
+    let buffer = if is_rar_file(path) {
         if let Ok(bytes) = read_rar_image_bytes(path, entry_name) {
-            return Ok(bytes);
+            bytes
+        } else {
+            read_zip_image_bytes(path, entry_name)
+                .with_context(|| format!("Failed to read entry from RAR or ZIP: {}", entry_name))?
         }
+    } else {
+        match read_zip_image_bytes(path, entry_name) {
+            Ok(bytes) => bytes,
+            Err(zip_err) => {
+                read_rar_image_bytes(path, entry_name)
+                    .with_context(|| format!("Failed to read entry from ZIP ({}) or RAR", zip_err))?
+            }
+        }
+    };
+
+    if buffer.is_empty() {
+        return Err(anyhow!("Empty image data extracted for entry: {}", entry_name));
     }
 
-    match read_zip_image_bytes(path, entry_name) {
-        Ok(bytes) => Ok(bytes),
-        Err(zip_err) => {
-            read_rar_image_bytes(path, entry_name)
-                .with_context(|| format!("Failed to read entry from ZIP ({}) or RAR", zip_err))
-        }
-    }
+    Ok(buffer)
 }
 
 fn decode_and_process_image(buffer: &[u8], max_width: Option<i32>) -> Result<CbzPageData> {
+    if buffer.is_empty() {
+        return Err(anyhow!("Cannot decode empty image buffer"));
+    }
+
     let img = image::load_from_memory(buffer)
         .with_context(|| "Failed to decode image")?;
 

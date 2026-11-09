@@ -548,6 +548,8 @@ class CbzPageController extends ChangeNotifier {
     _currentPage = page;
     book.currentPage = page;
 
+    _cacheController?.preloadAround(page, 1080);
+
     if (isContinuousMode) {
       scrollToPage(page);
     } else {
