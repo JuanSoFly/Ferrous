@@ -21,6 +21,7 @@
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
 
 ### Fixed
+- Fixed `RarArchive` type signature in Rust (`cbz.rs`) by removing invalid generic type argument.
 - Fixed ZIP and RAR entry resolution in Rust (`cbz.rs`) to reliably match paths with mixed slash separators.
 - Streamlined CBR cover image lookup in Rust (`covers.rs`).
 - Fixed HTML attribute resolution for `<img>` and `<image>` tags in Rust EPUB cover extraction (`covers.rs`).

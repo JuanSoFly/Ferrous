@@ -146,7 +146,7 @@ fn read_zip_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-fn find_rar_entry_name(archive: &RarArchive<File>, target: &str) -> Option<String> {
+fn find_rar_entry_name(archive: &RarArchive, target: &str) -> Option<String> {
     for member in archive.entries() {
         if member.name == target
             || member.name.replace('\\', "/") == target
