@@ -11,6 +11,8 @@ import 'package:provider/provider.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'realistic_page_turn.dart';
+import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;
@@ -411,18 +413,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   }
 
   Widget _buildErrorState(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text("Error: $error", textAlign: TextAlign.center),
-          ],
-        ),
-      ),
+    final currentTheme = context.watch<AppTheme?>();
+    final isEInk = currentTheme == AppTheme.eInk;
+    return ReaderErrorView(
+      formatTitle: 'PDF',
+      error: error,
+      isEInk: isEInk,
     );
   }
 

@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:reader_app/src/rust/frb_generated.dart';
 import 'package:reader_app/src/rust/api/pdf.dart';
 import 'package:reader_app/app/app_shell.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 import 'package:reader_app/data/models/book_adapter.dart';
 import 'package:reader_app/data/models/annotation_adapter.dart';
 import 'package:reader_app/data/models/collection_adapter.dart';
@@ -24,6 +26,18 @@ import 'package:path_provider/path_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Wire global error handlers into DiagnosticLogger
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    DiagnosticLogger.instance.logError('Flutter', details.exception, details.stack);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    DiagnosticLogger.instance.logError('PlatformDispatcher', error, stack);
+    return false;
+  };
+
+  DiagnosticLogger.instance.log('App', 'Ferrous initializing');
 
   // Initialize Hive
   await Hive.initFlutter();
@@ -71,6 +85,7 @@ Future<void> main() async {
   String? initError;
   try {
     await RustLib.init();
+    DiagnosticLogger.instance.log('RustLib', 'RustLib successfully initialized');
     
     // Initialize PDFium path on Android
     if (Platform.isAndroid) {
@@ -79,13 +94,16 @@ Future<void> main() async {
         final nativeLibDir = await safService.getNativeLibraryDir();
         if (nativeLibDir != null) {
           await initPdfium(path: nativeLibDir);
+          DiagnosticLogger.instance.log('PDFium', 'PDFium successfully initialized');
         }
-      } catch (e) {
+      } catch (e, stack) {
+        DiagnosticLogger.instance.logError('PDFium', e, stack);
         debugPrint('Failed to initialize PDFium path: $e');
       }
     }
-  } catch (e) {
+  } catch (e, stack) {
     initError = e.toString();
+    DiagnosticLogger.instance.logError('RustLib', e, stack);
   }
 
   runApp(ReaderApp(

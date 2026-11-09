@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/data/services/epub_cover_extractor.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 
 class EpubChapterInfo {
   final String? title;
@@ -176,7 +177,8 @@ class EpubChapterController extends ChangeNotifier {
             } catch (_) {}
           }());
         }
-      } catch (e) {
+      } catch (e, stack) {
+        DiagnosticLogger.instance.logError('EPUB', e, stack);
         _error = e.toString();
         _isLoading = false;
         notifyListeners();

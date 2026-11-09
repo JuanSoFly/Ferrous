@@ -25,6 +25,7 @@ import 'package:reader_app/features/reader/widgets/mobi_reader_top_bar.dart';
 import 'package:reader_app/features/reader/widgets/mobi_reader_bottom_controls.dart';
 import 'package:reader_app/features/reader/widgets/reader_settings_sheet.dart';
 import 'package:reader_app/features/reader/widgets/tap_selection_overlay.dart';
+import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
 
 class MobiReaderScreen extends StatefulWidget {
@@ -480,24 +481,12 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     }
 
     if (_chapterController.error != null) {
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 16),
-                Text("Error loading book:", style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Text(_chapterController.error!, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                const SizedBox(height: 24),
-                ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back")),
-              ],
-            ),
-          ),
-        ),
+      final currentTheme = context.watch<AppTheme?>();
+      final isEInk = currentTheme == AppTheme.eInk;
+      return ReaderErrorView(
+        formatTitle: 'MOBI',
+        error: _chapterController.error!,
+        isEInk: isEInk,
       );
     }
 

@@ -7,6 +7,8 @@ import 'package:reader_app/core/widgets/update_dialog.dart';
 import 'package:reader_app/features/settings/appearance_screen.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
 import 'package:reader_app/features/settings/library_locations/library_locations_screen.dart';
+import 'package:reader_app/features/settings/widgets/diagnostic_log_sheet.dart';
+import 'package:reader_app/features/settings/widgets/feedback_options_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -168,6 +170,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : null,
                       showChevron: !_isCheckingForUpdates,
                       onTap: _isCheckingForUpdates ? null : _handleCheckForUpdates,
+                    ),
+                    _buildDivider(theme, isEInk: isEInk),
+                    _buildSettingsTile(
+                      context: context,
+                      theme: theme,
+                      isEInk: isEInk,
+                      icon: Icons.rate_review_outlined,
+                      title: 'Feedback & Bug Report',
+                      subtitle: 'Report a problem or suggest an improvement',
+                      showChevron: true,
+                      onTap: () {
+                        final currentThemeName = currentTheme?.name ?? 'default';
+                        FeedbackOptionsSheet.show(
+                          context,
+                          isEInk: isEInk,
+                          currentThemeName: currentThemeName,
+                        );
+                      },
+                    ),
+                    _buildDivider(theme, isEInk: isEInk),
+                    _buildSettingsTile(
+                      context: context,
+                      theme: theme,
+                      isEInk: isEInk,
+                      icon: Icons.terminal_outlined,
+                      title: 'Diagnostics & Logs',
+                      subtitle: 'View buffered events or copy debug trace',
+                      showChevron: true,
+                      onTap: () {
+                        DiagnosticLogSheet.show(context, isEInk: isEInk);
+                      },
                     ),
                   ],
                 );

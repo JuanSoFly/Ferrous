@@ -10,6 +10,8 @@ import '../controllers/reader_mode_controller.dart';
 import 'cbz_adaptive_background.dart';
 import 'cbz_page_image.dart';
 import 'realistic_page_turn.dart';
+import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
+import 'package:reader_app/features/settings/app_themes.dart';
 
 class CbzPageViewer extends StatefulWidget {
   final CbzPageController pageController;
@@ -114,19 +116,12 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
       listenable: widget.pageController,
       builder: (context, _) {
         if (widget.pageController.error != null) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text("Error: ${widget.pageController.error}",
-                      textAlign: TextAlign.center),
-                ],
-              ),
-            ),
+          final currentTheme = context.watch<AppTheme?>();
+          final isEInk = currentTheme == AppTheme.eInk;
+          return ReaderErrorView(
+            formatTitle: 'Comic (CBZ/CBR)',
+            error: widget.pageController.error!,
+            isEInk: isEInk,
           );
         }
 

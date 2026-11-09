@@ -35,6 +35,8 @@ import 'package:reader_app/core/constants/book_textures.dart';
 import 'package:reader_app/features/reader/widgets/book_background_texture.dart';
 import 'package:reader_app/features/reader/widgets/book_cover_page.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
 
 /// Represents a Table of Contents entry extracted from an HTML document.
 class HtmlTocEntry {
@@ -234,7 +236,8 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _restoreScrollPosition();
       });
-    } catch (e) {
+    } catch (e, stack) {
+      DiagnosticLogger.instance.logError(widget.book.format.toUpperCase(), e, stack);
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -815,18 +818,12 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     }
 
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error, color: Colors.red, size: 48),
-              const SizedBox(height: 16),
-              Text("${config.errorPrefix}: $_error"),
-            ],
-          ),
-        ),
+      final currentTheme = context.watch<AppTheme?>();
+      final isEInk = currentTheme == AppTheme.eInk;
+      return ReaderErrorView(
+        formatTitle: widget.book.format.toUpperCase(),
+        error: _error!,
+        isEInk: isEInk,
       );
     }
 

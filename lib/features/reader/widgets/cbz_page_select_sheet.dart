@@ -4,9 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:reader_app/core/constants/e_ink_tokens.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/features/settings/dimension_controller.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../services/cbz_thumbnail_service.dart';
 
@@ -15,10 +13,6 @@ bool isEInkActive(BuildContext context) {
   try {
     final theme = Provider.of<AppTheme>(context, listen: false);
     if (theme == AppTheme.eInk) return true;
-  } catch (_) {}
-  try {
-    final dimState = Provider.of<DimensionState>(context, listen: false);
-    if (dimState.dimension == AppDimension.compactSlate) return true;
   } catch (_) {}
   final themeData = Theme.of(context);
   return themeData.scaffoldBackgroundColor == const Color(0xFFEAE6DF) &&

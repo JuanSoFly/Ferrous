@@ -10,6 +10,7 @@ import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/core/utils/performance.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 
 class PdfPageController extends ChangeNotifier {
   final Book book;
@@ -308,6 +309,7 @@ class PdfPageController extends ChangeNotifier {
       }
 
       debugPrint('PDF load error: $failure');
+      DiagnosticLogger.instance.logError('PDF::Load', failure);
       _error = _formatPdfError(failure);
       _isLoading = false;
       notifyListeners();
@@ -435,9 +437,10 @@ class PdfPageController extends ChangeNotifier {
         if (_disposed) return;
         _schedulePrefetch(index);
         
-      } catch (e) {
+      } catch (e, stack) {
         if (_disposed) return;
         debugPrint('PDF render error: $e');
+        DiagnosticLogger.instance.logError('PDF::Render', e, stack);
         _error = _formatPdfError(e, context: 'Render');
         _isLoading = false;
         notifyListeners();

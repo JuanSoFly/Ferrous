@@ -8,6 +8,7 @@ import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
 import 'package:reader_app/core/utils/performance.dart';
 import '../models/page_corner_colors.dart';
 import 'cbz_cache_controller.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 
 class CbzPageController extends ChangeNotifier {
   final Book book;
@@ -150,7 +151,8 @@ class CbzPageController extends ChangeNotifier {
             restoreContinuousScroll();
           });
         }
-      } catch (e) {
+      } catch (e, stack) {
+        DiagnosticLogger.instance.logError('CBZ', e, stack);
         _error = e.toString();
         _isLoading = false;
         notifyListeners();

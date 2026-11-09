@@ -444,8 +444,7 @@ class _AppShellState extends State<AppShell> {
   // 5. STANDARD MODERNIST BOTTOM NAV
   // ==========================================
   Widget _buildStandardBottomNav(ThemeData theme, DimensionConfig config, {bool isEInk = false}) {
-    final bool eInkMode = isEInk || config.dimension == AppDimension.compactSlate;
-    if (eInkMode) {
+    if (isEInk) {
       return Container(
         decoration: const BoxDecoration(
           color: Color(0xFFEAE6DF),
@@ -473,9 +472,27 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
+    final bool enableBlur = config.enableBlur;
+    final navContent = SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStandardNavItem(0, 'Library', theme, config),
+            _buildStandardNavItem(1, 'Annotations', theme, config),
+            _buildStandardNavItem(2, 'Settings', theme, config),
+          ],
+        ),
+      ),
+    );
+
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.92),
+        color: enableBlur
+            ? theme.colorScheme.surface.withValues(alpha: 0.92)
+            : theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
             color: theme.brightness == Brightness.dark
@@ -485,25 +502,14 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
       ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildStandardNavItem(0, 'Library', theme, config),
-                  _buildStandardNavItem(1, 'Annotations', theme, config),
-                  _buildStandardNavItem(2, 'Settings', theme, config),
-                ],
+      child: enableBlur
+          ? ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: navContent,
               ),
-            ),
-          ),
-        ),
-      ),
+            )
+          : navContent,
     );
   }
 

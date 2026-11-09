@@ -11,6 +11,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 
 class MobiChapterInfo {
   final String? title;
@@ -121,6 +122,7 @@ class MobiChapterController extends ChangeNotifier {
         final rustChapters = await rust_mobi.getMobiChapters(path: resolved.path);
 
         if (rustChapters.isEmpty) {
+          DiagnosticLogger.instance.log('MOBI', 'No sections found in MOBI', level: LogLevel.error);
           _error = "No sections found in MOBI";
           _isLoading = false;
           notifyListeners();
@@ -148,7 +150,8 @@ class MobiChapterController extends ChangeNotifier {
         _chapterProgress = anchor >= 0 ? _fractionForTextOffset(_currentChapterIndex, anchor) : 0.0;
         _isLoading = false;
         notifyListeners();
-      } catch (e) {
+      } catch (e, stack) {
+        DiagnosticLogger.instance.logError('MOBI', e, stack);
         _error = e.toString();
         _isLoading = false;
         notifyListeners();

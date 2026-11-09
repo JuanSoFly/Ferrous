@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 248 368" width="100%" height="100%" role="img" aria-label="Ferrous Reader - Iron Folio F Dynamic Curl">
+  <defs>
+    <linearGradient id="stemGrad_s3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#BA2921"/>
+      <stop offset="50%" stop-color="#8C1D18"/>
+      <stop offset="100%" stop-color="#4F0F0C"/>
+    </linearGradient>
+    <linearGradient id="topFolioGrad_s3" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FF8254"/>
+      <stop offset="50%" stop-color="#E0623A"/>
+      <stop offset="100%" stop-color="#BF4620"/>
+    </linearGradient>
+    <linearGradient id="curlFlap_s3" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#FFBD99"/>
+      <stop offset="60%" stop-color="#E86C44"/>
+      <stop offset="100%" stop-color="#9C241C"/>
+    </linearGradient>
+    <linearGradient id="midFolioGrad_s3" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FFF5EC"/>
+      <stop offset="50%" stop-color="#F2D1BA"/>
+      <stop offset="100%" stop-color="#DE9F78"/>
+    </linearGradient>
+    <filter id="shadow_s3" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow_s3)">
+    <!-- Vertical Spine -->
+    <path d="M 4 28 C 4 14.7, 14.7 4, 28 4 L 70 4 C 83.3 4, 94 14.7, 94 28 L 94 308 C 94 321.3, 83.3 332, 70 332 L 28 332 C 14.7 332, 4 321.3, 4 308 Z" fill="url(#stemGrad_s3)"/>
+    <path d="M 4 112 L 94 112 M 4 224 L 94 224" stroke="#FF9073" stroke-width="3" stroke-opacity="0.45" stroke-linecap="round"/>
+
+    <!-- Top Folio with Fluid Kinetic Page Curl -->
+    <path d="M 94 20 L 194 20 C 214 20, 230 32, 238 48 L 222 108 C 216 118, 204 124, 190 124 L 94 124 Z" fill="url(#topFolioGrad_s3)"/>
+    <!-- Sculpted Fluid Curl Flap -->
+    <path d="M 194 20 C 214 20, 232 32, 238 48 C 230 62, 214 74, 198 74 C 188 74, 186 64, 194 52 Z" fill="url(#curlFlap_s3)"/>
+    <path d="M 108 48 L 176 48 M 108 72 L 184 72 M 108 96 L 154 96" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-opacity="0.28"/>
+
+    <!-- Middle Folio -->
+    <path d="M 94 156 L 174 156 C 188 156, 200 166, 206 178 L 190 228 C 184 238, 174 244, 162 244 L 94 244 Z" fill="url(#midFolioGrad_s3)"/>
+    <path d="M 108 184 L 166 184 M 108 206 L 148 206" stroke="#8C1D18" stroke-width="4" stroke-linecap="round" stroke-opacity="0.35"/>
+
+    <!-- Bookmark Ribbon -->
+    <path d="M 34 332 L 34 360 L 49 350 L 64 360 L 64 332 Z" fill="#FF7A4D" opacity="0.95"/>
+  </g>
+</svg>

@@ -1,3 +1,38 @@
+## [1.3.0] - 2026-11-10
+
+### Spatial Dimensions & UI Architecture
+- **5 Spatial Layout Dimensions (`AppDimension`)**: Modernist (docked frosted glass), Floating Island (pill capsule navigation), Cyber Terminal (command HUD & telemetry with ASCII meters), Athenaeum (classical serif with ribbon bookmark), and Compact Slate (high-density E-paper).
+- **Dynamic Semantic Icon Packs**: Dedicated icon sets matching Cupertino, ASCII Terminal, Classical Serif, Hairline, and Modernist styles.
+- **Persistent Dimension Controller**: Real-time switching and preview of spatial archetypes in Appearance settings.
+
+### Themes & Paper Textures
+- **4 New Themes**: OLED Midnight (0-nit pitch black), Matcha (calming organic tea tones), Nord Arctic (cool frosty slate), and Kindle E-Ink Paper.
+- **3 Tactile Paper Textures**: Japanese Washi (mulberry tea paper), Deckle Rag Folio (cotton rag), and Obsidian Velvet (tactile dark paper) with custom vignette shaders and fiber stippling.
+- **Kindle Carta 1300 E-Ink Mode**: Dedicated high-contrast e-paper architecture with physical halftone scrims, carbon ink borders, 0ms instant page turns, zero-blur drop shadows, and automatic grayscale/contrast matrix cover filtering.
+
+### Comic & Manga Reader (CBZ & CBR)
+- **Native CBR Decompression**: Rust backend engine using `unrar_rs` for streaming RAR page and cover extraction without external dependencies.
+- **Adaptive Color Letterboxing**: Real-time noise-filtered edge and corner color sampling (`PageCornerColors`) to seamlessly blend comic borders into screen edges.
+- **Interactive Scrubber & Page Select Sheet**: Tappable page badges, interactive scrubbing slider with floating counter preview, and visual thumbnail jumping grid (`CbzPageSelectSheet`).
+- **Priority-Aware Extraction Queue**: In-flight request deduplication, serialized priority loading, and pre-warming of neighbor pages for zero-latency page turns.
+- **Sub-Page Offset Syncing**: Flawless reading position persistence in continuous and webtoon modes.
+
+### Reader Engines & Typography (EPUB, MOBI, PDF)
+- **Multi-Tier Cover Extraction**: Comprehensive Rust + Dart fallback chain for EPUB covers (SVG/object resolution, spine probing, archive-wide fallbacks).
+- **Mode Transition Guards & Smooth Gestures**: Eliminated page jumping and race conditions when switching between paged, continuous, and webtoon modes.
+- **Unicode-Normalized Annotations**: Cross-node HTML highlight matching with soft hyphen, zero-width space, and smart quote normalization.
+
+### Diagnostics, Stability & Hardened Error Handling
+- **In-Memory Ring Buffer `DiagnosticLogger`**: Zero I/O contention logger with automatic PII and storage path sanitization, wired into Flutter and platform error handlers.
+- **In-App Feedback & GitHub Bug Reporter**: `FeedbackOptionsSheet` and `DiagnosticLogSheet` in Settings to export sanitized debug traces or open pre-filled GitHub issues.
+- **Hardened Fullscreen `ReaderErrorView`**: Safe error boundary fallback with clipboard copying, format context, and a one-click return-to-library escape button across all readers.
+- **Performance Optimizations**: Conditional GPU blur bypass in bottom nav, `RepaintBoundary` isolation on reader layers, and removed procedural noise on low-power devices.
+
+### CI/CD, Build Security & Brand Identity
+- **Cryptographic Provenance**: Automated Sigstore attestation and `SHA256SUMS.txt` generation in GitHub release builds.
+- **Automated CI Lints**: Strict Rust (Clippy) and Flutter static analysis checks prior to release packaging.
+- **Refreshed Branding**: Modernized high-resolution adaptive app icons and official SVG brand vector assets.
+
 ## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added

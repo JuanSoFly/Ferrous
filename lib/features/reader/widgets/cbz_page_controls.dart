@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/features/settings/dimension_controller.dart';
 import '../controllers/cbz_page_controller.dart';
 import 'cbz_page_select_sheet.dart';
 
@@ -12,7 +10,7 @@ import 'cbz_page_select_sheet.dart';
 /// Provides:
 /// 1. Interactive Page Scrubber Slider with live floating page counter preview.
 /// 2. Compact navigation bar with First/Prev/Next/Last and tappable `< Page X / Total >` indicator to open Page Select Sheet.
-/// 3. Strict Kindle Carta 1300 E-Ink Paper mode overrides when `E-Ink Paper` or `Compact Slate` is active.
+/// 3. Strict Kindle Carta 1300 E-Ink Paper mode overrides when `E-Ink Paper` is active.
 class CbzPageControls extends StatefulWidget {
   final CbzPageController pageController;
 
@@ -33,10 +31,6 @@ class _CbzPageControlsState extends State<CbzPageControls> {
     try {
       final theme = Provider.of<AppTheme>(context, listen: false);
       if (theme == AppTheme.eInk) return true;
-    } catch (_) {}
-    try {
-      final dimState = Provider.of<DimensionState>(context, listen: false);
-      if (dimState.dimension == AppDimension.compactSlate) return true;
     } catch (_) {}
     final themeData = Theme.of(context);
     return themeData.scaffoldBackgroundColor == const Color(0xFFEAE6DF) &&
