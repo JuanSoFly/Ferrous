@@ -1,29 +1,78 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:reader_app/core/models/book.dart';
 
 /// Subtle monochrome halftone dot pattern overlay scrim for Kindle Carta display.
+/// Highly optimized using a GPU-accelerated repeating [ImageShader] tile to eliminate
+/// 25,000+ per-frame [Canvas.drawCircle] calls that previously caused GPU command
+/// buffer exhaustion, frame drops, and driver crashes on lower-end Android devices.
 class HalftoneScrimPainter extends CustomPainter {
   const HalftoneScrimPainter();
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    // 1. Light matte paper tint base (preserves underlying reflective paper tone)
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFF1A1A18).withValues(alpha: 0.12),
-    );
+  static ImageShader? _cachedShader;
 
-    // 2. Monochrome halftone dot matrix
-    final dotPaint = Paint()..color = const Color(0xFF1A1A18).withValues(alpha: 0.18);
+  static final Paint _tintPaint = Paint()
+    ..color = const Color(0xFF1A1A18).withValues(alpha: 0.12);
+
+  static final Paint _shaderPaint = Paint()
+    ..filterQuality = FilterQuality.none;
+
+  static void _ensureTile() {
+    if (_cachedShader != null) return;
     const double spacing = 4.0;
     const double dotRadius = 0.75;
+    const int tileSize = 16; // 4 dots wide x 4 dots tall
 
-    for (double y = 0; y < size.height; y += spacing) {
-      for (double x = 0; x < size.width; x += spacing) {
-        canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, tileSize.toDouble(), tileSize.toDouble()),
+    );
+    final dotPaint = Paint()
+      ..isAntiAlias = true
+      ..color = const Color(0xFF1A1A18).withValues(alpha: 0.18);
+
+    for (double y = 0; y < tileSize; y += spacing) {
+      for (double x = 0; x < tileSize; x += spacing) {
+        canvas.drawCircle(
+          Offset(x + spacing / 2, y + spacing / 2),
+          dotRadius,
+          dotPaint,
+        );
       }
+    }
+
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(tileSize, tileSize);
+    picture.dispose();
+    _cachedShader = ImageShader(
+      image,
+      TileMode.repeated,
+      TileMode.repeated,
+      Float64List.fromList([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+      ]),
+    );
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+
+    // 1. Light matte paper tint base (preserves underlying reflective paper tone)
+    canvas.drawRect(rect, _tintPaint);
+
+    // 2. Monochrome halftone dot matrix via repeating GPU shader (O(1) draw call)
+    _ensureTile();
+    if (_cachedShader != null) {
+      _shaderPaint.shader = _cachedShader;
+      canvas.drawRect(rect, _shaderPaint);
     }
   }
 

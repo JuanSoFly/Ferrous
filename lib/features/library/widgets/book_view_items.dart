@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -59,6 +58,7 @@ class BookItemActionHandler {
         barrierDismissible: true,
         barrierLabel: 'Dismiss',
         barrierColor: Colors.transparent,
+        transitionDuration: Duration.zero,
         pageBuilder: (ctx, anim1, anim2) {
           return Stack(
             children: [
@@ -66,8 +66,10 @@ class BookItemActionHandler {
               Positioned.fill(
                 child: GestureDetector(
                   onTap: () => Navigator.pop(ctx),
-                  child: const CustomPaint(
-                    painter: HalftoneScrimPainter(),
+                  child: const RepaintBoundary(
+                    child: CustomPaint(
+                      painter: HalftoneScrimPainter(),
+                    ),
                   ),
                 ),
               ),
@@ -101,70 +103,84 @@ class BookItemActionHandler {
       return;
     }
 
-    showCupertinoModalPopup<void>(
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
       context: context,
-      builder: (BuildContext ctx) => CupertinoActionSheet(
-        title: Text(
-          book.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        message: book.author.isNotEmpty ? Text(book.author) : null,
-        actions: <CupertinoActionSheetAction>[
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(ctx);
-              controller.setSplitPendingBook(book);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Tap another book to open in split view')),
-              );
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.vertical_split_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Open in Split View'),
-              ],
-            ),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _showAddToCollectionDialog(context, book, isEInk: false);
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.bookmark_add_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Add to Collection'),
-              ],
-            ),
-          ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () {
-              Navigator.pop(ctx);
-              _confirmDeleteBook(context, book, controller);
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.delete_outline, size: 20),
-                SizedBox(width: 8),
-                Text('Delete Book'),
-              ],
-            ),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
-        ),
+      backgroundColor: theme.colorScheme.surface,
+      elevation: 4,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      book.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (book.author.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        book.author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.vertical_split_outlined),
+                title: const Text('Open in Split View'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  controller.setSplitPendingBook(book);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Tap another book to open in split view')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bookmark_add_outlined),
+                title: const Text('Add to Collection'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddToCollectionDialog(context, book, isEInk: false);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                title: Text(
+                  'Delete Book',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDeleteBook(context, book, controller);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 

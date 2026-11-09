@@ -1,3 +1,12 @@
+## [1.3.1-alpha.1] - 2026-11-10
+
+### Performance & GPU Optimization
+- **O(1) GPU Halftone Scrim Shader**: Replaced 25,000+ per-frame `Canvas.drawCircle` calls with a GPU-cached repeating `ImageShader` tile, eliminating GPU command buffer exhaustion, frame drops, and driver crashes on low-end devices.
+- **RepaintBoundary & Zero-Latency E-Ink Modal**: Isolated halftone scrim rendering behind a `RepaintBoundary` and set modal transition duration to `Duration.zero` for true instant e-paper responsiveness.
+
+### UI & Material 3 Refinement
+- **Material 3 Library Action Sheet**: Migrated the library book long-press modal from `CupertinoActionSheet` to an adaptive Material 3 `showModalBottomSheet` with drag handles, themed typography, and proper action styling.
+
 ## [1.3.0] - 2026-11-10
 
 ### Spatial Dimensions & UI Architecture
