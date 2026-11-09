@@ -36,6 +36,11 @@ class MobiContinuousViewer extends StatelessWidget {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
+        if (chapterController.isTransitioningMode ||
+            chapterController.isRestoringPosition ||
+            chapterController.isProgrammaticScroll) {
+          return false;
+        }
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
@@ -49,6 +54,7 @@ class MobiContinuousViewer extends StatelessWidget {
         onTap: onToggleChrome,
         onTapUp: onTapUp,
         child: ListView.builder(
+          key: ValueKey('mobi-continuous-${chapterController.scrollEpoch}'),
           controller: chapterController.scrollController,
           scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
           addRepaintBoundaries: true,

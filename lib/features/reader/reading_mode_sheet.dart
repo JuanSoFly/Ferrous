@@ -65,9 +65,9 @@ Future<ReadingMode?> showReadingModeSheet(
           break;
         case ReaderFormatType.text:
           rawTiles = const [
-            (ReadingMode.verticalContinuous, 'Vertical scroll', 'Scroll through content'),
-            (ReadingMode.leftToRight, 'Left to right paged', 'Swipe left/right to change chapters'),
             (ReadingMode.vertical, 'Vertical paged', 'Swipe up/down to change chapters'),
+            (ReadingMode.leftToRight, 'Left to right paged', 'Swipe left/right to change chapters'),
+            (ReadingMode.verticalContinuous, 'Vertical scroll', 'Scroll through content'),
           ];
           break;
         case ReaderFormatType.image:

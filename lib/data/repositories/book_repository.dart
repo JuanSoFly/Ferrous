@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/data/services/epub_cover_extractor.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 
@@ -219,6 +220,17 @@ class BookRepository extends ChangeNotifier {
   }
 
   Future<void> _extractCover(String bookPath, String savePath) async {
-    await measureAsync('extract_cover', () => covers_api.extractCover(bookPath: bookPath, savePath: savePath), metadata: {'format': bookPath.split('.').last});
+    await measureAsync('extract_cover', () async {
+      try {
+        await covers_api.extractCover(bookPath: bookPath, savePath: savePath);
+      } catch (e) {
+        final format = bookPath.split('.').last.toLowerCase();
+        if (format == 'epub') {
+          final fallback = await EpubCoverExtractor.extractCover(bookPath, savePath);
+          if (fallback != null) return;
+        }
+        rethrow;
+      }
+    }, metadata: {'format': bookPath.split('.').last});
   }
 }

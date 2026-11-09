@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -243,11 +245,166 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
           "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "img": Style(
             width: Width(100, Unit.percent),
+            height: Height.auto(),
+            display: Display.block,
             margin: Margins.only(bottom: 24.0),
+          ),
+          "image": Style(
+            width: Width(100, Unit.percent),
+            height: Height.auto(),
+            display: Display.block,
+            margin: Margins.only(bottom: 24.0),
+          ),
+          "svg": Style(
+            width: Width(100, Unit.percent),
+            height: Height.auto(),
+            display: Display.block,
+            margin: Margins.only(bottom: 24.0),
+          ),
+          "figure": Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+            display: Display.block,
+            textAlign: TextAlign.center,
           ),
         },
       ),
     );
+  }
+
+  Widget _buildEmbeddedImageWidget(ExtensionContext ctx, BuildContext context) {
+    String src = '';
+    String? alt = ctx.attributes['alt'];
+
+    if (ctx.elementName == 'svg') {
+      final imageChild = ctx.element?.querySelector('image, img');
+      if (imageChild != null) {
+        alt ??= imageChild.attributes['alt'];
+        for (final entry in imageChild.attributes.entries) {
+          final k = entry.key.toString().toLowerCase();
+          if (k.contains('href') || k == 'src') {
+            final val = entry.value.trim();
+            if (val.isNotEmpty) {
+              src = val;
+              break;
+            }
+          }
+        }
+      }
+      if (src.isEmpty) {
+        src = ctx.attributes['data-src']?.trim() ?? '';
+      }
+    } else if (ctx.elementName == 'image') {
+      for (final entry in ctx.attributes.entries) {
+        final k = entry.key.toString().toLowerCase();
+        if (k.contains('href') || k == 'src') {
+          final val = entry.value.trim();
+          if (val.isNotEmpty) {
+            src = val;
+            break;
+          }
+        }
+      }
+    } else if (ctx.elementName == 'object') {
+      src = ctx.attributes['data']?.trim() ?? '';
+    } else {
+      src = ctx.attributes['src']?.trim() ?? '';
+    }
+
+    if (src.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final imageProvider = _resolveImageProvider(src);
+    if (imageProvider == null) {
+      if (alt != null && alt.isNotEmpty) {
+        return Text(alt, style: const TextStyle(fontStyle: FontStyle.italic));
+      }
+      return const SizedBox.shrink();
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final screenHeight = mediaQuery.size.height;
+    final maxHeight = screenHeight * 0.92;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: screenWidth,
+            maxHeight: maxHeight,
+          ),
+          child: Image(
+            image: imageProvider,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint('Failed to render embedded image ($src): $error');
+              if (alt != null && alt.isNotEmpty) {
+                return Text(alt, style: const TextStyle(fontStyle: FontStyle.italic));
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  static ImageProvider? _resolveImageProvider(String source) {
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) return null;
+
+    if (trimmed.startsWith('data:image/')) {
+      final commaIdx = trimmed.indexOf(',');
+      if (commaIdx != -1) {
+        final b64 = trimmed.substring(commaIdx + 1).trim();
+        try {
+          final bytes = base64Decode(b64);
+          return MemoryImage(bytes);
+        } catch (e) {
+          debugPrint('Error decoding base64 image: $e');
+          return null;
+        }
+      }
+    }
+
+    if (trimmed.startsWith('file://')) {
+      try {
+        final uri = Uri.parse(trimmed);
+        final file = File(uri.toFilePath());
+        if (file.existsSync()) {
+          return FileImage(file);
+        }
+        final fallback = File(trimmed.substring(7));
+        if (fallback.existsSync()) {
+          return FileImage(fallback);
+        }
+      } catch (_) {
+        final fallback = File(trimmed.replaceFirst('file://', ''));
+        if (fallback.existsSync()) {
+          return FileImage(fallback);
+        }
+      }
+    }
+
+    final directFile = File(trimmed);
+    if (directFile.isAbsolute && directFile.existsSync()) {
+      return FileImage(directFile);
+    }
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return NetworkImage(trimmed);
+    }
+
+    if (trimmed.startsWith('asset:')) {
+      return AssetImage(trimmed.substring(6));
+    }
+
+    return null;
   }
 
   @override
@@ -267,6 +424,11 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
         .toList();
 
     final extensions = [
+      TagExtension(
+        tagsToExtend: {'img', 'image', 'svg', 'object'},
+        builder: (extensionContext) =>
+            _buildEmbeddedImageWidget(extensionContext, context),
+      ),
       TagWrapExtension(
         tagsToWrap: {'table'},
         builder: (child) => HtmlTableViewer(child: child),

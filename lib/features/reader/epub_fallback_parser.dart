@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:epubx/epubx.dart';
+import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:xml/xml.dart' as xml;
 
@@ -15,7 +16,10 @@ class EpubFallbackParser {
     'text/x-oeb1-document',
   };
 
-  static List<EpubChapter> parseChapters(List<int> bytes) {
+  static List<EpubChapter> parseChapters(
+    List<int> bytes, {
+    String? cacheDirectory,
+  }) {
     final Archive archive;
     final Map<String, ArchiveFile> filesByLowerPath;
     final String opfPath;
@@ -105,20 +109,31 @@ class EpubFallbackParser {
       final trimmedHtml = html.trim();
       if (trimmedHtml.isEmpty) continue;
 
-      // Deduplicate: avoid duplicate or identical chapter contents
-      if (seenContents.contains(trimmedHtml)) continue;
-      seenContents.add(trimmedHtml);
+      final processedHtml = _resolveChapterImages(
+        html: html,
+        chapterPath: resolvedPath,
+        contentDir: contentDir,
+        manifest: manifest,
+        filesByLowerPath: filesByLowerPath,
+        cacheDirectory: cacheDirectory,
+      );
+
+      final hasImage = _hasImageElement(processedHtml);
+
+      // Deduplicate: avoid duplicate identical chapter contents, but never drop image-bearing chapters
+      if (!hasImage && seenContents.contains(processedHtml)) continue;
+      seenContents.add(processedHtml);
 
       final fallbackTitle = _fallbackTitle(item, index);
       final tocTitle = tocTitles[lowerPath];
       final title = (tocTitle != null && tocTitle.trim().isNotEmpty)
           ? tocTitle.trim()
-          : _inferTitle(html, fallback: fallbackTitle);
+          : _inferTitle(processedHtml, fallback: fallbackTitle);
 
       chapters.add(EpubChapter()
         ..Title = title
         ..ContentFileName = resolvedPath
-        ..HtmlContent = html
+        ..HtmlContent = processedHtml
         ..SubChapters = const <EpubChapter>[]);
       index++;
     }
@@ -400,6 +415,240 @@ class EpubFallbackParser {
     }
     
     return 'Section $index';
+  }
+
+  static bool _hasImageElement(String html) {
+    final lower = html.toLowerCase();
+    return lower.contains('<img') ||
+        lower.contains('<image') ||
+        lower.contains('<svg') ||
+        lower.contains('<object');
+  }
+
+  static String _resolveChapterImages({
+    required String html,
+    required String chapterPath,
+    required String contentDir,
+    required Map<String, _ManifestItem> manifest,
+    required Map<String, ArchiveFile> filesByLowerPath,
+    String? cacheDirectory,
+  }) {
+    if (html.isEmpty) return html;
+
+    try {
+      final doc = html_parser.parse(html);
+      final chapterDir = _directoryOf(chapterPath);
+      bool modified = false;
+
+      // 1. Process img elements
+      for (final img in doc.querySelectorAll('img')) {
+        final src = img.attributes['src'];
+        if (src == null || src.trim().isEmpty) continue;
+        final resolvedUri = _resolveAndStoreImageUri(
+          rawUri: src,
+          chapterDir: chapterDir,
+          contentDir: contentDir,
+          manifest: manifest,
+          filesByLowerPath: filesByLowerPath,
+          cacheDirectory: cacheDirectory,
+        );
+        if (resolvedUri != null) {
+          img.attributes['src'] = resolvedUri;
+          modified = true;
+        }
+      }
+
+      // 2. Process image elements (inside or outside svg)
+      for (final image in doc.querySelectorAll('image')) {
+        String? rawUri;
+        Object? hrefKey;
+        for (final entry in image.attributes.entries) {
+          final k = entry.key.toString().toLowerCase();
+          if (k.contains('href') || k == 'src') {
+            final val = entry.value.trim();
+            if (val.isNotEmpty) {
+              rawUri = val;
+              hrefKey = entry.key;
+              break;
+            }
+          }
+        }
+        if (rawUri == null || rawUri.isEmpty) continue;
+
+        final resolvedUri = _resolveAndStoreImageUri(
+          rawUri: rawUri,
+          chapterDir: chapterDir,
+          contentDir: contentDir,
+          manifest: manifest,
+          filesByLowerPath: filesByLowerPath,
+          cacheDirectory: cacheDirectory,
+        );
+        if (resolvedUri != null) {
+          if (hrefKey != null) {
+            image.attributes[hrefKey] = resolvedUri;
+          }
+          image.attributes['href'] = resolvedUri;
+          image.attributes['xlink:href'] = resolvedUri;
+          image.attributes['src'] = resolvedUri;
+          modified = true;
+        }
+      }
+
+      // 3. Process object elements with image data
+      for (final obj in doc.querySelectorAll('object')) {
+        final data = obj.attributes['data'];
+        final type = obj.attributes['type']?.toLowerCase() ?? '';
+        if (data == null || data.trim().isEmpty) continue;
+        if (type.startsWith('image/') || _isImagePath(data)) {
+          final resolvedUri = _resolveAndStoreImageUri(
+            rawUri: data,
+            chapterDir: chapterDir,
+            contentDir: contentDir,
+            manifest: manifest,
+            filesByLowerPath: filesByLowerPath,
+            cacheDirectory: cacheDirectory,
+          );
+          if (resolvedUri != null) {
+            obj.attributes['data'] = resolvedUri;
+            modified = true;
+          }
+        }
+      }
+
+      // 4. For any svg elements that wrap an image, also store data-src
+      for (final svg in doc.querySelectorAll('svg')) {
+        final imageEl = svg.querySelector('image, img');
+        if (imageEl != null) {
+          final src = imageEl.attributes['src'] ??
+              imageEl.attributes['href'] ??
+              imageEl.attributes['xlink:href'];
+          if (src != null && src.isNotEmpty) {
+            svg.attributes['data-src'] = src;
+            modified = true;
+          }
+        }
+      }
+
+      if (modified) {
+        return doc.body?.innerHtml ?? doc.documentElement?.innerHtml ?? html;
+      }
+    } catch (e) {
+      debugPrint('Error resolving chapter images: $e');
+    }
+
+    return html;
+  }
+
+  static String? _resolveAndStoreImageUri({
+    required String rawUri,
+    required String chapterDir,
+    required String contentDir,
+    required Map<String, _ManifestItem> manifest,
+    required Map<String, ArchiveFile> filesByLowerPath,
+    String? cacheDirectory,
+  }) {
+    final trimmed = rawUri.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.startsWith('data:') ||
+        trimmed.startsWith('file://') ||
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    var clean = trimmed.split('#').first.split('?').first.trim();
+    try {
+      clean = Uri.decodeFull(clean);
+    } catch (_) {}
+    if (clean.isEmpty) return null;
+
+    // 1. Try resolving relative to chapterDir
+    String candidatePath = _resolveHref(chapterDir, clean);
+    ArchiveFile? file = _findFile(filesByLowerPath, candidatePath);
+
+    // 2. Try resolving relative to contentDir (OPF directory)
+    if (file == null) {
+      candidatePath = _resolveHref(contentDir, clean);
+      file = _findFile(filesByLowerPath, candidatePath);
+    }
+
+    // 3. Try matching against manifest items
+    if (file == null) {
+      for (final item in manifest.values) {
+        final itemHref = Uri.decodeFull(item.href.split('#').first.split('?').first);
+        if (itemHref.toLowerCase() == clean.toLowerCase() ||
+            itemHref.toLowerCase().endsWith('/${clean.toLowerCase()}') ||
+            clean.toLowerCase().endsWith('/${itemHref.toLowerCase()}')) {
+          candidatePath = _resolveHref(contentDir, item.href);
+          file = _findFile(filesByLowerPath, candidatePath);
+          if (file != null) break;
+        }
+      }
+    }
+
+    // 4. Try matching by filename in archive files
+    if (file == null) {
+      final fileName = clean.split('/').last.toLowerCase();
+      for (final entry in filesByLowerPath.entries) {
+        if (entry.key.endsWith('/$fileName') || entry.key == fileName) {
+          candidatePath = entry.key;
+          file = entry.value;
+          break;
+        }
+      }
+    }
+
+    if (file == null) return null;
+
+    final bytes = _archiveFileBytes(file);
+    if (bytes.isEmpty) return null;
+
+    // Determine MIME type
+    String mimeType = 'image/jpeg';
+    final lower = candidatePath.toLowerCase();
+    if (lower.endsWith('.png')) {
+      mimeType = 'image/png';
+    } else if (lower.endsWith('.webp')) {
+      mimeType = 'image/webp';
+    } else if (lower.endsWith('.gif')) {
+      mimeType = 'image/gif';
+    } else if (lower.endsWith('.svg')) {
+      mimeType = 'image/svg+xml';
+    } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      mimeType = 'image/jpeg';
+    }
+
+    // Cache to disk if cacheDirectory is provided
+    if (cacheDirectory != null && cacheDirectory.isNotEmpty) {
+      try {
+        final safeName = _normalizePath(candidatePath).replaceAll('/', '_');
+        final outDir = Directory(cacheDirectory);
+        if (!outDir.existsSync()) {
+          outDir.createSync(recursive: true);
+        }
+        final outFile = File('${outDir.path}/$safeName');
+        if (!outFile.existsSync() || outFile.lengthSync() != bytes.length) {
+          outFile.writeAsBytesSync(bytes);
+        }
+        return outFile.uri.toString();
+      } catch (e) {
+        debugPrint('Failed to cache image to disk ($e), falling back to base64');
+      }
+    }
+
+    // Fallback: Base64 data URI
+    final b64 = base64Encode(bytes);
+    return 'data:$mimeType;base64,$b64';
+  }
+
+  static bool _isImagePath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.svg');
   }
 
   static String _inferTitle(String html, {required String fallback}) {

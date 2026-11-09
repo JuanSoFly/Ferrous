@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -469,6 +469,7 @@ class LibraryLocationRepository extends ChangeNotifier {
       'pdf',
       'epub',
       'cbz',
+      'cbr',
       'docx',
       'txt',
       'mobi',

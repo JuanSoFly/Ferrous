@@ -239,26 +239,31 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     if (!mounted) return;
     
     final targetChapter = _chapterController.currentChapterIndex;
+    _chapterController.startModeTransition();
     _chapterController.saveReadingPositionForMode(_readingMode, refreshChapter: false);
 
     final switchingToPaged = selected == ReadingMode.vertical || selected == ReadingMode.leftToRight;
+
+    if (switchingToPaged) {
+      _chapterController.prepareForPagedMode(targetChapter);
+      final isCover = targetChapter == 0 &&
+          _chapterController.lastReadingSentenceStart == -1;
+      final targetPage = isCover ? 0 : targetChapter + 1;
+      if (!_pageController.hasClients) {
+        _pageController.dispose();
+        _pageController = PageController(initialPage: targetPage);
+      } else if (_pageController.page?.round() != targetPage) {
+        _pageController.jumpToPage(targetPage);
+      }
+    } else {
+      _chapterController.prepareForContinuousMode(targetChapter);
+    }
 
     setState(() {
       _readingMode = selected;
       _modeController = ReaderModeController(selected);
       widget.book.readingMode = selected;
       _chapterController.book.readingMode = selected;
-      if (switchingToPaged) {
-        final isCover = targetChapter == 0 &&
-            _chapterController.lastReadingSentenceStart == -1;
-        final targetPage = isCover ? 0 : targetChapter + 1;
-        if (!_pageController.hasClients) {
-          _pageController.dispose();
-          _pageController = PageController(initialPage: targetPage);
-        } else if (_pageController.page?.round() != targetPage) {
-          _pageController.jumpToPage(targetPage);
-        }
-      }
     });
 
     unawaited(widget.repository.updateReadingProgress(
@@ -298,6 +303,8 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
       if (_pageController.hasClients && _pageController.page?.round() != targetPage) {
         _pageController.jumpToPage(targetPage);
       }
+    } else {
+      _chapterController.scrollToChapter(index);
     }
   }
 

@@ -6,12 +6,12 @@ class ReaderModeController {
 
   ReaderModeController(this.mode);
 
-  /// Horizontal swipe enabled for discrete page turns.
+  /// Horizontal swipe enabled.
   bool get useHorizontalSwipe {
     switch (mode) {
       case ReadingMode.leftToRight:
-        return true;
       case ReadingMode.horizontalContinuous:
+        return true;
       case ReadingMode.vertical:
       case ReadingMode.verticalContinuous:
       case ReadingMode.webtoon:
@@ -19,18 +19,8 @@ class ReaderModeController {
     }
   }
 
-  /// Vertical swipe enabled for discrete page turns.
-  bool get useVerticalSwipe {
-    switch (mode) {
-      case ReadingMode.vertical:
-        return true;
-      case ReadingMode.verticalContinuous:
-      case ReadingMode.webtoon:
-      case ReadingMode.leftToRight:
-      case ReadingMode.horizontalContinuous:
-        return false;
-    }
-  }
+  /// Vertical swipe enabled.
+  bool get useVerticalSwipe => !useHorizontalSwipe;
 
   /// Discrete pages.
   bool get isPagedMode {

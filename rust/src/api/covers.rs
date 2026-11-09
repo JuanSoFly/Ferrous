@@ -137,20 +137,54 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
     let doc = scraper::Html::parse_document(html);
 
     if let Ok(selector) = scraper::Selector::parse("img") {
-        if let Some(img) = doc.select(&selector).next() {
-            if let Some(src) = img.value().attr("src") {
-                if !src.trim().is_empty() {
-                    return Some(src.to_string());
+        for img in doc.select(&selector) {
+            for (name, val) in img.value().attrs() {
+                if name.local.as_ref().eq_ignore_ascii_case("src") {
+                    let s = val.trim();
+                    if !s.is_empty() {
+                        return Some(s.to_string());
+                    }
                 }
             }
         }
     }
 
     if let Ok(selector) = scraper::Selector::parse("image") {
-        if let Some(img) = doc.select(&selector).next() {
-            if let Some(href) = img.value().attr("href").or_else(|| img.value().attr("xlink:href")) {
-                if !href.trim().is_empty() {
-                    return Some(href.to_string());
+        for img in doc.select(&selector) {
+            for (name, val) in img.value().attrs() {
+                let local = name.local.as_ref();
+                if local.eq_ignore_ascii_case("href")
+                    || local.ends_with("href")
+                    || local.eq_ignore_ascii_case("src")
+                {
+                    let s = val.trim();
+                    if !s.is_empty() {
+                        return Some(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(selector) = scraper::Selector::parse("object") {
+        for obj in doc.select(&selector) {
+            if let Some(data) = obj.value().attr("data") {
+                let s = data.trim();
+                if is_supported_image_path(s) {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+
+    if let Ok(re) = regex::Regex::new(
+        r#"(?i)<(?:img|image)\s+[^>]*?(?:src|href|xlink:href)\s*=\s*["']([^"']+)["']"#,
+    ) {
+        if let Some(caps) = re.captures(html) {
+            if let Some(m) = caps.get(1) {
+                let s = m.as_str().trim();
+                if !s.is_empty() {
+                    return Some(s.to_string());
                 }
             }
         }
@@ -273,6 +307,26 @@ fn extract_epub_cover(book_path: &str, save_path: &str) -> Result<String> {
         }
     }
 
+    // Fallback: take the first supported image found anywhere in the archive
+    for i in 0..archive.len() {
+        if let Ok(mut entry) = archive.by_index(i) {
+            let name = entry.name().to_lowercase();
+            if is_supported_image_path(&name) {
+                let mut buffer = Vec::new();
+                if entry.read_to_end(&mut buffer).is_ok() {
+                    if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
+                        return Ok(saved);
+                    }
+                    if let Ok(mut out_file) = File::create(save_path) {
+                        if out_file.write_all(&buffer).is_ok() {
+                            return Ok(save_path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Err(anyhow::anyhow!("No cover image found in EPUB"))
 }
 
@@ -384,11 +438,27 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
     }
 
     if let Some(cover_id) = cover_id {
-        if let Some(item) = manifest
-            .iter()
-            .find(|item| item.id == cover_id && is_image_item(item))
-        {
-            return save_from_href(archive, &opf_path, &item.href);
+        if let Some(item) = manifest.iter().find(|item| item.id == cover_id) {
+            if is_image_item(item) {
+                if let Ok(saved) = save_from_href(archive, &opf_path, &item.href) {
+                    return Ok(saved);
+                }
+            } else {
+                let resolved = resolve_epub_href(&opf_path, &item.href);
+                if let Ok(html) = read_zip_string(archive, &resolved) {
+                    if let Some(img_href) = extract_first_image_ref_from_html(&html) {
+                        if let Ok(saved) = save_from_href(archive, &resolved, &img_href) {
+                            return Ok(saved);
+                        }
+                    }
+                }
+            }
+        } else if let Some(item) = manifest.iter().find(|item| item.href == cover_id) {
+            if is_image_item(item) {
+                if let Ok(saved) = save_from_href(archive, &opf_path, &item.href) {
+                    return Ok(saved);
+                }
+            }
         }
     }
 
@@ -446,7 +516,49 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
         let href = item.href.to_lowercase();
         id.contains("cover") || href.contains("cover") || href.contains("title")
     }) {
-        return save_from_href(archive, &opf_path, &item.href);
+        if let Ok(saved) = save_from_href(archive, &opf_path, &item.href) {
+            return Ok(saved);
+        }
+    }
+
+    // Spine fallback: inspect the first spine items (e.g. up to 3) for the first image
+    let mut spine_idrefs: Vec<String> = Vec::new();
+    for node in opf_doc.descendants().filter(|n| n.is_element()) {
+        if node.tag_name().name() != "itemref" {
+            continue;
+        }
+        if let Some(idref) = node.attribute("idref") {
+            let idref = idref.trim();
+            if !idref.is_empty() {
+                spine_idrefs.push(idref.to_string());
+            }
+        }
+    }
+
+    for idref in spine_idrefs.iter().take(3) {
+        if let Some(item) = manifest.iter().find(|item| item.id == *idref) {
+            if is_image_item(item) {
+                if let Ok(saved) = save_from_href(archive, &opf_path, &item.href) {
+                    return Ok(saved);
+                }
+            } else {
+                let resolved = resolve_epub_href(&opf_path, &item.href);
+                if let Ok(html) = read_zip_string(archive, &resolved) {
+                    if let Some(img_href) = extract_first_image_ref_from_html(&html) {
+                        if let Ok(saved) = save_from_href(archive, &resolved, &img_href) {
+                            return Ok(saved);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Manifest image fallback: the first image item in the manifest
+    if let Some(item) = manifest.iter().find(|item| is_image_item(item)) {
+        if let Ok(saved) = save_from_href(archive, &opf_path, &item.href) {
+            return Ok(saved);
+        }
     }
 
     Err(anyhow::anyhow!("No cover image found via OPF metadata"))

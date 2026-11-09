@@ -1,6 +1,9 @@
 ## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added
+- Native pure-Dart `EpubCoverExtractor` fallback service to reliably extract EPUB cover art when native extraction fails.
+- Multi-tier EPUB cover extraction fallbacks in Rust (`covers.rs`), including case-insensitive image attributes, SVG/object data resolution, spine item probing, and archive-wide fallback.
+- Added `.cbr` comic archive format support to library scanning and Android SAF directory handlers.
 - `CbzThumbnailService` with LRU in-memory caching and bounded task queue for asynchronous comic page thumbnail generation.
 - `CbzPageSelectSheet` modal with direct numeric page jump and visual thumbnail grid with E-Ink high-contrast support.
 - Upgraded `CbzPageControls` with interactive page scrubber slider, floating counter preview, stepping buttons, and tappable page badge.
@@ -17,6 +20,8 @@
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
 
 ### Changed
+- Added mode transition guards (`isTransitioningMode`) and scroll epoch tracking to `EpubChapterController` and `MobiChapterController` to prevent race conditions and out-of-order page jumps during reading mode changes.
+- Enhanced `EpubPagedViewer` and `MobiPagedViewer` gesture detection with velocity damping, boundary overscroll guards, and keyed `PageView` instances.
 - Disambiguated `ReaderModeController` horizontal and vertical swipe flags to prevent gesture interference during continuous and webtoon reading.
 - Refined vertical paged gesture navigation in `EpubPagedViewer` and `MobiPagedViewer` with velocity and scroll boundary guards.
 - Ensured bottom HUD controls remain accessible in continuous and webtoon CBZ comic modes.

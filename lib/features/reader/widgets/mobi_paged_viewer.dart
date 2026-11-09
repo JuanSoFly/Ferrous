@@ -55,9 +55,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       widget.chapterController.addListener(_onChapterControllerChanged);
     }
     if (oldWidget.readingMode != widget.readingMode) {
-      if (_viewPageController.hasClients &&
-          _viewPageController.page?.round() != _activePage) {
-        _viewPageController.jumpToPage(_activePage);
+      if (_viewPageController.hasClients) {
+        _viewPageController.dispose();
+        _viewPageController = PageController(initialPage: _activePage);
       }
     }
     _syncActivePage();
@@ -193,6 +193,11 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
+    if (widget.chapterController.isTransitioningMode ||
+        widget.chapterController.isRestoringPosition) {
+      return false;
+    }
+
     if (notification is ScrollEndNotification) {
       widget.chapterController.saveReadingPositionForMode(widget.readingMode);
     }
@@ -222,10 +227,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
         final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
         final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
 
-        if (isAtTop && _accumulatedOverscroll < -threshold) {
+        if (_accumulatedOverscroll < -threshold || (isAtTop && _accumulatedOverscroll < -10)) {
           _lastPageTurnTime = now;
           _goToPreviousPage();
-        } else if (isAtBottom && _accumulatedOverscroll > threshold) {
+        } else if (_accumulatedOverscroll > threshold || (isAtBottom && _accumulatedOverscroll > 10)) {
           _lastPageTurnTime = now;
           _goToNextPage();
         }
@@ -236,6 +241,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   }
 
   void _handlePageChanged(int index) {
+    if (widget.chapterController.isTransitioningMode) return;
     if (_activePage == index) return;
     // Save reading progress of the chapter we are navigating away from
     if (_activePage > 0) {
@@ -327,13 +333,11 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     }
 
     return PageView.builder(
+      key: ValueKey('mobi-paged-${widget.readingMode.name}'),
       controller: _getOrUpdatePageController(),
       scrollDirection: widget.readingMode == ReadingMode.vertical
           ? Axis.vertical
           : Axis.horizontal,
-      physics: widget.readingMode == ReadingMode.vertical
-          ? const NeverScrollableScrollPhysics()
-          : null,
       itemCount: totalPages,
       onPageChanged: _handlePageChanged,
       itemBuilder: (context, index) {
@@ -342,19 +346,15 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
             onHorizontalDragEnd: (details) {
-              if (widget.readingMode == ReadingMode.leftToRight) {
-                final velocity = details.primaryVelocity ?? 0.0;
-                if (velocity < -200) {
-                  _goToNextPage();
-                }
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
               }
             },
             onVerticalDragEnd: (details) {
-              if (widget.readingMode == ReadingMode.vertical) {
-                final velocity = details.primaryVelocity ?? 0.0;
-                if (velocity < -200) {
-                  _goToNextPage();
-                }
+              final velocity = details.primaryVelocity ?? 0.0;
+              if (velocity < -200) {
+                _goToNextPage();
               }
             },
             child: BookCoverPage(
@@ -374,34 +374,23 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
           behavior: HitTestBehavior.translucent,
           onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
           onHorizontalDragEnd: (details) {
-            if (widget.readingMode == ReadingMode.leftToRight) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
-                _goToNextPage();
-              } else if (velocity > 200) {
-                _goToPreviousPage();
-              }
+            final velocity = details.primaryVelocity ?? 0.0;
+            if (velocity < -200) {
+              _goToNextPage();
+            } else if (velocity > 200) {
+              _goToPreviousPage();
             }
           },
           onVerticalDragEnd: (details) {
             if (widget.readingMode == ReadingMode.vertical) {
-              if (!scrollController.hasClients) return;
               final velocity = details.primaryVelocity ?? 0.0;
-              final metrics = scrollController.position;
-              if (metrics.maxScrollExtent > 0) {
-                final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
-                final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
-                if (velocity < -200 && isAtBottom) {
-                  _goToNextPage();
-                } else if (velocity > 200 && isAtTop) {
-                  _goToPreviousPage();
-                }
-              } else {
-                if (velocity < -200) {
-                  _goToNextPage();
-                } else if (velocity > 200) {
-                  _goToPreviousPage();
-                }
+              final metrics = scrollController.hasClients ? scrollController.position : null;
+              final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
+              final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
+              if (velocity < -200 && isAtBottom) {
+                _goToNextPage();
+              } else if (velocity > 200 && isAtTop) {
+                _goToPreviousPage();
               }
             }
           },
