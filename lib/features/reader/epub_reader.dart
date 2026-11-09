@@ -624,10 +624,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                               textToSpeak: '', 
                               resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
                               onStart: () async {
-                                final text = _ttsController.resolveTtsText(modeController: _modeController);
-                                if (text.trim().isNotEmpty) {
-                                  await _ttsController.ttsService.speak(text);
-                                }
+                                await _ttsController.startPlayback(modeController: _modeController);
                               },
                               isContinuous: _ttsController.ttsContinuous,
                               isFollowMode: _ttsController.ttsFollowMode,

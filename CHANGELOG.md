@@ -1,3 +1,16 @@
+## [1.3.1-alpha.2] - 2026-11-10
+
+### Performance & GPU Optimization
+- **Compositor & Blur Optimization**: Replaced heavy `BackdropFilter` real-time blurs in navigation bars and floating islands with high-performance opaque surface styling, cutting GPU overdraw and eliminating scroll stutter.
+- **Async Cover Decode & UI Thread I/O Removal**: Removed synchronous `File.existsSync()` blocking calls on the UI thread and added dynamic device-pixel-ratio-aware image decode sizing (`cacheWidth`/`cacheHeight`) for book covers.
+- **RepaintBoundary Isolation**: Isolated `EInkPaperNoiseOverlay` and E-Ink book cover color filters behind `RepaintBoundary` widgets to prevent unneeded ancestor repaints.
+- **Font Instantiation Caching**: Replaced repetitive per-widget `GoogleFonts` lookups across library views and cards with cached styles and theme typography.
+
+### Reader & TTS Enhancements
+- **Static DOM Tree Caching**: Optimized HTML reader viewers (EPUB, MOBI, TXT) with `ListenableBuilder` static child caching to bypass full HTML re-parsing and re-rendering when TTS is inactive or unchanged.
+- **Transient TTS Stop Event Guards**: Added `_isStartingSpeech` flags across all TTS controllers to prevent highlight flicker and premature stops during speech engine initialization.
+- **Instant Highlight Pre-seeding**: Added `startPlayback()` to pre-seed the initial word highlight immediately before the speech engine's first progress callback.
+
 ## [1.3.1-alpha.1] - 2026-11-10
 
 ### Performance & GPU Optimization

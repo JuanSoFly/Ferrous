@@ -788,10 +788,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       textToSpeak: '',
                       resolveTextToSpeak: () => _ttsController.resolveTtsText(),
                       onStart: () async {
-                        final text = _ttsController.resolveTtsText();
-                        if (text.trim().isNotEmpty) {
-                          await _ttsController.ttsService.speak(text);
-                        }
+                        await _ttsController.startPlayback();
                       },
                       isContinuous: _ttsController.ttsContinuous,
                       isFollowMode: _ttsController.ttsFollowMode,
@@ -826,9 +823,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         isEInk: isEInk,
       );
     }
-
-    final isTtsActive = _ttsController.showTtsControls ||
-        _ttsController.ttsService.state != TtsState.stopped;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
@@ -975,6 +969,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
               return Padding(
                 padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
                 child: Html(
+                  key: const ValueKey('html-reader-core'),
                   data: displayContent,
                   extensions: extensions,
                   onLinkTap: (url, attributes, element) async {
@@ -1184,27 +1179,34 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
               );
             }
 
-            if (isTtsActive) {
-              return ListenableBuilder(
-                listenable: _ttsController,
-                builder: (context, _) {
-                  _ttsController.highlightKeyAssigned = false;
-                  final content = _ttsController.buildTtsHighlightedHtml(baseHtml);
-                  final displayContent = bookAnnotations.isNotEmpty
-                      ? AnnotationHighlightHelper.applyHighlights(content, bookAnnotations)
-                      : content;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _ttsController.maybeEnsureHighlightVisible();
-                  });
-                  return wrapWithCover(buildHtmlWidget(displayContent));
-                },
-              );
-            } else {
-              final displayContent = bookAnnotations.isNotEmpty
-                  ? AnnotationHighlightHelper.applyHighlights(baseHtml, bookAnnotations)
-                  : baseHtml;
-              return wrapWithCover(buildHtmlWidget(displayContent));
-            }
+            final displayContent = bookAnnotations.isNotEmpty
+                ? AnnotationHighlightHelper.applyHighlights(baseHtml, bookAnnotations)
+                : baseHtml;
+            final staticChild = wrapWithCover(buildHtmlWidget(displayContent));
+
+            return ListenableBuilder(
+              listenable: _ttsController,
+              child: staticChild,
+              builder: (context, child) {
+                final isTtsActive = _ttsController.showTtsControls ||
+                    _ttsController.ttsService.state != TtsState.stopped;
+                final hasHighlight = _ttsController.lastHighlightStart != null;
+
+                if (!isTtsActive || !hasHighlight) {
+                  return child!;
+                }
+
+                _ttsController.highlightKeyAssigned = false;
+                final content = _ttsController.buildTtsHighlightedHtml(baseHtml);
+                final highlightedDisplay = bookAnnotations.isNotEmpty
+                    ? AnnotationHighlightHelper.applyHighlights(content, bookAnnotations)
+                    : content;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _ttsController.maybeEnsureHighlightVisible();
+                });
+                return wrapWithCover(buildHtmlWidget(highlightedDisplay));
+              },
+            );
           },
         ),
       ),

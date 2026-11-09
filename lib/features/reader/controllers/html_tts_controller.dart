@@ -31,6 +31,7 @@ class HtmlTtsController extends ChangeNotifier {
   }
 
   bool _showTtsControls = false;
+  bool _isStartingSpeech = false;
   bool _ttsContinuous = true;
   bool _ttsFollowMode = true;
   bool _tapToStartEnabled = true;
@@ -89,6 +90,7 @@ class HtmlTtsController extends ChangeNotifier {
 
     if (!next) {
       saveCurrentTtsSentence();
+      _isStartingSpeech = false;
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
@@ -103,11 +105,16 @@ class HtmlTtsController extends ChangeNotifier {
 
   void _handleTtsProgress() {
     if (_ttsService.state == TtsState.stopped) {
+      if (_isStartingSpeech) return;
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
       notifyListeners();
       return;
+    }
+
+    if (_ttsService.state == TtsState.playing) {
+      _isStartingSpeech = false;
     }
 
     if (_ttsService.state != TtsState.playing) {
@@ -117,6 +124,7 @@ class HtmlTtsController extends ChangeNotifier {
     final wordStart = _ttsService.currentWordStart;
     final wordEnd = _ttsService.currentWordEnd;
     if (wordStart == null || wordEnd == null) return;
+    _isStartingSpeech = false;
 
     final map = _ttsNormalizationMap;
     if (map == null || map.normalizedToRaw.isEmpty) return;
@@ -442,7 +450,33 @@ class HtmlTtsController extends ChangeNotifier {
     ));
   }
 
+  int _findWordEnd(String text, int start) {
+    var end = start;
+    while (end < text.length && text[end].trim().isNotEmpty) {
+      end++;
+    }
+    return end;
+  }
+
+  Future<void> startPlayback() async {
+    final text = resolveTtsText();
+    if (text.trim().isEmpty) return;
+
+    final plainText = getPlainText();
+    final wordEnd = _findWordEnd(plainText, _ttsRawBaseOffset);
+    _lastHighlightStart = _ttsRawBaseOffset;
+    _lastHighlightEnd = wordEnd > _ttsRawBaseOffset ? wordEnd : _ttsRawBaseOffset + 1;
+    _cachedHighlightedHtml = null;
+
+    _isStartingSpeech = true;
+    _showTtsControls = true;
+    notifyListeners();
+
+    await _ttsService.speak(text);
+  }
+
   void closeTtsControls() {
+    _isStartingSpeech = false;
     _showTtsControls = false;
     _cachedHighlightedHtml = null;
     _lastHighlightStart = null;

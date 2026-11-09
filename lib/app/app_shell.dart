@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -243,43 +242,33 @@ class _AppShellState extends State<AppShell> {
         child: Container(
           height: 60,
           decoration: BoxDecoration(
+            color: (isDark ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.surface)
+                .withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.black.withValues(alpha: 0.08),
+              width: 1.0,
+            ),
             boxShadow: [
               BoxShadow(
                 color: isDark
-                    ? Colors.black.withValues(alpha: 0.45)
-                    : Colors.black.withValues(alpha: 0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+                    ? Colors.black.withValues(alpha: 0.35)
+                    : Colors.black.withValues(alpha: 0.10),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.black.withValues(alpha: 0.08),
-                    width: 1.0,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildIslandNavItem(0, 'Library', theme, config),
-                    _buildIslandNavItem(1, 'Notes', theme, config),
-                    _buildIslandNavItem(2, 'Settings', theme, config),
-                  ],
-                ),
-              ),
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildIslandNavItem(0, 'Library', theme, config),
+              _buildIslandNavItem(1, 'Notes', theme, config),
+              _buildIslandNavItem(2, 'Settings', theme, config),
+            ],
           ),
         ),
       ),
@@ -472,7 +461,6 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
-    final bool enableBlur = config.enableBlur;
     final navContent = SafeArea(
       top: false,
       child: SizedBox(
@@ -490,9 +478,7 @@ class _AppShellState extends State<AppShell> {
 
     return Container(
       decoration: BoxDecoration(
-        color: enableBlur
-            ? theme.colorScheme.surface.withValues(alpha: 0.92)
-            : theme.colorScheme.surface,
+        color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
             color: theme.brightness == Brightness.dark
@@ -502,14 +488,7 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
       ),
-      child: enableBlur
-          ? ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: navContent,
-              ),
-            )
-          : navContent,
+      child: navContent,
     );
   }
 

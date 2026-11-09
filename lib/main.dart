@@ -201,7 +201,9 @@ class ReaderApp extends StatelessWidget {
                 children: [
                   appWidget,
                   const IgnorePointer(
-                    child: EInkPaperNoiseOverlay(),
+                    child: RepaintBoundary(
+                      child: EInkPaperNoiseOverlay(),
+                    ),
                   ),
                 ],
               );

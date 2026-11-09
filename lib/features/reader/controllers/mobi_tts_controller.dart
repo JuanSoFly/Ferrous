@@ -38,6 +38,7 @@ class MobiTtsController extends ChangeNotifier {
   bool _tapToStartEnabled = true;
 
   int _ttsAdvanceRequestId = 0;
+  bool _isStartingSpeech = false;
   int _ttsRawBaseOffset = 0;
   NormalizedTextMap? _ttsNormalizationMap;
   final GlobalKey _ttsHighlightKey = GlobalKey();
@@ -94,6 +95,7 @@ class MobiTtsController extends ChangeNotifier {
 
     if (!next) {
       saveCurrentTtsSentence();
+      _isStartingSpeech = false;
       _ttsAdvanceRequestId++;
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
@@ -117,11 +119,17 @@ class MobiTtsController extends ChangeNotifier {
 
   void _handleTtsProgress() {
     if (_ttsService.state == TtsState.stopped) {
+      // Ignore transient stop events while a new speech session is initializing
+      if (_isStartingSpeech) return;
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
       notifyListeners();
       return;
+    }
+
+    if (_ttsService.state == TtsState.playing) {
+      _isStartingSpeech = false;
     }
 
     if (_ttsService.state != TtsState.playing) {
@@ -131,6 +139,7 @@ class MobiTtsController extends ChangeNotifier {
     final wordStart = _ttsService.currentWordStart;
     final wordEnd = _ttsService.currentWordEnd;
     if (wordStart == null || wordEnd == null) return;
+    _isStartingSpeech = false;
 
     final map = _ttsNormalizationMap;
     if (map == null || map.normalizedToRaw.isEmpty) return;
@@ -558,6 +567,22 @@ class MobiTtsController extends ChangeNotifier {
     }
   }
 
+  Future<void> startPlayback({required ReaderModeController modeController}) async {
+    final text = resolveTtsText(modeController: modeController);
+    if (text.trim().isEmpty) return;
+
+    final wordEnd = _findWordEnd(chapterController.currentPlainText, _ttsRawBaseOffset);
+    _lastHighlightStart = _ttsRawBaseOffset;
+    _lastHighlightEnd = wordEnd > _ttsRawBaseOffset ? wordEnd : _ttsRawBaseOffset + 1;
+    _cachedHighlightedHtml = null;
+
+    _isStartingSpeech = true;
+    _showTtsControls = true;
+    notifyListeners();
+
+    await _ttsService.speak(text);
+  }
+
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
     if (startText.trim().isEmpty) return;
 
@@ -575,6 +600,13 @@ class MobiTtsController extends ChangeNotifier {
     _ttsNormalizationMap = map;
     _ttsAdvanceRequestId++;
 
+    // Pre-seed highlight immediately on the initial word
+    final wordEnd = _findWordEnd(chapterController.currentPlainText, _ttsRawBaseOffset);
+    _lastHighlightStart = _ttsRawBaseOffset;
+    _lastHighlightEnd = wordEnd > _ttsRawBaseOffset ? wordEnd : _ttsRawBaseOffset + 1;
+    _cachedHighlightedHtml = null;
+
+    _isStartingSpeech = true;
     _showTtsControls = true;
     notifyListeners();
 
@@ -722,6 +754,7 @@ class MobiTtsController extends ChangeNotifier {
 
   void closeTtsControls() {
     _ttsAdvanceRequestId++;
+    _isStartingSpeech = false;
     _showTtsControls = false;
     _cachedHighlightedHtml = null;
     _lastHighlightStart = null;

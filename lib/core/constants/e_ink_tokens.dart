@@ -152,7 +152,6 @@ class _NoiseOverlayPainter extends CustomPainter {
   final ui.Image image;
   static final Paint _paint = Paint()
     ..filterQuality = FilterQuality.low
-    ..blendMode = BlendMode.multiply
     ..color = Colors.black.withValues(alpha: 0.045);
 
   _NoiseOverlayPainter({required this.image}) {

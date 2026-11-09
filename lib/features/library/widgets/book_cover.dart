@@ -7,8 +7,6 @@ import 'package:reader_app/features/library/widgets/book_cover_shimmer.dart';
 import 'package:reader_app/core/constants/e_ink_tokens.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
 
-import 'package:google_fonts/google_fonts.dart';
-
 /// Shared widget for displaying book covers consistently across the app.
 ///
 /// Shows an animated shimmer skeleton while the cover image loads from disk,
@@ -73,14 +71,28 @@ class _BookCoverState extends State<BookCover> {
     final isEInk = currentTheme == AppTheme.eInk;
 
     final coverPath = widget.book.coverPath;
-    final fileExists = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+    final hasCoverPath = coverPath != null && coverPath.isNotEmpty;
 
     Widget content;
-    if (fileExists && !_loadFailed) {
+    if (hasCoverPath && !_loadFailed) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      int? targetCacheWidth;
+      int? targetCacheHeight;
+      if (widget.height != null && widget.height!.isFinite && widget.height! > 0) {
+        targetCacheHeight = (widget.height! * dpr).round();
+      }
+      if (widget.width != null && widget.width!.isFinite && widget.width! > 0) {
+        targetCacheWidth = (widget.width! * dpr).round();
+      } else if (targetCacheHeight != null) {
+        // Standard book cover aspect ratio (~1:1.45)
+        targetCacheWidth = (targetCacheHeight * 0.75).round();
+      }
+
       final imageWidget = Image.file(
         File(coverPath),
         fit: widget.fit,
-        cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : null,
+        cacheWidth: targetCacheWidth,
+        cacheHeight: targetCacheHeight,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) {
             if (!_imageLoaded) {
@@ -124,9 +136,11 @@ class _BookCoverState extends State<BookCover> {
       );
 
       final filteredImage = isEInk
-          ? ColorFiltered(
-              colorFilter: EInkTokens.coverFilter,
-              child: imageWidget,
+          ? RepaintBoundary(
+              child: ColorFiltered(
+                colorFilter: EInkTokens.coverFilter,
+                child: imageWidget,
+              ),
             )
           : imageWidget;
 
@@ -189,6 +203,7 @@ class _BookCoverState extends State<BookCover> {
   }
 
   Widget _buildPlaceholder(BuildContext context, {bool isEInk = false}) {
+    final theme = Theme.of(context);
     final colors = _getColorGradient(widget.book.title);
     final displayHeight = widget.height ?? 200;
 
@@ -235,7 +250,7 @@ class _BookCoverState extends State<BookCover> {
                   const Spacer(),
                   Text(
                     widget.book.title,
-                    style: GoogleFonts.robotoSlab(
+                    style: (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
                       color: const Color(0xFF1A1A18),
                       fontSize: titleFontSize,
                       fontWeight: FontWeight.bold,
@@ -248,7 +263,7 @@ class _BookCoverState extends State<BookCover> {
                   const SizedBox(height: 4),
                   Text(
                     widget.book.author,
-                    style: GoogleFonts.robotoSlab(
+                    style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                       color: const Color(0xFF3D3C38),
                       fontSize: authorFontSize,
                       fontWeight: FontWeight.w500,
@@ -318,17 +333,17 @@ class _BookCoverState extends State<BookCover> {
           const Spacer(),
           Text(
             widget.book.title,
-            style: GoogleFonts.outfit(
+            style: (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
               color: Colors.white,
               fontSize: titleFontSize,
               fontWeight: FontWeight.bold,
               height: 1.2,
               letterSpacing: -0.1,
-              shadows: [
+              shadows: const [
                 Shadow(
-                  color: Colors.black.withValues(alpha: 0.3),
+                  color: Color(0x4D000000),
                   blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
@@ -338,15 +353,15 @@ class _BookCoverState extends State<BookCover> {
           const SizedBox(height: 4),
           Text(
             widget.book.author,
-            style: GoogleFonts.outfit(
-              color: Colors.white.withValues(alpha: 0.85),
+            style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+              color: const Color(0xD9FFFFFF),
               fontSize: authorFontSize,
               fontWeight: FontWeight.w500,
-              shadows: [
+              shadows: const [
                 Shadow(
-                  color: Colors.black.withValues(alpha: 0.3),
+                  color: Color(0x4D000000),
                   blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
@@ -391,12 +406,14 @@ class BookCoverSmall extends StatelessWidget {
       isGenerating = context.select<LibraryState, bool>((s) => s.isGeneratingCovers);
     } catch (_) {}
 
-    return BookCover(
-      book: book,
-      height: 60,
-      width: 40,
-      fit: BoxFit.cover,
-      isGenerating: isGenerating,
+    return RepaintBoundary(
+      child: BookCover(
+        book: book,
+        height: 60,
+        width: 40,
+        fit: BoxFit.cover,
+        isGenerating: isGenerating,
+      ),
     );
   }
 }
@@ -414,12 +431,14 @@ class BookCoverCard extends StatelessWidget {
       isGenerating = context.select<LibraryState, bool>((s) => s.isGeneratingCovers);
     } catch (_) {}
 
-    return BookCover(
-      book: book,
-      height: 200,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      isGenerating: isGenerating,
+    return RepaintBoundary(
+      child: BookCover(
+        book: book,
+        height: 200,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        isGenerating: isGenerating,
+      ),
     );
   }
 }

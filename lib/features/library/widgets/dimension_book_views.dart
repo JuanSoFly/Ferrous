@@ -510,6 +510,8 @@ class _TerminalTelemetryRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  static final TextStyle _baseFiraCode = GoogleFonts.firaCode();
+
   const _TerminalTelemetryRow({
     required this.index,
     required this.book,
@@ -556,7 +558,7 @@ class _TerminalTelemetryRow extends StatelessWidget {
                 children: [
                   Text(
                     '0x$addrHex',
-                    style: GoogleFonts.firaCode(
+                    style: _baseFiraCode.copyWith(
                       color: primary,
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -568,7 +570,7 @@ class _TerminalTelemetryRow extends StatelessWidget {
                     color: primary.withValues(alpha: 0.18),
                     child: Text(
                       book.format.toUpperCase(),
-                      style: GoogleFonts.firaCode(
+                      style: _baseFiraCode.copyWith(
                         color: primary,
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
@@ -581,7 +583,7 @@ class _TerminalTelemetryRow extends StatelessWidget {
                       book.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.firaCode(
+                      style: _baseFiraCode.copyWith(
                         color: onSurface,
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -599,7 +601,7 @@ class _TerminalTelemetryRow extends StatelessWidget {
                       'AUTHOR: ${book.author.toUpperCase()}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.firaCode(
+                      style: _baseFiraCode.copyWith(
                         color: onSurface.withValues(alpha: 0.55),
                         fontSize: 10,
                       ),
@@ -607,7 +609,7 @@ class _TerminalTelemetryRow extends StatelessWidget {
                   ),
                   Text(
                     _formatAsciiMeter(book.progress),
-                    style: GoogleFonts.firaCode(
+                    style: _baseFiraCode.copyWith(
                       color: primary,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -903,7 +905,7 @@ class _CompactBookRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: isEInk
-                      ? GoogleFonts.robotoSlab(
+                      ? (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFF1A1A18),
@@ -1051,7 +1053,7 @@ class _StandardBookCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: isEInk
-                        ? GoogleFonts.robotoSlab(
+                        ? (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: const Color(0xFF1A1A18),

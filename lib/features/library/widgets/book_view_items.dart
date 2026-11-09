@@ -436,17 +436,12 @@ class BookExtraLargeCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           book.title,
-                          style: isEInk
-                              ? GoogleFonts.robotoSlab(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1A1A18),
-                                )
-                              : theme.textTheme.titleMedium?.copyWith(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -0.2,
-                                ),
+                          style: (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.2,
+                            color: isEInk ? const Color(0xFF1A1A18) : null,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -468,15 +463,10 @@ class BookExtraLargeCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     book.author.isNotEmpty ? book.author : 'Unknown Author',
-                    style: isEInk
-                        ? GoogleFonts.robotoSlab(
-                            fontSize: 13,
-                            color: const Color(0xFF3D3C38),
-                          )
-                        : theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                            fontSize: 13,
-                          ),
+                    style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+                      color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                      fontSize: 13,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -571,17 +561,12 @@ class BookLargeCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           book.title,
-                          style: isEInk
-                              ? GoogleFonts.robotoSlab(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1A1A18),
-                                )
-                              : theme.textTheme.titleMedium?.copyWith(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -0.1,
-                                ),
+                          style: (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.1,
+                            color: isEInk ? const Color(0xFF1A1A18) : null,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -603,15 +588,10 @@ class BookLargeCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     book.author,
-                    style: isEInk
-                        ? GoogleFonts.robotoSlab(
-                            fontSize: 11,
-                            color: const Color(0xFF3D3C38),
-                          )
-                        : theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            fontSize: 11,
-                          ),
+                    style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+                      color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -695,33 +675,22 @@ class BookMediumCard extends StatelessWidget {
                 children: [
                   Text(
                     book.title,
-                    style: isEInk
-                        ? GoogleFonts.robotoSlab(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1A1A18),
-                            height: 1.2,
-                          )
-                        : theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                          ),
+                    style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                      color: isEInk ? const Color(0xFF1A1A18) : null,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     book.author.isNotEmpty ? book.author : 'Unknown',
-                    style: isEInk
-                        ? GoogleFonts.robotoSlab(
-                            fontSize: 10,
-                            color: const Color(0xFF3D3C38),
-                          )
-                        : theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            fontSize: 10,
-                          ),
+                    style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+                      color: isEInk ? const Color(0xFF3D3C38) : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 10,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -762,6 +731,7 @@ class BookSmallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.read<LibraryController>();
+    final theme = Theme.of(context);
     AppTheme? currentTheme;
     try {
       currentTheme = context.watch<AppTheme?>();
@@ -801,18 +771,12 @@ class BookSmallCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 4.0),
               child: Text(
                 book.title,
-                style: isEInk
-                    ? GoogleFonts.robotoSlab(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1A1A18),
-                        height: 1.1,
-                      )
-                    : const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        height: 1.1,
-                      ),
+                style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1,
+                  color: isEInk ? const Color(0xFF1A1A18) : null,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -877,16 +841,11 @@ class BookListItem extends StatelessWidget {
                   children: [
                     Text(
                       book.title,
-                      style: isEInk
-                          ? GoogleFonts.robotoSlab(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: const Color(0xFF1A1A18),
-                            )
-                          : theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
+                      style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isEInk ? const Color(0xFF1A1A18) : null,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1345,17 +1304,12 @@ class BookContentItem extends StatelessWidget {
                         Expanded(
                           child: Text(
                             book.title,
-                            style: isEInk
-                                ? GoogleFonts.robotoSlab(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF1A1A18),
-                                  )
-                                : theme.textTheme.titleMedium?.copyWith(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: -0.1,
-                                  ),
+                            style: (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.1,
+                              color: isEInk ? const Color(0xFF1A1A18) : null,
+                            ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),

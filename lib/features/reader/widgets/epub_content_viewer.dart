@@ -193,8 +193,10 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             : null);
 
     return Padding(
+      key: ValueKey('chapter-html-pad-${widget.chapterIndex}'),
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
       child: Html(
+        key: ValueKey('chapter-html-core-${widget.chapterIndex}'),
         data: content,
         extensions: extensions,
         style: {
@@ -418,11 +420,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final annotationRepo = context.watch<AnnotationRepository>();
     final themeConfig = themeRepo.config;
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
-    final isTtsActive = widget.ttsController.showTtsControls ||
-        widget.ttsController.ttsService.state != TtsState.stopped;
-    final isCurrentChapter =
-        widget.chapterIndex == widget.chapterController.currentChapterIndex;
-
     final chapterAnnotations = annotationRepo
         .getAnnotationsForBook(widget.chapterController.book.id)
         .where((a) => a.chapterIndex == widget.chapterIndex)
@@ -458,11 +455,12 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       TagExtension(
         tagsToExtend: {'tts-highlight'},
         builder: (context) {
+          final isCurrent = widget.chapterIndex == widget.chapterController.currentChapterIndex;
           final text = context.node.text ?? '';
           final style =
               context.style?.generateTextStyle() ?? const TextStyle();
           return _TtsHighlightSpan(
-            key: isCurrentChapter
+            key: isCurrent
                 ? widget.ttsController.ttsHighlightKey
                 : null,
             text: text,
@@ -517,51 +515,63 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       ),
     ];
 
-    if (isTtsActive && isCurrentChapter) {
-      return ListenableBuilder(
-        listenable: widget.ttsController,
-        builder: (context, _) {
-          widget.ttsController.highlightKeyAssigned = false;
-          final key = _cacheKey(themeConfig.hyphenation, themeConfig.paragraphIndent);
-          if (!_processedHtmlCache.containsKey(key) &&
-              (themeConfig.hyphenation || themeConfig.paragraphIndent)) {
-            _getProcessedHtml(
-              key,
-              widget.htmlContent,
-              themeConfig.hyphenation,
-              themeConfig.paragraphIndent,
-            ).then((_) {
-              if (mounted) setState(() {});
-            });
-          }
-          final processedHtml = _processedHtmlCache[key] ?? widget.htmlContent;
-          String content = widget.ttsController
-              .buildTtsHighlightedHtml(processedHtml);
-          if (chapterAnnotations.isNotEmpty) {
-            content = AnnotationHighlightHelper.applyHighlights(content, chapterAnnotations);
-          }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            widget.ttsController.maybeEnsureHighlightVisible();
+    final staticChild = _buildHtmlContent(
+      widget.htmlContent,
+      hyphenation: themeConfig.hyphenation,
+      paragraphIndent: themeConfig.paragraphIndent,
+      extensions: extensions,
+      horizontalMargin: horizontalMargin,
+      themeConfig: themeConfig,
+      annotations: chapterAnnotations,
+    );
+
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        widget.ttsController,
+        widget.chapterController,
+      ]),
+      child: staticChild,
+      builder: (context, child) {
+        final isCurrentChapter =
+            widget.chapterIndex == widget.chapterController.currentChapterIndex;
+        final isTtsActive = widget.ttsController.showTtsControls ||
+            widget.ttsController.ttsService.state != TtsState.stopped;
+        final hasHighlight = widget.ttsController.lastHighlightStart != null;
+
+        if (!isCurrentChapter || !isTtsActive || !hasHighlight) {
+          return child!;
+        }
+
+        widget.ttsController.highlightKeyAssigned = false;
+        final key = _cacheKey(themeConfig.hyphenation, themeConfig.paragraphIndent);
+        if (!_processedHtmlCache.containsKey(key) &&
+            (themeConfig.hyphenation || themeConfig.paragraphIndent)) {
+          _getProcessedHtml(
+            key,
+            widget.htmlContent,
+            themeConfig.hyphenation,
+            themeConfig.paragraphIndent,
+          ).then((_) {
+            if (mounted) setState(() {});
           });
-          return _buildHtmlWidget(
-            content,
-            extensions: extensions,
-            horizontalMargin: horizontalMargin,
-            themeConfig: themeConfig,
-          );
-        },
-      );
-    } else {
-      return _buildHtmlContent(
-        widget.htmlContent,
-        hyphenation: themeConfig.hyphenation,
-        paragraphIndent: themeConfig.paragraphIndent,
-        extensions: extensions,
-        horizontalMargin: horizontalMargin,
-        themeConfig: themeConfig,
-        annotations: chapterAnnotations,
-      );
-    }
+        }
+        final processedHtml = _processedHtmlCache[key] ?? widget.htmlContent;
+        String content = widget.ttsController
+            .buildTtsHighlightedHtml(processedHtml);
+        if (chapterAnnotations.isNotEmpty) {
+          content = AnnotationHighlightHelper.applyHighlights(content, chapterAnnotations);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.ttsController.maybeEnsureHighlightVisible();
+        });
+        return _buildHtmlWidget(
+          content,
+          extensions: extensions,
+          horizontalMargin: horizontalMargin,
+          themeConfig: themeConfig,
+        );
+      },
+    );
   }
 }
 

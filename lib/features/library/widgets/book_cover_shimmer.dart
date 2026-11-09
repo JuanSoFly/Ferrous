@@ -76,8 +76,13 @@ class _BookCoverShimmerState extends State<BookCoverShimmer>
         ? const Color(0xFFEAE6DF).withValues(alpha: 0.5)
         : (isDark ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.45));
 
+    final staticSkeleton = isCompact
+        ? _buildCompactSkeleton(displayHeight)
+        : _buildFullSkeleton(displayHeight, isDark);
+
     return AnimatedBuilder(
       animation: _controller,
+      child: staticSkeleton,
       builder: (context, child) {
         final value = _controller.value;
         return Container(
@@ -109,9 +114,7 @@ class _BookCoverShimmerState extends State<BookCoverShimmer>
                 end: Alignment(-1.0 + value * 4.0, 0),
               ),
             ),
-            child: isCompact
-                ? _buildCompactSkeleton(displayHeight)
-                : _buildFullSkeleton(displayHeight, isDark),
+            child: child,
           ),
         );
       },
