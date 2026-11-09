@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
 import 'package:reader_app/core/utils/performance.dart';
+import '../models/page_corner_colors.dart';
 
 class _ExtractionTask {
   final int pageIndex;
@@ -58,6 +59,8 @@ class CbzCacheController {
   final Map<int, double> _aspectRatios = {};
   double? _averageAspectRatio;
 
+  final Map<int, PageCornerColors> _cornerColors = {};
+
   final CbzPageExtractor? pageExtractor;
   final Duration retryDelay;
 
@@ -92,6 +95,14 @@ class CbzCacheController {
 
   /// All currently learned aspect ratios for the comic.
   Map<int, double> get allKnownAspectRatios => Map.unmodifiable(_aspectRatios);
+
+  /// Get detected corner and edge colors for a page, if already extracted.
+  PageCornerColors? getCornerColors(int index) {
+    return _cornerColors[index];
+  }
+
+  /// All currently extracted corner colors for the comic.
+  Map<int, PageCornerColors> get allKnownCornerColors => Map.unmodifiable(_cornerColors);
 
   /// Get an image for a specific page. Returns null if loading or not in cache.
   ui.Image? getCachedImage(int index, [int? maxWidth]) {
@@ -284,6 +295,13 @@ class CbzCacheController {
     _aspectRatios[index] = ar;
     _averageAspectRatio = ar;
 
+    // Extract noise-filtered corner and edge colors from raw RGBA buffer
+    _cornerColors[index] = PageCornerColors.fromRgbaBytes(
+      data.rgbaBytes,
+      data.width,
+      data.height,
+    );
+
     final completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       data.rgbaBytes,
@@ -398,5 +416,6 @@ class CbzCacheController {
     _imageCache.clear();
     _cacheOrder.clear();
     _aspectRatios.clear();
+    _cornerColors.clear();
   }
 }

@@ -11,6 +11,7 @@ class CbzPageImage extends StatefulWidget {
   final int maxWidth;
   final CbzCacheController cacheController;
   final double fallbackAspectRatio;
+  final VoidCallback? onPageLoaded;
 
   const CbzPageImage({
     super.key,
@@ -20,6 +21,7 @@ class CbzPageImage extends StatefulWidget {
     required this.maxWidth,
     required this.cacheController,
     this.fallbackAspectRatio = 0.70,
+    this.onPageLoaded,
   });
 
   @override
@@ -40,6 +42,9 @@ class _CbzPageImageState extends State<CbzPageImage> {
       _image = cached.clone();
       _state = CbzPageState.loaded;
       _error = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onPageLoaded?.call();
+      });
     } else {
       _loadPage();
     }
@@ -112,6 +117,7 @@ class _CbzPageImageState extends State<CbzPageImage> {
           _state = CbzPageState.loaded;
           _error = null;
         });
+        widget.onPageLoaded?.call();
       } else {
         setState(() {
           _state = CbzPageState.error;

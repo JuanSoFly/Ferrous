@@ -1,6 +1,8 @@
 ## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added
+- Adaptive background color matching and gradient letterboxing for CBZ/CBR comics (`CbzAdaptiveBackground`, `CbzPageLetterboxContainer`).
+- Noise-filtered edge and corner color sampling (`PageCornerColors`) with cached color detection in `CbzCacheController`.
 - Native CBR comic book decompression in Rust using `unrar_rs` to extract pages and cover thumbnails directly from RAR archives.
 - Native pure-Dart `EpubCoverExtractor` fallback service to reliably extract EPUB cover art when native extraction fails.
 - Multi-tier EPUB cover extraction fallbacks in Rust (`covers.rs`), including case-insensitive image attributes, SVG/object data resolution, spine item probing, and archive-wide fallback.

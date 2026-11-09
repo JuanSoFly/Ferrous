@@ -6,6 +6,7 @@ import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
 import 'package:reader_app/core/utils/performance.dart';
+import '../models/page_corner_colors.dart';
 import 'cbz_cache_controller.dart';
 
 class CbzPageController extends ChangeNotifier {
@@ -56,6 +57,21 @@ class CbzPageController extends ChangeNotifier {
 
   CbzCacheController? _cacheController;
   CbzCacheController? get cacheController => _cacheController;
+
+  /// Current visible page's detected corner and edge colors.
+  PageCornerColors? get currentCornerColors =>
+      _cacheController?.getCornerColors(_currentPage);
+
+  /// Get detected corner colors for an arbitrary page index.
+  PageCornerColors? getCornerColorsForPage(int pageIndex) =>
+      _cacheController?.getCornerColors(pageIndex);
+
+  /// Called when a page's corner colors become available to update background if it is current.
+  void notifyCornerColorsAvailable(int pageIndex) {
+    if (pageIndex == _currentPage) {
+      notifyListeners();
+    }
+  }
 
   List<GlobalKey> _pageKeys = [];
   List<GlobalKey> get pageKeys => _pageKeys;

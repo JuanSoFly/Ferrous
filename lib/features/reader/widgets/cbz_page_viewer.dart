@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
+import 'package:reader_app/core/constants/book_textures.dart';
 import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
+import 'cbz_adaptive_background.dart';
 import 'cbz_page_image.dart';
 import 'realistic_page_turn.dart';
 
@@ -182,16 +184,23 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         key: const ValueKey('cbz-page-turn'),
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
-        textureId: themeRepo.config.paperTexture,
-        showSpine: themeRepo.config.showBookSpine,
+        textureId: BookTextures.none,
+        showSpine: false,
         onPageChanged: _onPageViewSettled,
         onToggleChrome: () => widget.chromeController.toggleChrome(),
         pageBuilder: (context, index) {
-          return InteractiveViewer(
-            key: ValueKey('cbz-interactive-$index'),
-            transformationController: widget.transformController,
-            maxScale: 5.0,
-            child: _buildPageImage(index, maxWidth),
+          final colors = widget.pageController.getCornerColorsForPage(index);
+          final ar = widget.pageController.cacheController?.getEstimatedAspectRatio(index);
+          return CbzPageLetterboxContainer(
+            colors: colors,
+            readingMode: widget.pageController.readingMode,
+            aspectRatio: ar,
+            child: InteractiveViewer(
+              key: ValueKey('cbz-interactive-$index'),
+              transformationController: widget.transformController,
+              maxScale: 5.0,
+              child: _buildPageImage(index, maxWidth),
+            ),
           );
         },
       );
@@ -225,18 +234,25 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
           widget.pageController.cacheController?.preloadAround(candidateIndex, maxWidth);
         },
         itemBuilder: (context, index) {
-          return InteractiveViewer(
-            key: ValueKey('cbz-interactive-$index'),
-            transformationController: widget.transformController,
-            maxScale: 5.0,
-            child: _buildPageImage(index, maxWidth),
+          final colors = widget.pageController.getCornerColorsForPage(index);
+          final ar = widget.pageController.cacheController?.getEstimatedAspectRatio(index);
+          return CbzPageLetterboxContainer(
+            colors: colors,
+            readingMode: widget.pageController.readingMode,
+            aspectRatio: ar,
+            child: InteractiveViewer(
+              key: ValueKey('cbz-interactive-$index'),
+              transformationController: widget.transformController,
+              maxScale: 5.0,
+              child: _buildPageImage(index, maxWidth),
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildPageImage(int index, int maxWidth) {
+  Widget _buildPageImage(int index, int maxWidth, {double fallbackAspectRatio = 0.70}) {
     final pageName = widget.pageController.pageNames[index];
 
     return CbzPageImage(
@@ -246,6 +262,8 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
       fit: BoxFit.contain,
       maxWidth: maxWidth,
       cacheController: widget.pageController.cacheController!,
+      fallbackAspectRatio: fallbackAspectRatio,
+      onPageLoaded: () => widget.pageController.notifyCornerColorsAvailable(index),
     );
   }
 
@@ -283,16 +301,24 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
           final key = index < widget.pageController.pageKeys.length
               ? widget.pageController.pageKeys[index]
               : null;
+          final colors = widget.pageController.getCornerColorsForPage(index);
+          final ar = widget.pageController.cacheController?.getEstimatedAspectRatio(index, fallback: fallbackAr);
           return RepaintBoundary(
             key: key,
-            child: CbzPageImage(
-              key: ValueKey('cbz-page-$index'),
-              pageIndex: index,
-              pageName: widget.pageController.pageNames[index],
-              fit: BoxFit.contain,
-              maxWidth: maxWidth,
-              cacheController: widget.pageController.cacheController!,
-              fallbackAspectRatio: fallbackAr,
+            child: CbzPageLetterboxContainer(
+              colors: colors,
+              readingMode: widget.pageController.readingMode,
+              aspectRatio: ar,
+              child: CbzPageImage(
+                key: ValueKey('cbz-page-$index'),
+                pageIndex: index,
+                pageName: widget.pageController.pageNames[index],
+                fit: BoxFit.contain,
+                maxWidth: maxWidth,
+                cacheController: widget.pageController.cacheController!,
+                fallbackAspectRatio: fallbackAr,
+                onPageLoaded: () => widget.pageController.notifyCornerColorsAvailable(index),
+              ),
             ),
           );
         },
@@ -332,16 +358,24 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
           final key = index < widget.pageController.pageKeys.length
               ? widget.pageController.pageKeys[index]
               : null;
+          final colors = widget.pageController.getCornerColorsForPage(index);
+          final ar = widget.pageController.cacheController?.getEstimatedAspectRatio(index, fallback: 1.40);
           return RepaintBoundary(
             key: key,
-            child: CbzPageImage(
-              key: ValueKey('cbz-page-$index'),
-              pageIndex: index,
-              pageName: widget.pageController.pageNames[index],
-              fit: BoxFit.contain,
-              maxWidth: maxWidth,
-              cacheController: widget.pageController.cacheController!,
-              fallbackAspectRatio: 1.40,
+            child: CbzPageLetterboxContainer(
+              colors: colors,
+              readingMode: widget.pageController.readingMode,
+              aspectRatio: ar,
+              child: CbzPageImage(
+                key: ValueKey('cbz-page-$index'),
+                pageIndex: index,
+                pageName: widget.pageController.pageNames[index],
+                fit: BoxFit.contain,
+                maxWidth: maxWidth,
+                cacheController: widget.pageController.cacheController!,
+                fallbackAspectRatio: 1.40,
+                onPageLoaded: () => widget.pageController.notifyCornerColorsAvailable(index),
+              ),
             ),
           );
         },
