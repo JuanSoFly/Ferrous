@@ -641,9 +641,8 @@ fn extract_rar_cover(book_path: &str, save_path: &str) -> Result<String> {
     image_names.sort();
 
     if let Some(first_image) = image_names.first() {
-        let mut entry = archive.by_name(first_image)
-            .or_else(|_| archive.by_name(&first_image.replace('/', "\\")))
-            .or_else(|_| archive.by_name(&first_image.replace('\\', "/")))?;
+        let entry = archive.by_name(first_image)
+            .context("Failed to find cover image in CBR archive")?;
 
         let mut buffer = Vec::new();
         entry.copy_to(&mut buffer)?;

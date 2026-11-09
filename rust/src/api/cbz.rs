@@ -117,14 +117,27 @@ fn get_cached_or_read_entries(path: &str) -> Result<Arc<Vec<String>>> {
     Ok(entries)
 }
 
+fn find_zip_entry_name(archive: &ZipArchive<BufReader<File>>, target: &str) -> Option<String> {
+    for name in archive.file_names() {
+        if name == target
+            || name.replace('\\', "/") == target
+            || name.replace('/', "\\") == target
+        {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
 fn read_zip_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader)?;
 
-    let mut entry = archive.by_name(entry_name)
-        .or_else(|_| archive.by_name(&entry_name.replace('/', "\\")))
-        .or_else(|_| archive.by_name(&entry_name.replace('\\', "/")))
+    let resolved = find_zip_entry_name(&archive, entry_name)
+        .unwrap_or_else(|| entry_name.to_string());
+
+    let mut entry = archive.by_name(&resolved)
         .with_context(|| format!("Failed to read ZIP entry: {}", entry_name))?;
 
     let mut buffer = Vec::new();
@@ -133,16 +146,27 @@ fn read_zip_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+fn find_rar_entry_name(archive: &RarArchive<File>, target: &str) -> Option<String> {
+    for member in archive.entries() {
+        if member.name == target
+            || member.name.replace('\\', "/") == target
+            || member.name.replace('/', "\\") == target
+        {
+            return Some(member.name.clone());
+        }
+    }
+    None
+}
+
 fn read_rar_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     let file = File::open(path)?;
     let mut archive = RarArchive::open(file)
         .with_context(|| "Failed to open RAR archive")?;
 
-    let entry_res = archive.by_name(entry_name)
-        .or_else(|_| archive.by_name(&entry_name.replace('/', "\\")))
-        .or_else(|_| archive.by_name(&entry_name.replace('\\', "/")));
+    let resolved = find_rar_entry_name(&archive, entry_name)
+        .unwrap_or_else(|| entry_name.to_string());
 
-    let mut entry = entry_res
+    let entry = archive.by_name(&resolved)
         .with_context(|| format!("Failed to find entry in RAR archive: {}", entry_name))?;
 
     let mut buffer = Vec::new();
