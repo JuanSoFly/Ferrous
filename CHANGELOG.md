@@ -19,6 +19,9 @@
 - E-Ink mechanical styling for `LibraryLocationsScreen` and `LocationCard` with high-contrast cards, custom action popups, and instant feedback.
 - Dedicated E-Ink paperwhite dialog styling for `DeleteBookDialog` with physical hairline dividers and alert styling.
 
+### Fixed
+- Fixed HTML attribute resolution for `<img>` and `<image>` tags in Rust EPUB cover extraction (`covers.rs`).
+
 ### Changed
 - Added mode transition guards (`isTransitioningMode`) and scroll epoch tracking to `EpubChapterController` and `MobiChapterController` to prevent race conditions and out-of-order page jumps during reading mode changes.
 - Enhanced `EpubPagedViewer` and `MobiPagedViewer` gesture detection with velocity damping, boundary overscroll guards, and keyed `PageView` instances.

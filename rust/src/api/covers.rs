@@ -139,7 +139,7 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
     if let Ok(selector) = scraper::Selector::parse("img") {
         for img in doc.select(&selector) {
             for (name, val) in img.value().attrs() {
-                if name.local.as_ref().eq_ignore_ascii_case("src") {
+                if name.eq_ignore_ascii_case("src") {
                     let s = val.trim();
                     if !s.is_empty() {
                         return Some(s.to_string());
@@ -152,10 +152,10 @@ fn extract_first_image_ref_from_html(html: &str) -> Option<String> {
     if let Ok(selector) = scraper::Selector::parse("image") {
         for img in doc.select(&selector) {
             for (name, val) in img.value().attrs() {
-                let local = name.local.as_ref();
-                if local.eq_ignore_ascii_case("href")
-                    || local.ends_with("href")
-                    || local.eq_ignore_ascii_case("src")
+                let name_lower = name.to_ascii_lowercase();
+                if name_lower == "href"
+                    || name_lower.ends_with("href")
+                    || name_lower == "src"
                 {
                     let s = val.trim();
                     if !s.is_empty() {
