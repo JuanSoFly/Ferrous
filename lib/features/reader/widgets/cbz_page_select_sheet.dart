@@ -43,10 +43,10 @@ Future<void> showCbzPageSelectSheet(
     shape: eInk
         ? const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
-            side: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+            side: BorderSide(color: Color(0xFF1A1A18), width: 1.0),
           )
         : const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
     builder: (ctx) => CbzPageSelectSheet(
       pageController: pageController,
@@ -167,56 +167,59 @@ class _CbzPageSelectSheetState extends State<CbzPageSelectSheet> {
             children: [
               // 1. Header Row
               Padding(
-                padding: const EdgeInsets.only(left: 16, right: 8, top: 12, bottom: 8),
+                padding: const EdgeInsets.only(left: 16, right: 6, top: 6, bottom: 4),
                 child: Row(
                   children: [
                     Text(
                       'Jump to Page',
                       style: isEInk
                           ? GoogleFonts.robotoSlab(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: textInk,
                             )
-                          : theme.textTheme.titleMedium?.copyWith(
+                          : theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: const Icon(Icons.close, size: 20),
                       color: textInk,
                       tooltip: 'Close',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
               ),
 
-              Divider(height: 1, thickness: 1, color: dividerColor),
+              Divider(height: 1, thickness: 0.5, color: dividerColor),
 
-              // 2. Direct Page Number Input Bar
+              // 2. Direct Page Number Input Bar (compact)
               Container(
                 color: recessedBg,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
                     Text(
                       'Go to page',
                       style: isEInk
                           ? GoogleFonts.robotoSlab(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: textInk,
                             )
-                          : theme.textTheme.bodyMedium?.copyWith(
+                          : theme.textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     SizedBox(
-                      width: 72,
-                      height: 38,
+                      width: 58,
+                      height: 32,
                       child: TextField(
                         controller: _inputController,
                         focusNode: _focusNode,
@@ -230,43 +233,43 @@ class _CbzPageSelectSheetState extends State<CbzPageSelectSheet> {
                         onSubmitted: (_) => _submitPageInput(),
                         style: isEInk
                             ? GoogleFonts.robotoMono(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                                 color: textInk,
                               )
-                            : theme.textTheme.bodyMedium?.copyWith(
+                            : theme.textTheme.bodySmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
                         decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 4),
                           filled: true,
                           fillColor: isEInk ? const Color(0xFFE0DCD3) : theme.colorScheme.surface,
                           border: isEInk
                               ? const OutlineInputBorder(
                                   borderRadius: BorderRadius.all(Radius.circular(2)),
-                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.0),
                                 )
                               : OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(6),
                                   borderSide: BorderSide(color: theme.colorScheme.outline),
                                 ),
                           enabledBorder: isEInk
                               ? const OutlineInputBorder(
                                   borderRadius: BorderRadius.all(Radius.circular(2)),
-                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.0),
                                 )
                               : OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(6),
                                   borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
                                 ),
                           focusedBorder: isEInk
                               ? const OutlineInputBorder(
                                   borderRadius: BorderRadius.all(Radius.circular(2)),
-                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 2.0),
+                                  borderSide: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
                                 )
                               : OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2.0),
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
                                 ),
                         ),
                       ),
@@ -276,11 +279,11 @@ class _CbzPageSelectSheetState extends State<CbzPageSelectSheet> {
                       '/ $totalPages',
                       style: isEInk
                           ? GoogleFonts.robotoMono(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF3D3C38),
                             )
-                          : theme.textTheme.bodyMedium?.copyWith(
+                          : theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                     ),
@@ -293,7 +296,7 @@ class _CbzPageSelectSheetState extends State<CbzPageSelectSheet> {
                 ),
               ),
 
-              Divider(height: 1, thickness: 1, color: dividerColor),
+              Divider(height: 1, thickness: 0.5, color: dividerColor),
 
               // 3. Virtualized Page Thumbnail Grid
               Expanded(
@@ -306,12 +309,12 @@ class _CbzPageSelectSheetState extends State<CbzPageSelectSheet> {
                       )
                     : GridView.builder(
                         controller: _gridScrollController,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(8),
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 120,
+                          maxCrossAxisExtent: 110,
                           childAspectRatio: 0.70,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
                         ),
                         itemCount: totalPages,
                         itemBuilder: (context, index) {
@@ -365,12 +368,12 @@ class _GoButtonState extends State<_GoButton> {
         },
         onTapCancel: () => setState(() => _isPressed = false),
         child: Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(2.0),
-            border: Border.all(color: const Color(0xFF1A1A18), width: 1.5),
+            border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
           ),
           alignment: Alignment.center,
           child: Text(
@@ -378,7 +381,7 @@ class _GoButtonState extends State<_GoButton> {
             style: GoogleFonts.robotoMono(
               color: fg,
               fontWeight: FontWeight.bold,
-              fontSize: 14,
+              fontSize: 12,
             ),
           ),
         ),
@@ -389,12 +392,12 @@ class _GoButtonState extends State<_GoButton> {
       onPressed: widget.onPressed,
       style: FilledButton.styleFrom(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
+          borderRadius: BorderRadius.circular(6.0),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0),
-        minimumSize: const Size(0, 38),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        minimumSize: const Size(0, 30),
       ),
-      child: const Text('Go'),
+      child: const Text('Go', style: TextStyle(fontSize: 12)),
     );
   }
 }
@@ -487,18 +490,18 @@ class _PageThumbnailTileState extends State<_PageThumbnailTile> {
         borderRadius: BorderRadius.circular(2.0),
         border: Border.all(
           color: const Color(0xFF1A1A18),
-          width: isCurrent ? 2.5 : 1.0,
+          width: isCurrent ? 2.0 : 1.0,
         ),
       );
     } else {
       cardDecoration = BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(6.0),
         border: Border.all(
           color: isCurrent
               ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: isCurrent ? 2.5 : 1.0,
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: isCurrent ? 2.0 : 0.8,
         ),
       );
     }

@@ -25,8 +25,9 @@ docx-rs = "0.4"
 # Image processing (for PDF to PNG conversion)
 image = "0.25.9"
 
-# Archive extraction (for EPUB/CBZ covers)
+# Archive extraction (for EPUB/CBZ covers and CBR/RAR archives)
 zip = "2.2"
+unrar-rs = "0.14"
 
 # MOBI/AZW3 parsing
 mobi = "0.8"

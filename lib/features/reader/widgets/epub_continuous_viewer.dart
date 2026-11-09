@@ -3,7 +3,6 @@ import 'package:flutter/rendering.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
-import 'book_cover_page.dart';
 import 'epub_content_viewer.dart';
 
 class EpubContinuousViewer extends StatelessWidget {
@@ -32,7 +31,7 @@ class EpubContinuousViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     if (chapterController.chapters == null) return const SizedBox.shrink();
 
-    final totalCount = chapterController.chapters!.length + 1;
+    final totalCount = chapterController.chapters!.length;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
@@ -60,14 +59,7 @@ class EpubContinuousViewer extends StatelessWidget {
           addRepaintBoundaries: true,
           itemCount: totalCount,
           itemBuilder: (context, index) {
-            if (index == 0) {
-              return BookCoverPage(
-                book: chapterController.book,
-                isContinuous: true,
-              );
-            }
-
-            final chapterIndex = index - 1;
+            final chapterIndex = index;
             final isLast = chapterIndex == chapterController.chapters!.length - 1;
             final htmlContent = chapterController.allChapterContents[chapterIndex];
 
@@ -77,7 +69,7 @@ class EpubContinuousViewer extends StatelessWidget {
                 padding: EdgeInsets.only(
                   left: 16.0,
                   right: 16.0,
-                  top: chapterSpacing,
+                  top: chapterIndex == 0 ? topPadding : chapterSpacing,
                   bottom: isLast ? bottomPadding : 0.0,
                 ),
                 child: EpubContentViewer(

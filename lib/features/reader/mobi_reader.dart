@@ -86,11 +86,9 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     );
 
     _chromeController = ReaderChromeController();
-    final isFirstOpen = widget.book.sectionIndex == 0 &&
-        widget.book.scrollPosition == 0.0 &&
-        widget.book.lastReadingSentenceStart == -1;
+    final initialChapter = widget.book.sectionIndex.clamp(0, double.maxFinite.toInt());
     _pageController = PageController(
-      initialPage: isFirstOpen ? 0 : widget.book.sectionIndex + 1,
+      initialPage: initialChapter,
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -246,9 +244,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
 
     if (switchingToPaged) {
       _chapterController.prepareForPagedMode(targetChapter);
-      final isCover = targetChapter == 0 &&
-          _chapterController.lastReadingSentenceStart == -1;
-      final targetPage = isCover ? 0 : targetChapter + 1;
+      final targetPage = targetChapter;
       if (!_pageController.hasClients) {
         _pageController.dispose();
         _pageController = PageController(initialPage: targetPage);
@@ -299,7 +295,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
     _chapterController.loadChapter(index, userInitiated: true);
 
     if (_modeController.isPagedMode) {
-      final targetPage = index + 1;
+      final targetPage = index;
       if (_pageController.hasClients && _pageController.page?.round() != targetPage) {
         _pageController.jumpToPage(targetPage);
       }

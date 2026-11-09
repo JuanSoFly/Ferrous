@@ -1,6 +1,7 @@
 ## [1.3.0-alpha.7] - 2026-11-09
 
 ### Added
+- Native CBR comic book decompression in Rust using `unrar_rs` to extract pages and cover thumbnails directly from RAR archives.
 - Native pure-Dart `EpubCoverExtractor` fallback service to reliably extract EPUB cover art when native extraction fails.
 - Multi-tier EPUB cover extraction fallbacks in Rust (`covers.rs`), including case-insensitive image attributes, SVG/object data resolution, spine item probing, and archive-wide fallback.
 - Added `.cbr` comic archive format support to library scanning and Android SAF directory handlers.
@@ -21,6 +22,8 @@
 
 ### Fixed
 - Fixed HTML attribute resolution for `<img>` and `<image>` tags in Rust EPUB cover extraction (`covers.rs`).
+- Fixed chapter scroll offsets and paged indexing in EPUB and MOBI readers by removing artificial cover height and page padding shifts.
+- Refined comic page selection and scrubber interactions in `CbzPageControls` and `CbzPageSelectSheet`.
 
 ### Changed
 - Added mode transition guards (`isTransitioningMode`) and scroll epoch tracking to `EpubChapterController` and `MobiChapterController` to prevent race conditions and out-of-order page jumps during reading mode changes.

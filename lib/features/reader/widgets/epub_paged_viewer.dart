@@ -4,7 +4,6 @@ import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
-import 'book_cover_page.dart';
 import 'epub_content_viewer.dart';
 import 'realistic_page_turn.dart';
 
@@ -41,9 +40,10 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   void initState() {
     super.initState();
     widget.chapterController.addListener(_onChapterControllerChanged);
-    final isCover = widget.chapterController.currentChapterIndex == 0 &&
-        widget.chapterController.lastReadingSentenceStart == -1;
-    _activePage = isCover ? 0 : widget.chapterController.currentChapterIndex + 1;
+    _activePage = widget.chapterController.currentChapterIndex.clamp(
+      0,
+      (widget.chapterController.chapters?.length ?? 1) - 1,
+    );
     _viewPageController = PageController(initialPage: _activePage);
   }
 
@@ -85,9 +85,10 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   }
 
   void _syncActivePage() {
-    final isCover = widget.chapterController.currentChapterIndex == 0 &&
-        widget.chapterController.lastReadingSentenceStart == -1;
-    final targetPage = isCover ? 0 : widget.chapterController.currentChapterIndex + 1;
+    final targetPage = widget.chapterController.currentChapterIndex.clamp(
+      0,
+      (widget.chapterController.chapters?.length ?? 1) - 1,
+    );
     if (_activePage != targetPage) {
       if (mounted) {
         setState(() {
@@ -139,7 +140,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   }
 
   void _goToNextPage() {
-    final totalPages = (widget.chapterController.chapters?.length ?? 0) + 1;
+    final totalPages = widget.chapterController.chapters?.length ?? 0;
     if (_activePage < totalPages - 1 && !_isPageAnimating) {
       final target = _activePage + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
@@ -244,16 +245,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     if (widget.chapterController.isTransitioningMode) return;
     if (_activePage == index) return;
     // Save reading progress of the chapter we are navigating away from
-    if (_activePage > 0) {
-      widget.chapterController.saveReadingPositionForMode(widget.readingMode);
-    }
+    widget.chapterController.saveReadingPositionForMode(widget.readingMode);
     _activePage = index;
-    if (index > 0) {
-      final chapterIndex = index - 1;
-      widget.chapterController.loadChapter(chapterIndex, userInitiated: false);
-    } else {
-      widget.chapterController.onNavigatedToCover();
-    }
+    widget.chapterController.loadChapter(index, userInitiated: false);
     if (!_isPageAnimating &&
         _viewPageController.hasClients &&
         _viewPageController.page?.round() != index) {
@@ -277,8 +271,8 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
         themeRepo.config.pageFlip;
 
-    // Total page count is 1 cover page + N chapter pages
-    final totalPages = widget.chapterController.chapters!.length + 1;
+    // Total page count is N chapter pages
+    final totalPages = widget.chapterController.chapters!.length;
 
     if (useRealisticCurl) {
       return RealisticPageTurn(
@@ -290,14 +284,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
         onToggleChrome: widget.onToggleChrome,
         onTapUp: widget.onTapUp,
         pageBuilder: (context, index) {
-          if (index == 0) {
-            return BookCoverPage(
-              book: widget.chapterController.book,
-              onToggleChrome: widget.onToggleChrome,
-            );
-          }
-
-          final chapterIndex = index - 1;
+          final chapterIndex = index;
           final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
           final scrollController =
               widget.chapterController.chapterScrollController(chapterIndex);
@@ -341,31 +328,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       itemCount: totalPages,
       onPageChanged: _handlePageChanged,
       itemBuilder: (context, index) {
-        if (index == 0) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
-                _goToNextPage();
-              }
-            },
-            onVerticalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0.0;
-              if (velocity < -200) {
-                _goToNextPage();
-              }
-            },
-            child: BookCoverPage(
-              book: widget.chapterController.book,
-              onToggleChrome: widget.onToggleChrome,
-              onTurnPage: _goToNextPage,
-            ),
-          );
-        }
-
-        final chapterIndex = index - 1;
+        final chapterIndex = index;
         final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
         final scrollController =
             widget.chapterController.chapterScrollController(chapterIndex);

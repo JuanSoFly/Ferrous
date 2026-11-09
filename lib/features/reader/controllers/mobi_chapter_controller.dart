@@ -274,10 +274,9 @@ class MobiChapterController extends ChangeNotifier {
         ? (totalMeasuredHeight / totalMeasuredChars)
         : 0.38;
 
-    const coverHeight = 520.0;
     const chapterSpacing = 48.0;
 
-    double offset = coverHeight;
+    double offset = 0.0;
     for (int i = 0; i < chapterIndex; i++) {
       final measured = _chapterHeights[i];
       if (measured != null && measured > 0) {

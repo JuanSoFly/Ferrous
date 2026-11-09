@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};
 use std::path::Path;
 use zip::ZipArchive;
+use unrar_rs::RarArchive;
 
 use crate::api::pdf::{load_pdf_document, with_pdfium};
 
@@ -564,7 +565,33 @@ fn extract_epub_cover_from_opf<R: Read + Seek>(
     Err(anyhow::anyhow!("No cover image found via OPF metadata"))
 }
 
+fn is_rar_file(path: &str) -> bool {
+    if let Ok(mut file) = File::open(path) {
+        let mut magic = [0u8; 4];
+        if file.read_exact(&mut magic).is_ok() {
+            return &magic == b"Rar!";
+        }
+    }
+    false
+}
+
 fn extract_cbz_cover(book_path: &str, save_path: &str) -> Result<String> {
+    if is_rar_file(book_path) {
+        if let Ok(saved) = extract_rar_cover(book_path, save_path) {
+            return Ok(saved);
+        }
+    }
+
+    match extract_zip_cover(book_path, save_path) {
+        Ok(saved) => Ok(saved),
+        Err(zip_err) => {
+            extract_rar_cover(book_path, save_path)
+                .with_context(|| format!("Failed to extract comic cover from ZIP ({}) or RAR", zip_err))
+        }
+    }
+}
+
+fn extract_zip_cover(book_path: &str, save_path: &str) -> Result<String> {
     let file = File::open(book_path).context("Failed to open CBZ file")?;
     let reader = BufReader::new(file);
     let mut archive = ZipArchive::new(reader).context("Failed to read CBZ archive")?;
@@ -573,7 +600,7 @@ fn extract_cbz_cover(book_path: &str, save_path: &str) -> Result<String> {
     for i in 0..archive.len() {
         let entry = archive.by_index(i)?;
         let name = entry.name().to_lowercase();
-        if name.ends_with(".jpg") || name.ends_with(".jpeg") || name.ends_with(".png") || name.ends_with(".webp") {
+        if is_supported_image_path(&name) {
             image_names.push(entry.name().to_string());
         }
     }
@@ -593,6 +620,42 @@ fn extract_cbz_cover(book_path: &str, save_path: &str) -> Result<String> {
     }
 
     Err(anyhow::anyhow!("No image found in CBZ"))
+}
+
+fn extract_rar_cover(book_path: &str, save_path: &str) -> Result<String> {
+    let file = File::open(book_path).context("Failed to open CBR file")?;
+    let mut archive = RarArchive::open(file).context("Failed to read RAR archive")?;
+
+    let mut image_names: Vec<String> = archive
+        .entries()
+        .filter_map(|entry| {
+            let name = entry.name.clone();
+            if is_supported_image_path(&name.to_lowercase()) {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    image_names.sort();
+
+    if let Some(first_image) = image_names.first() {
+        let mut entry = archive.by_name(first_image)
+            .or_else(|_| archive.by_name(&first_image.replace('/', "\\")))
+            .or_else(|_| archive.by_name(&first_image.replace('\\', "/")))?;
+
+        let mut buffer = Vec::new();
+        entry.copy_to(&mut buffer)?;
+        if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
+            return Ok(saved);
+        }
+        let mut out_file = File::create(save_path).context("Failed to create cover file")?;
+        out_file.write_all(&buffer)?;
+        return Ok(save_path.to_string());
+    }
+
+    Err(anyhow::anyhow!("No image found in CBR"))
 }
 
 fn save_cover_thumbnail(bytes: &[u8], save_path: &str) -> Result<String> {
