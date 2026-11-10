@@ -67,9 +67,9 @@ class CbzPageController extends ChangeNotifier {
   PageCornerColors? getCornerColorsForPage(int pageIndex) =>
       _cacheController?.getCornerColors(pageIndex);
 
-  /// Called when a page's corner colors become available to update background if it is current.
+  /// Called when a page's corner colors become available to update background if it is current or nearby.
   void notifyCornerColorsAvailable(int pageIndex) {
-    if (pageIndex == _currentPage) {
+    if ((pageIndex - _currentPage).abs() <= 3) {
       notifyListeners();
     }
   }

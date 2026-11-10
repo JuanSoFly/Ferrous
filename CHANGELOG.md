@@ -1,3 +1,12 @@
+## [1.3.2-alpha.2] - 2026-11-11
+
+### CBZ & Comic Reader Adaptive Canvas
+- **Multi-Stop Edge Color Profiles**: Extracted 8-stop horizontal and vertical edge gradients (`topProfile`, `bottomProfile`) from raw RGBA buffers to support split-tone, dual-colored, and graphic border pages without letterbox banding.
+- **Manga White-Paper Detection**: Added heuristic monochrome paper classification to preserve clean off-white margins and eliminate harsh dark letterboxing during manga reading.
+- **3-Depth Band Sampling & Clustering**: Implemented 3-depth sampling bands (3px, 7px, 12px) with exact-sum clustering to eliminate scanner crop borders, panel margins, and screentone noise while accurately sampling full-bleed artwork.
+- **Dynamic Gutter Separator Bridge**: Added intelligent canvas bridging in continuous and webtoon reading modes, matching background colors across page boundaries and preventing dark gutter flashing between light pages.
+- **Nearby Page Color Pre-warming**: Expanded `notifyCornerColorsAvailable` notification radius to ±3 adjacent pages, pre-warming background gradients ahead of user scroll gestures.
+
 ## [1.3.2-alpha.1] - 2026-11-11
 
 ### MOBI Reader Architecture & Metadata

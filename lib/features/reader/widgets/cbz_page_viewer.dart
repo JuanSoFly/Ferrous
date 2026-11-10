@@ -264,7 +264,6 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
 
   Widget _buildVerticalContinuousView() {
     final isWebtoon = widget.pageController.readingMode == ReadingMode.webtoon;
-    final spacing = isWebtoon ? 1.0 : 12.0;
     final size = MediaQuery.of(context).size;
     final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
     final maxWidth = (size.width * devicePixelRatio).round();
@@ -291,7 +290,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         itemCount: widget.pageController.pageCount,
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
-        separatorBuilder: (_, __) => SizedBox(height: spacing),
+        separatorBuilder: _buildSeparator,
         itemBuilder: (context, index) {
           final key = index < widget.pageController.pageKeys.length
               ? widget.pageController.pageKeys[index]
@@ -348,7 +347,7 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
         itemCount: widget.pageController.pageCount,
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: _buildSeparator,
         itemBuilder: (context, index) {
           final key = index < widget.pageController.pageKeys.length
               ? widget.pageController.pageKeys[index]
@@ -374,6 +373,94 @@ class _CbzPageViewerState extends State<CbzPageViewer> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  bool _isNearBlack(Color c) {
+    final r = (c.r * 255).round();
+    final g = (c.g * 255).round();
+    final b = (c.b * 255).round();
+    return r <= 24 && g <= 24 && b <= 24;
+  }
+
+  bool _areColorsSimilar(Color c1, Color c2, {double tolerance = 16.0}) {
+    final dr = ((c1.r * 255) - (c2.r * 255)).abs();
+    final dg = ((c1.g * 255) - (c2.g * 255)).abs();
+    final db = ((c1.b * 255) - (c2.b * 255)).abs();
+    return dr <= tolerance && dg <= tolerance && db <= tolerance;
+  }
+
+  Widget _buildSeparator(BuildContext context, int index) {
+    final mode = widget.pageController.readingMode;
+    final isWebtoon = mode == ReadingMode.webtoon;
+    final isHorizontal = mode == ReadingMode.horizontalContinuous;
+    final spacing = isWebtoon ? 1.0 : 12.0;
+
+    final prevColors = widget.pageController.getCornerColorsForPage(index);
+    final nextColors = widget.pageController.getCornerColorsForPage(index + 1);
+    final theme = Theme.of(context);
+    final defaultBg = theme.scaffoldBackgroundColor;
+
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+
+    final rawExit = isHorizontal
+        ? (isRtl ? prevColors?.leftColor : prevColors?.rightColor)
+        : prevColors?.bottomColor;
+    final rawEntry = isHorizontal
+        ? (isRtl ? nextColors?.rightColor : nextColors?.leftColor)
+        : nextColors?.topColor;
+
+    // Cascade fallbacks so unextracted adjacent page never flashes black
+    final exitColor = rawExit ?? rawEntry ?? defaultBg;
+    final entryColor = rawEntry ?? rawExit ?? defaultBg;
+
+    final bool sameCanvas = (prevColors?.isMangaWhitePaper == true && nextColors?.isMangaWhitePaper == true) ||
+        _areColorsSimilar(exitColor, entryColor, tolerance: 16);
+
+    final Color separatorColor;
+    if (sameCanvas) {
+      separatorColor = exitColor; // Solid white canvas bridge in manga
+    } else if (_isNearBlack(exitColor) || _isNearBlack(entryColor)) {
+      separatorColor = const Color(0xFF000000); // Clean black gutter in contrasting color pages
+    } else {
+      separatorColor = defaultBg;
+    }
+
+    final size = MediaQuery.of(context).size;
+
+    if (isHorizontal) {
+      return SizedBox(
+        width: spacing,
+        height: size.height,
+        child: ColoredBox(color: separatorColor),
+      );
+    }
+
+    // Vertical continuous & Webtoon
+    // User Guard 3: In Webtoon mode, do NOT shrink fittedWidth via size.height * ar,
+    // keep full size.width because tall webtoon strips take full screen width.
+    double separatorWidth = size.width;
+    if (!isWebtoon) {
+      final ar = widget.pageController.cacheController?.getEstimatedAspectRatio(index) ??
+                 widget.pageController.cacheController?.getEstimatedAspectRatio(index + 1);
+      if (ar != null && ar > 0) {
+        final fittedW = (size.height * ar).clamp(0.0, size.width);
+        if (fittedW > 0) {
+          separatorWidth = fittedW;
+        }
+      }
+    }
+
+    return SizedBox(
+      height: spacing,
+      width: size.width,
+      child: Center(
+        child: SizedBox(
+          width: separatorWidth,
+          height: spacing,
+          child: ColoredBox(color: separatorColor),
+        ),
       ),
     );
   }

@@ -1,15 +1,17 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:reader_app/core/models/book.dart';
 import '../models/page_corner_colors.dart';
 
-/// Renders a dynamic, smoothly animated background for comic reading modes.
+/// Renders a dynamic background for comic reading modes.
 ///
-/// Adapts the letterbox / background colors to match the corners of the current page:
-/// - In [ReadingMode.vertical], [ReadingMode.leftToRight], [ReadingMode.verticalContinuous],
-///   and [ReadingMode.webtoon]: top bar corresponds to [PageCornerColors.topColor],
-///   and bottom bar corresponds to [PageCornerColors.bottomColor].
-/// - In [ReadingMode.horizontalContinuous]: left corresponds to [PageCornerColors.leftColor],
-///   and right corresponds to [PageCornerColors.rightColor].
+/// In paged modes ([ReadingMode.vertical], [ReadingMode.leftToRight]):
+/// smoothly transitions between page corner palettes as pages turn.
+///
+/// In continuous modes ([ReadingMode.verticalContinuous], [ReadingMode.webtoon],
+/// [ReadingMode.horizontalContinuous]):
+/// maintains a calm, stable backdrop to prevent flashing during scrolling,
+/// while individual page letterboxes and seam separators handle transitions locally.
 class CbzAdaptiveBackground extends StatelessWidget {
   final Widget child;
   final PageCornerColors? colors;
@@ -31,7 +33,9 @@ class CbzAdaptiveBackground extends StatelessWidget {
     final fallback = PageCornerColors.fallback(baseColor: fallbackColor);
     final targetColors = colors ?? fallback;
 
-    final isHorizontal = readingMode == ReadingMode.horizontalContinuous;
+    final isContinuous = readingMode == ReadingMode.verticalContinuous ||
+        readingMode == ReadingMode.webtoon ||
+        readingMode == ReadingMode.horizontalContinuous;
 
     return Stack(
       fit: StackFit.expand,
@@ -39,28 +43,26 @@ class CbzAdaptiveBackground extends StatelessWidget {
         // Background layer isolated with RepaintBoundary so color transitions
         // never trigger re-rasterization of the comic content
         RepaintBoundary(
-          child: TweenAnimationBuilder<PageCornerColors?>(
-            tween: _PageCornerColorsTween(
-              begin: targetColors,
-              end: targetColors,
-            ),
-            duration: animationDuration,
-            curve: Curves.easeOutCubic,
-            builder: (context, animatedColors, _) {
-              final activeColors = animatedColors ?? targetColors;
+          child: isContinuous
+              ? DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: targetColors.isMangaWhitePaper ? const Color(0xFFFFFFFF) : fallbackColor,
+                  ),
+                  child: const SizedBox.expand(),
+                )
+              : TweenAnimationBuilder<PageCornerColors?>(
+                  tween: _PageCornerColorsTween(
+                    begin: targetColors,
+                    end: targetColors,
+                  ),
+                  duration: animationDuration,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, animatedColors, _) {
+                    final activeColors = animatedColors ?? targetColors;
 
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: isHorizontal
-                      ? LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            activeColors.leftColor,
-                            activeColors.rightColor,
-                          ],
-                        )
-                      : LinearGradient(
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
@@ -68,11 +70,11 @@ class CbzAdaptiveBackground extends StatelessWidget {
                             activeColors.bottomColor,
                           ],
                         ),
+                      ),
+                      child: const SizedBox.expand(),
+                    );
+                  },
                 ),
-                child: const SizedBox.expand(),
-              );
-            },
-          ),
         ),
 
         // Foreground comic content
@@ -82,8 +84,9 @@ class CbzAdaptiveBackground extends StatelessWidget {
   }
 }
 
-/// A container that wraps individual comic pages in paged views (PageView / RealisticPageTurn),
-/// providing page-locked letterboxing colors matching that page's corners.
+/// A container that wraps individual comic pages in paged and continuous views,
+/// painting page-locked letterbox and pillarbox margins matching that page's
+/// exact horizontal profiles and dominant edge colors.
 class CbzPageLetterboxContainer extends StatelessWidget {
   final Widget child;
   final PageCornerColors? colors;
@@ -104,89 +107,100 @@ class CbzPageLetterboxContainer extends StatelessWidget {
       return child;
     }
 
-    final isHorizontal = readingMode == ReadingMode.horizontalContinuous;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
-
-        Gradient gradient;
-
-        if (isHorizontal) {
-          // Horizontal continuous or horizontal pillarboxing
-          if (aspectRatio != null && aspectRatio! > 0 && height > 0) {
-            final fittedW = (height * aspectRatio!).clamp(0.0, width);
-            final pillarboxW = (width - fittedW) / 2.0;
-            if (pillarboxW > 2.0 && width > 0) {
-              final stopL = (pillarboxW / width).clamp(0.0, 0.49);
-              final stopR = ((width - pillarboxW) / width).clamp(0.51, 1.0);
-              gradient = LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  colors!.leftColor,
-                  colors!.leftColor,
-                  colors!.rightColor,
-                  colors!.rightColor,
-                ],
-                stops: [0.0, stopL, stopR, 1.0],
-              );
-            } else {
-              gradient = LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [colors!.leftColor, colors!.rightColor],
-              );
-            }
-          } else {
-            gradient = LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [colors!.leftColor, colors!.rightColor],
-            );
-          }
-        } else {
-          // Vertical paged, left to right, vertical continuous, webtoon
-          if (aspectRatio != null && aspectRatio! > 0 && width > 0) {
-            final fittedH = (width / aspectRatio!).clamp(0.0, height);
-            final letterboxH = (height - fittedH) / 2.0;
-            if (letterboxH > 2.0 && height > 0) {
-              final stopT = (letterboxH / height).clamp(0.0, 0.49);
-              final stopB = ((height - letterboxH) / height).clamp(0.51, 1.0);
-              gradient = LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  colors!.topColor,
-                  colors!.topColor,
-                  colors!.bottomColor,
-                  colors!.bottomColor,
-                ],
-                stops: [0.0, stopT, stopB, 1.0],
-              );
-            } else {
-              gradient = LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [colors!.topColor, colors!.bottomColor],
-              );
-            }
-          } else {
-            gradient = LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [colors!.topColor, colors!.bottomColor],
-            );
-          }
-        }
-
-        return DecoratedBox(
-          decoration: BoxDecoration(gradient: gradient),
-          child: child,
-        );
-      },
+    return CustomPaint(
+      painter: _PageLetterboxPainter(
+        colors: colors!,
+        aspectRatio: aspectRatio,
+      ),
+      child: child,
     );
+  }
+}
+
+/// Paints top/bottom letterboxing and left/right pillarboxing independently
+/// on all 4 margins without unbounded layout calculations or single-gradient limitations.
+class _PageLetterboxPainter extends CustomPainter {
+  final PageCornerColors colors;
+  final double? aspectRatio;
+
+  const _PageLetterboxPainter({
+    required this.colors,
+    required this.aspectRatio,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final contentRect = _calculateContentRect(size);
+    final paint = Paint()..isAntiAlias = false;
+
+    // 1. Top margin (Letterboxing) - Multi-stop horizontal gradient
+    if (contentRect.top > 0.5) {
+      final topShader = ui.Gradient.linear(
+        Offset(contentRect.left, 0),
+        Offset(contentRect.right > contentRect.left ? contentRect.right : size.width, 0),
+        colors.topProfile,
+        _calculateStops(colors.topProfile.length),
+      );
+      paint.shader = topShader;
+      canvas.drawRect(Rect.fromLTRB(0, 0, size.width, contentRect.top), paint);
+    }
+
+    // 2. Bottom margin (Letterboxing) - Multi-stop horizontal gradient
+    if (contentRect.bottom < size.height - 0.5) {
+      final bottomShader = ui.Gradient.linear(
+        Offset(contentRect.left, 0),
+        Offset(contentRect.right > contentRect.left ? contentRect.right : size.width, 0),
+        colors.bottomProfile,
+        _calculateStops(colors.bottomProfile.length),
+      );
+      paint.shader = bottomShader;
+      canvas.drawRect(Rect.fromLTRB(0, contentRect.bottom, size.width, size.height), paint);
+    }
+
+    // 3. Left margin (Pillarboxing) - Dominant left edge color
+    if (contentRect.left > 0.5) {
+      paint.shader = null;
+      paint.color = colors.leftColor;
+      canvas.drawRect(Rect.fromLTRB(0, 0, contentRect.left, size.height), paint);
+    }
+
+    // 4. Right margin (Pillarboxing) - Dominant right edge color
+    if (contentRect.right < size.width - 0.5) {
+      paint.shader = null;
+      paint.color = colors.rightColor;
+      canvas.drawRect(Rect.fromLTRB(contentRect.right, 0, size.width, size.height), paint);
+    }
+  }
+
+  Rect _calculateContentRect(Size size) {
+    if (aspectRatio == null || aspectRatio! <= 0 || size.width <= 0 || size.height <= 0) {
+      return Rect.fromLTWH(0, 0, size.width, size.height);
+    }
+
+    final boxAr = size.width / size.height;
+    if (boxAr > aspectRatio!) {
+      // Container is wider than comic page -> Pillarbox Left & Right
+      final fittedW = (size.height * aspectRatio!).clamp(0.0, size.width);
+      final dx = (size.width - fittedW) / 2.0;
+      return Rect.fromLTWH(dx, 0.0, fittedW, size.height);
+    } else {
+      // Container is taller than comic page -> Letterbox Top & Bottom
+      final fittedH = (size.width / aspectRatio!).clamp(0.0, size.height);
+      final dy = (size.height - fittedH) / 2.0;
+      return Rect.fromLTWH(0.0, dy, size.width, fittedH);
+    }
+  }
+
+  static List<double> _calculateStops(int length) {
+    if (length <= 1) return const [0.0];
+    return List.generate(length, (i) => i / (length - 1));
+  }
+
+  @override
+  bool shouldRepaint(covariant _PageLetterboxPainter oldDelegate) {
+    return oldDelegate.colors != colors || oldDelegate.aspectRatio != aspectRatio;
   }
 }
 
