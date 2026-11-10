@@ -2,6 +2,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:hyphenatorx/hyphenatorx.dart';
 import 'package:hyphenatorx/languages/language_en_us.dart';
+import 'package:reader_app/core/utils/html_defragmenter.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
@@ -31,6 +32,7 @@ class HyphenationHelper {
     if (html.isEmpty) return html;
     try {
       final document = html_parser.parse(html);
+      HtmlDefragmenter.defragmentDocument(document);
       final body = document.body ?? document.documentElement;
       if (body == null) return html;
       _injectIndentTagsRecursive(body);
@@ -79,13 +81,20 @@ class HyphenationHelper {
   /// [applyIndent] - whether to add paragraph indentation
   static String processHtmlAndIndent(
     String html, {
-    bool applyHyphenation = true,
+    bool applyHyphenation = false,
     bool applyIndent = true,
   }) {
-    if (!applyHyphenation && !applyIndent && !html.contains('<p-indent')) return html;
+    if (!applyHyphenation &&
+        !applyIndent &&
+        !html.contains('<p-indent') &&
+        !html.contains('\u00AD') &&
+        !html.contains('  ')) {
+      return html;
+    }
 
     try {
       final document = html_parser.parse(html);
+      HtmlDefragmenter.defragmentDocument(document);
       _processNodeHyphenateAndIndent(
         document.body,
         applyHyphenation: applyHyphenation,
@@ -158,9 +167,17 @@ class HyphenationHelper {
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
-      final text = node.text;
-      if (text != null && text.trim().isNotEmpty && applyHyphenation) {
-        node.text = hyphenator.hyphenateText(text);
+      var text = node.text;
+      if (text != null && text.trim().isNotEmpty) {
+        if (applyHyphenation) {
+          text = hyphenator.hyphenateText(text);
+        } else if (text.contains('\u00AD')) {
+          text = text.replaceAll('\u00AD', '');
+        }
+        if (text.contains('  ') || text.contains('\t')) {
+          text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+        }
+        node.text = text;
       }
     } else if (node.hasChildNodes()) {
       for (final child in List<dom.Node>.from(node.nodes)) {

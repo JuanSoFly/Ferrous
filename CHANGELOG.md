@@ -1,5 +1,11 @@
 ## [1.3.2-alpha.2] - 2026-11-11
 
+### HTML Paragraph Defragmentation & Reader Typography
+- **HTML Paragraph Defragmenter**: Implemented `HtmlDefragmenter` to scan and stitch together artificially split paragraphs in converted EPUB and MOBI files while preserving formatting, styling, and navigation anchors.
+- **Soft-Hyphen Stripping & Whitespace Normalization**: Stripped rogue soft-hyphens (`\u00AD`) and condensed redundant whitespace and tabs across text nodes when hyphenation is disabled.
+- **Hyphenation Default Update**: Switched default `hyphenation` setting in `ReaderThemeConfig` from `true` to `false` for cleaner baseline typography across reflowable reader views.
+- **Chapter Controller Integration**: Integrated DOM defragmentation into `EpubChapterController`, `MobiChapterController`, and `HyphenationHelper` pipeline prior to sentence tokenization and indentation tagging.
+
 ### CBZ & Comic Reader Adaptive Canvas
 - **Multi-Stop Edge Color Profiles**: Extracted 8-stop horizontal and vertical edge gradients (`topProfile`, `bottomProfile`) from raw RGBA buffers to support split-tone, dual-colored, and graphic border pages without letterbox banding.
 - **Manga White-Paper Detection**: Added heuristic monochrome paper classification to preserve clean off-white margins and eliminate harsh dark letterboxing during manga reading.

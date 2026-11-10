@@ -26,7 +26,7 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
       pageFlip: fields[6] as bool? ?? true,
       wordSpacing: fields[7] as double? ?? 0.0,
       paragraphIndent: fields[8] as bool? ?? true,
-      hyphenation: fields[9] as bool? ?? true,
+      hyphenation: fields[9] as bool? ?? false,
       fontWeight: fields[10] as int? ?? 400,
       paperTexture: fields[11] as String? ?? 'natural',
       showBookSpine: fields[12] as bool? ?? true,

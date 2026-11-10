@@ -11,6 +11,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/core/utils/html_defragmenter.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:reader_app/core/services/diagnostic_logger.dart';
@@ -211,6 +212,7 @@ class MobiChapterController extends ChangeNotifier {
       previousContent = trimmed;
       
       final doc = html_parser.parse(content);
+      HtmlDefragmenter.defragmentDocument(doc);
       if (title.isEmpty) {
         final heading = doc.querySelector('h1, h2, h3, h4, title')?.text.trim();
         if (heading != null && heading.isNotEmpty) {
@@ -222,7 +224,8 @@ class MobiChapterController extends ChangeNotifier {
 
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
-      final contentWithIndent = HyphenationHelper.injectIndentTags(content);
+      final defragmentedHtml = doc.body?.innerHtml ?? content;
+      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
 
       chapters.add(MobiChapterInfo(title: title));
       contents.add(contentWithIndent);
@@ -233,9 +236,11 @@ class MobiChapterController extends ChangeNotifier {
     if (chapters.isEmpty && rawChapters.isNotEmpty) {
       final first = rawChapters.first;
       final doc = html_parser.parse(first.htmlContent);
+      HtmlDefragmenter.defragmentDocument(doc);
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
-      final firstWithIndent = HyphenationHelper.injectIndentTags(first.htmlContent);
+      final defragmentedHtml = doc.body?.innerHtml ?? first.htmlContent;
+      final firstWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
       chapters.add(MobiChapterInfo(title: first.title));
       contents.add(firstWithIndent);
       plainTexts.add(plainText);

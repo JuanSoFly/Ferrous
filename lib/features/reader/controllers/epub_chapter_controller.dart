@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/data/services/epub_cover_extractor.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/core/utils/html_defragmenter.dart';
 import 'package:reader_app/core/services/diagnostic_logger.dart';
 
 class EpubChapterInfo {
@@ -290,6 +291,7 @@ class EpubChapterController extends ChangeNotifier {
       final content = rawChapter.HtmlContent ?? '';
       
       final doc = html_parser.parse(content);
+      HtmlDefragmenter.defragmentDocument(doc);
       if (title == null || title.isEmpty) {
         final heading = doc.querySelector('h1, h2, h3, h4, title')?.text.trim();
         if (heading != null && heading.isNotEmpty) {
@@ -301,7 +303,8 @@ class EpubChapterController extends ChangeNotifier {
 
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
-      final contentWithIndent = HyphenationHelper.injectIndentTags(content);
+      final defragmentedHtml = doc.body?.innerHtml ?? content;
+      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
 
       chapters.add(EpubChapterInfo(title: title));
       contents.add(contentWithIndent);

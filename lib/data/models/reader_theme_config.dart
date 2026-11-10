@@ -54,7 +54,7 @@ class ReaderThemeConfig {
     this.pageFlip = true,
     this.wordSpacing = 0.0,
     this.paragraphIndent = true,
-    this.hyphenation = true,
+    this.hyphenation = false,
     this.fontWeight = 400,
     this.paperTexture = 'natural',
     this.showBookSpine = true,
