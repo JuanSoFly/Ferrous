@@ -56,28 +56,26 @@ class EpubContinuousViewer extends StatelessWidget {
           key: ValueKey('epub-continuous-${chapterController.scrollEpoch}'),
           controller: chapterController.scrollController,
           scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
-          addRepaintBoundaries: true,
+          addRepaintBoundaries: false,
           itemCount: totalCount,
           itemBuilder: (context, index) {
             final chapterIndex = index;
             final isLast = chapterIndex == chapterController.chapters!.length - 1;
             final htmlContent = chapterController.allChapterContents[chapterIndex];
 
-            return RepaintBoundary(
+            return Padding(
               key: chapterController.chapterKeys[chapterIndex],
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: 16.0,
-                  right: 16.0,
-                  top: chapterIndex == 0 ? topPadding : chapterSpacing,
-                  bottom: isLast ? bottomPadding : 0.0,
-                ),
-                child: EpubContentViewer(
-                  chapterIndex: chapterIndex,
-                  htmlContent: htmlContent,
-                  chapterController: chapterController,
-                  ttsController: ttsController,
-                ),
+              padding: EdgeInsets.only(
+                left: 16.0,
+                right: 16.0,
+                top: chapterIndex == 0 ? topPadding : chapterSpacing,
+                bottom: isLast ? bottomPadding : 0.0,
+              ),
+              child: EpubContentViewer(
+                chapterIndex: chapterIndex,
+                htmlContent: htmlContent,
+                chapterController: chapterController,
+                ttsController: ttsController,
               ),
             );
           },

@@ -202,6 +202,7 @@ pub fn extract_cover(book_path: String, save_path: String) -> Result<String> {
             "pdf" => extract_pdf_cover(&book_path, &save_path),
             "epub" => extract_epub_cover(&book_path, &save_path),
             "cbz" | "cbr" => extract_cbz_cover(&book_path, &save_path),
+            "mobi" | "azw" | "azw3" => extract_mobi_cover(&book_path, &save_path),
             _ => Err(anyhow::anyhow!("Unsupported format for cover extraction: {}", format)),
         }
     })
@@ -679,4 +680,116 @@ fn save_cover_thumbnail(bytes: &[u8], save_path: &str) -> Result<String> {
         .save_with_format(save_path, ImageFormat::Png)
         .context("Failed to save cover thumbnail")?;
     Ok(save_path.to_string())
+}
+
+fn extract_mobi_cover(book_path: &str, save_path: &str) -> Result<String> {
+    let data = std::fs::read(book_path).context("Failed to open MOBI file")?;
+    if data.len() < 78 {
+        return Err(anyhow::anyhow!("File too small for MOBI/PDB"));
+    }
+    let num_records = u16::from_be_bytes([data[76], data[77]]) as usize;
+    if num_records == 0 || data.len() < 78 + num_records * 8 {
+        return Err(anyhow::anyhow!("Invalid PDB record count"));
+    }
+
+    let get_record = |i: usize| -> Option<&[u8]> {
+        if i >= num_records {
+            return None;
+        }
+        let entry_offset = 78 + i * 8;
+        let start = u32::from_be_bytes(data.get(entry_offset..entry_offset + 4)?.try_into().ok()?) as usize;
+        let end = if i + 1 < num_records {
+            let next_entry = 78 + (i + 1) * 8;
+            u32::from_be_bytes(data.get(next_entry..next_entry + 4)?.try_into().ok()?) as usize
+        } else {
+            data.len()
+        };
+        if start <= end && end <= data.len() {
+            Some(&data[start..end])
+        } else {
+            None
+        }
+    };
+
+    let rec0 = get_record(0).ok_or_else(|| anyhow::anyhow!("Failed to read record 0"))?;
+    if rec0.len() < 132 || rec0.get(16..20) != Some(b"MOBI") {
+        return Err(anyhow::anyhow!("Invalid MOBI header in record 0"));
+    }
+
+    let first_image_index = u32::from_be_bytes(rec0[108..112].try_into()?) as usize;
+    let mobi_header_len = u32::from_be_bytes(rec0[20..24].try_into()?) as usize;
+    let exth_flags = u32::from_be_bytes(rec0[128..132].try_into()?);
+
+    let mut cover_offset: Option<usize> = None;
+    if (exth_flags & 0x40) != 0 && rec0.len() >= 16 + mobi_header_len + 12 {
+        let exth_start = 16 + mobi_header_len;
+        if rec0.get(exth_start..exth_start + 4) == Some(b"EXTH") {
+            let count = u32::from_be_bytes(rec0[exth_start + 8..exth_start + 12].try_into()?) as usize;
+            let mut curr = exth_start + 12;
+            for _ in 0..count {
+                if curr + 8 > rec0.len() {
+                    break;
+                }
+                let rec_type = u32::from_be_bytes(rec0[curr..curr + 4].try_into()?);
+                let rec_len = u32::from_be_bytes(rec0[curr + 4..curr + 8].try_into()?) as usize;
+                if rec_len < 8 || curr + rec_len > rec0.len() {
+                    break;
+                }
+                if rec_type == 201 {
+                    // EXTH 201: CoverOffset
+                    let val_bytes = &rec0[curr + 8..curr + rec_len];
+                    let val = match val_bytes.len() {
+                        4 => u32::from_be_bytes(val_bytes.try_into()?) as usize,
+                        2 => u16::from_be_bytes(val_bytes.try_into()?) as usize,
+                        1 => val_bytes[0] as usize,
+                        _ => 0,
+                    };
+                    cover_offset = Some(val);
+                    break;
+                }
+                curr += rec_len;
+            }
+        }
+    }
+
+    // Try target record first if specified
+    if let Some(off) = cover_offset {
+        let target_rec = first_image_index + off;
+        if let Some(img_data) = get_record(target_rec) {
+            if img_data.len() >= 4
+                && (img_data.starts_with(&[0xFF, 0xD8, 0xFF])
+                    || img_data.starts_with(&[0x89, 0x50, 0x4E, 0x47])
+                    || img_data.starts_with(b"GIF8"))
+            {
+                if let Ok(saved) = save_cover_thumbnail(img_data, save_path) {
+                    return Ok(saved);
+                }
+                let mut out_file = File::create(save_path)?;
+                out_file.write_all(img_data)?;
+                return Ok(save_path.to_string());
+            }
+        }
+    }
+
+    // Fallback: check first image record or nearby records
+    if first_image_index < num_records {
+        for idx in first_image_index..num_records.min(first_image_index + 10) {
+            if let Some(img_data) = get_record(idx) {
+                if img_data.len() >= 4
+                    && (img_data.starts_with(&[0xFF, 0xD8, 0xFF])
+                        || img_data.starts_with(&[0x89, 0x50, 0x4E, 0x47])
+                        || img_data.starts_with(b"GIF8"))
+                {
+                    if let Ok(saved) = save_cover_thumbnail(img_data, save_path) {
+                        return Ok(saved);
+                    }
+                    let mut out_file = File::create(save_path)?;
+                    out_file.write_all(img_data)?;
+                    return Ok(save_path.to_string());
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("No cover image found in MOBI"))
 }

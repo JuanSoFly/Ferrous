@@ -20,6 +20,7 @@ import 'package:reader_app/features/reader/controllers/epub_chapter_controller.d
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:reader_app/features/settings/app_themes.dart';
 
 class EpubContentViewer extends StatefulWidget {
@@ -199,6 +200,21 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         key: ValueKey('chapter-html-core-${widget.chapterIndex}'),
         data: content,
         extensions: extensions,
+        onLinkTap: (url, attributes, element) {
+          if (url == null || url.trim().isEmpty) return;
+          final trimmed = url.trim();
+          if (trimmed.startsWith('http://') ||
+              trimmed.startsWith('https://') ||
+              trimmed.startsWith('mailto:')) {
+            try {
+              launchUrl(Uri.parse(trimmed), mode: LaunchMode.externalApplication);
+            } catch (e) {
+              debugPrint('Error launching external URL $trimmed: $e');
+            }
+          } else {
+            widget.chapterController.navigateToHref(trimmed);
+          }
+        },
         style: {
           "body": Style(
             fontSize: FontSize(themeConfig.fontSize),

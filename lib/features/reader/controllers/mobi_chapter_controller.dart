@@ -8,8 +8,10 @@ import 'package:reader_app/data/services/book_file_resolver.dart';
 import 'package:reader_app/core/utils/performance.dart';
 import 'package:reader_app/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:path_provider/path_provider.dart';
 import 'package:reader_app/core/utils/dom_text_utils.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
+import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:reader_app/core/services/diagnostic_logger.dart';
 
@@ -120,6 +122,39 @@ class MobiChapterController extends ChangeNotifier {
         
         // Fetch chapters from Rust backend
         final rustChapters = await rust_mobi.getMobiChapters(path: resolved.path);
+
+        // Lazily heal author/title in database if book was imported with defaults
+        if (book.author == 'Unknown Author' || book.title.isEmpty) {
+          try {
+            final realTitle = await rust_mobi.getMobiTitle(path: resolved.path);
+            final realAuthor = await rust_mobi.getMobiAuthor(path: resolved.path);
+            final updatedTitle = (realTitle.isNotEmpty && realTitle != 'Unknown Title') ? realTitle : book.title;
+            final updatedAuthor = (realAuthor.isNotEmpty && realAuthor != 'Unknown Author') ? realAuthor : book.author;
+            if (updatedTitle != book.title || updatedAuthor != book.author) {
+              await repository.updateBook(book.copyWith(title: updatedTitle, author: updatedAuthor));
+            }
+          } catch (_) {}
+        }
+
+        // If the book does not have an existing cover file, extract in background
+        final currentCover = book.coverPath;
+        if (currentCover == null || currentCover.isEmpty || !File(currentCover).existsSync()) {
+          unawaited(() async {
+            try {
+              final appDir = await getApplicationDocumentsDirectory();
+              final coversDir = Directory('${appDir.path}/covers');
+              if (!await coversDir.exists()) {
+                await coversDir.create(recursive: true);
+              }
+              final coverPath = '${coversDir.path}/${book.id}.png';
+              await covers_api.extractCover(bookPath: resolved.path, savePath: coverPath);
+              if (await File(coverPath).exists()) {
+                await repository.updateCoverPath(book.id, coverPath);
+                notifyListeners();
+              }
+            } catch (_) {}
+          }());
+        }
 
         if (rustChapters.isEmpty) {
           DiagnosticLogger.instance.log('MOBI', 'No sections found in MOBI', level: LogLevel.error);

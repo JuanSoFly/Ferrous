@@ -28,12 +28,16 @@ class ParsedEpubBook {
   final List<String> contents;
   final List<String> plainTexts;
   final List<List<SentenceSpan>> sentenceSpans;
+  final Map<String, int> anchorToChapterIndex;
+  final List<String> chapterSourceFiles;
 
   ParsedEpubBook({
     required this.chapters,
     required this.contents,
     required this.plainTexts,
     required this.sentenceSpans,
+    this.anchorToChapterIndex = const {},
+    this.chapterSourceFiles = const [],
   });
 }
 
@@ -79,6 +83,9 @@ class EpubChapterController extends ChangeNotifier {
   final Map<int, double> _chapterScrollOffsets = {};
   ResolvedBookFile? _resolvedFile;
 
+  Map<String, int> _anchorToChapterIndex = const {};
+  List<String> _chapterSourceFiles = const [];
+
   bool _isRestoringPosition = false;
   int _restoreGeneration = 0;
   bool _isProgrammaticScroll = false;
@@ -93,6 +100,8 @@ class EpubChapterController extends ChangeNotifier {
   List<EpubChapterInfo>? get chapters => _chapters;
   List<String> get allChapterContents => _allChapterContents;
   List<String> get allChapterPlainTexts => _allChapterPlainTexts;
+  Map<String, int> get anchorToChapterIndex => _anchorToChapterIndex;
+  List<String> get chapterSourceFiles => _chapterSourceFiles;
   List<GlobalKey> get chapterKeys => _chapterKeys;
   int get currentChapterIndex => _currentChapterIndex;
   String? get currentContent => _currentContent;
@@ -145,18 +154,29 @@ class EpubChapterController extends ChangeNotifier {
 
         final allKeys = List.generate(parsedBook.chapters.length, (_) => GlobalKey());
 
-        if (_currentChapterIndex >= parsedBook.chapters.length) {
-          _currentChapterIndex = 0;
-        }
+        final safeIndex = _currentChapterIndex.clamp(0, parsedBook.chapters.length - 1);
+        _currentChapterIndex = safeIndex;
 
         _chapters = parsedBook.chapters;
         _allChapterContents = parsedBook.contents;
         _allChapterPlainTexts = parsedBook.plainTexts;
         _allChapterSentenceSpans = parsedBook.sentenceSpans;
+        _anchorToChapterIndex = parsedBook.anchorToChapterIndex;
+        _chapterSourceFiles = parsedBook.chapterSourceFiles;
         _chapterKeys = allKeys;
-        _currentContent = parsedBook.contents[_currentChapterIndex];
-        _currentPlainText = parsedBook.plainTexts[_currentChapterIndex];
-        _sentenceSpans = parsedBook.sentenceSpans[_currentChapterIndex];
+        _currentContent = parsedBook.contents[safeIndex];
+        _currentPlainText = parsedBook.plainTexts[safeIndex];
+        _sentenceSpans = parsedBook.sentenceSpans[safeIndex];
+
+        // Safe bounds checking on reading sentence offsets (Guardrail 5)
+        final textLen = _currentPlainText.length;
+        if (_lastReadingSentenceStart > textLen) {
+          _lastReadingSentenceStart = -1;
+          _lastReadingSentenceEnd = -1;
+        } else if (_lastReadingSentenceEnd > textLen) {
+          _lastReadingSentenceEnd = textLen;
+        }
+
         final anchor = _readingAnchorOffset();
         _chapterProgress = anchor >= 0 ? _fractionForTextOffset(_currentChapterIndex, anchor) : 0.0;
         _isLoading = false;
@@ -211,14 +231,19 @@ class EpubChapterController extends ChangeNotifier {
     }
 
     List<EpubChapter> rawChapters = [];
+    Map<String, int> anchorMap = {};
+    List<String> sourceFiles = [];
 
     // 1. Primary: Use the spine-based parser which strictly follows the EPUB
     // reading order and eliminates duplicate chapters from TOC subchapters.
     try {
-      rawChapters = EpubFallbackParser.parseChapters(
+      final parseResult = EpubFallbackParser.parseBookResult(
         bytes,
         cacheDirectory: cacheDir,
       );
+      rawChapters = parseResult.chapters;
+      anchorMap = parseResult.anchorToChapterIndex;
+      sourceFiles = parseResult.chapterSourceFiles;
     } catch (e) {
       debugPrint('Spine parser failed: $e. Falling back to epubx...');
     }
@@ -289,6 +314,8 @@ class EpubChapterController extends ChangeNotifier {
       contents: contents,
       plainTexts: plainTexts,
       sentenceSpans: sentenceSpans,
+      anchorToChapterIndex: anchorMap,
+      chapterSourceFiles: sourceFiles,
     );
   }
 
@@ -306,19 +333,15 @@ class EpubChapterController extends ChangeNotifier {
   static List<EpubChapter> _flattenAndDeduplicateChapters(List<EpubChapter> chapters) {
     final flattened = _flattenChaptersStatic(chapters);
     final result = <EpubChapter>[];
-    final seenPaths = <String>{};
+    final seenKeys = <String>{};
     final seenContents = <String>{};
 
     for (final chapter in flattened) {
-      final fileName = (chapter.ContentFileName ?? '')
-          .toLowerCase()
-          .split('#')
-          .first
-          .trim();
+      final key = '${(chapter.ContentFileName ?? '').toLowerCase()}#${chapter.Anchor ?? ''}';
       final content = chapter.HtmlContent?.trim() ?? '';
       if (content.isEmpty) continue;
 
-      if (fileName.isNotEmpty && seenPaths.contains(fileName)) {
+      if (seenKeys.contains(key)) {
         continue;
       }
       final hasImage = content.toLowerCase().contains('<img') ||
@@ -329,7 +352,7 @@ class EpubChapterController extends ChangeNotifier {
         continue;
       }
 
-      if (fileName.isNotEmpty) seenPaths.add(fileName);
+      seenKeys.add(key);
       seenContents.add(content);
       result.add(chapter);
     }
@@ -522,6 +545,56 @@ class EpubChapterController extends ChangeNotifier {
 
   void scrollToChapter(int index) {
     _scrollToChapter(index);
+  }
+
+  void navigateToHref(String href) {
+    if (href.trim().isEmpty || _chapters == null || _chapters!.isEmpty) return;
+    final trimmed = href.trim();
+
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('mailto:')) {
+      return;
+    }
+
+    int? targetIndex;
+
+    if (trimmed.contains('#')) {
+      final parts = trimmed.split('#');
+      final filePart = parts[0].trim();
+      final anchorPart = parts[1].trim();
+
+      if (filePart.isNotEmpty) {
+        final normalizedFile = filePart.replaceAll('\\', '/').toLowerCase();
+        final baseFile = normalizedFile.split('/').last;
+
+        targetIndex = _anchorToChapterIndex['$normalizedFile#$anchorPart'];
+        targetIndex ??= _anchorToChapterIndex['$baseFile#$anchorPart'];
+        targetIndex ??= _anchorToChapterIndex[normalizedFile];
+        targetIndex ??= _anchorToChapterIndex[baseFile];
+      } else {
+        // Relative anchor in current chapter: "#p45"
+        final currentSource = _currentChapterIndex < _chapterSourceFiles.length
+            ? _chapterSourceFiles[_currentChapterIndex].toLowerCase()
+            : '';
+        if (currentSource.isNotEmpty) {
+          final baseSource = currentSource.split('/').last;
+          targetIndex = _anchorToChapterIndex['$currentSource#$anchorPart'];
+          targetIndex ??= _anchorToChapterIndex['$baseSource#$anchorPart'];
+        }
+        targetIndex ??= _anchorToChapterIndex['#$anchorPart'];
+        targetIndex ??= _anchorToChapterIndex[anchorPart];
+      }
+    } else {
+      final normalizedFile = trimmed.replaceAll('\\', '/').toLowerCase();
+      final baseFile = normalizedFile.split('/').last;
+      targetIndex = _anchorToChapterIndex[normalizedFile];
+      targetIndex ??= _anchorToChapterIndex[baseFile];
+    }
+
+    if (targetIndex != null && targetIndex >= 0 && targetIndex < _chapters!.length) {
+      loadChapter(targetIndex, userInitiated: true);
+    }
   }
 
   void _scrollToChapter(int index, {int attempt = 0}) {

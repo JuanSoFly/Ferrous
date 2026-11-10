@@ -1,3 +1,16 @@
+## [1.3.2-alpha.1] - 2026-11-11
+
+### MOBI Reader Architecture & Metadata
+- **Byte-Exact Chapter Slicing via NCX Targets**: Refactored Rust MOBI engine to slice raw document bytes directly using NCX table of contents byte offsets (`filepos`) with safe UTF-8 boundary snapping and target deduplication.
+- **Front Matter & Title Page Extraction**: Added automatic front matter boundary detection to extract cover and title pages located prior to the first chapter target.
+- **Dynamic Image Path Normalization**: Converted MOBI `recindex` image references directly to local filesystem URIs (`file://`) with automatic format fallback detection (.jpg / .png).
+- **Metadata Extraction in Library Scanner**: Integrated `getMobiTitle` and `getMobiAuthor` FFI bindings into storage scanning to automatically extract real MOBI and AZW titles and authors.
+
+### Reader Navigation & Anchor Resolution
+- **In-Book Footnote & Anchor Navigation**: Implemented anchor target mapping (`#anchor` and file-prefixed fragments) across EPUB and MOBI chapter controllers.
+- **Interactive Link Tapping**: Wired link handlers across paged and continuous reader modes to smoothly jump to anchor positions, chapters, and footnotes without corrupting reading state.
+- **EPUB Fallback Parser Anchors**: Added anchor collection and source file tracking to the EPUB fallback parser.
+
 ## [1.3.1] - 2026-11-10
 
 ### Performance & GPU Optimization

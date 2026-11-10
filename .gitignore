@@ -50,5 +50,6 @@ test
 key.properties
 **/*.keystore
 **/*.jks
+books
 .agents
 skills-lock.json

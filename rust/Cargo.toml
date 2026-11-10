@@ -42,7 +42,7 @@ roxmltree = "0.21.1"
 lto = true
 codegen-units = 1
 opt-level = "z"
-panic = "abort"
+panic = "unwind"
 strip = true
 
 [lints.rust]

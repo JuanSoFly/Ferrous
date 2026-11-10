@@ -7,6 +7,7 @@ import 'package:reader_app/core/models/book.dart';
 import 'package:reader_app/core/models/library_location.dart';
 import 'package:reader_app/data/repositories/book_repository.dart';
 import 'package:reader_app/data/services/saf_service.dart';
+import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:uuid/uuid.dart';
 
 class LibraryLocationScanResult {
@@ -436,12 +437,31 @@ class LibraryLocationRepository extends ChangeNotifier {
         continue;
       }
 
-      final title = _titleFromDisplayName(ref.displayName);
+      var title = _titleFromDisplayName(ref.displayName);
+      var author = 'Unknown Author';
       final format = ref.format.isNotEmpty ? ref.format : _formatFromName(ref.displayName);
+      final fmtLower = format.toLowerCase();
+
+      if ((fmtLower == 'mobi' || fmtLower == 'azw' || fmtLower == 'azw3') &&
+          ref.filePath != null &&
+          ref.filePath!.isNotEmpty &&
+          File(ref.filePath!).existsSync()) {
+        try {
+          final realTitle = await rust_mobi.getMobiTitle(path: ref.filePath!);
+          if (realTitle.isNotEmpty && realTitle != 'Unknown Title') {
+            title = realTitle;
+          }
+          final realAuthor = await rust_mobi.getMobiAuthor(path: ref.filePath!);
+          if (realAuthor.isNotEmpty && realAuthor != 'Unknown Author') {
+            author = realAuthor;
+          }
+        } catch (_) {}
+      }
+
       final newBook = Book(
         id: const Uuid().v4(),
         title: title,
-        author: 'Unknown Author',
+        author: author,
         filePath: ref.filePath ?? '',
         format: format.toLowerCase(),
         sourceType: ref.sourceType,
