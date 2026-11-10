@@ -1,4 +1,4 @@
-## [1.3.2-alpha.2] - 2026-11-11
+## [1.3.2] - 2026-11-11
 
 ### HTML Paragraph Defragmentation & Reader Typography
 - **HTML Paragraph Defragmenter**: Implemented `HtmlDefragmenter` to scan and stitch together artificially split paragraphs in converted EPUB and MOBI files while preserving formatting, styling, and navigation anchors.
@@ -13,7 +13,6 @@
 - **Dynamic Gutter Separator Bridge**: Added intelligent canvas bridging in continuous and webtoon reading modes, matching background colors across page boundaries and preventing dark gutter flashing between light pages.
 - **Nearby Page Color Pre-warming**: Expanded `notifyCornerColorsAvailable` notification radius to ±3 adjacent pages, pre-warming background gradients ahead of user scroll gestures.
 
-## [1.3.2-alpha.1] - 2026-11-11
 
 ### MOBI Reader Architecture & Metadata
 - **Byte-Exact Chapter Slicing via NCX Targets**: Refactored Rust MOBI engine to slice raw document bytes directly using NCX table of contents byte offsets (`filepos`) with safe UTF-8 boundary snapping and target deduplication.
