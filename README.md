@@ -48,13 +48,22 @@
 
 ## Download
 
-Precompiled Android packages (APKs) are available on the [GitHub Releases](https://github.com/JuanSoFly/Ferrous/releases/latest) page, or automatically via [Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/JuanSoFly/Ferrous):
+<p>
+  <a href="https://github.com/JuanSoFly/Ferrous/releases/latest">
+    <img src="https://img.shields.io/github/v/release/JuanSoFly/Ferrous?style=flat-square&label=Latest%20Release&color=8C1D18" alt="Latest Stable Release" />
+  </a>
+  <a href="https://github.com/JuanSoFly/Ferrous/releases">
+    <img src="https://img.shields.io/github/downloads/JuanSoFly/Ferrous/total?style=flat-square&color=blue" alt="Total Downloads" />
+  </a>
+</p>
 
-| Architecture | Target Devices | Release Asset |
-| :--- | :--- | :--- |
-| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | [`ferrous-v1.2.1-arm64-v8a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-arm64-v8a.apk) |
-| **`armeabi-v7a`** | Legacy 32-bit Android devices | [`ferrous-v1.2.1-armeabi-v7a.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-armeabi-v7a.apk) |
-| **`x86_64`** | Android emulators & ChromeOS | [`ferrous-v1.2.1-x86_64.apk`](https://github.com/JuanSoFly/Ferrous/releases/download/v1.2.1/ferrous-v1.2.1-x86_64.apk) |
+Precompiled Android packages (APKs) are available on the [GitHub Releases](https://github.com/JuanSoFly/Ferrous/releases/latest) page, or install directly with automated updates via [Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/JuanSoFly/Ferrous):
+
+| Architecture | Target Devices | Release Asset Pattern | Download |
+| :--- | :--- | :--- | :--- |
+| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | `ferrous-*-arm64-v8a.apk` | [**Latest arm64-v8a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`armeabi-v7a`** | Legacy 32-bit Android devices | `ferrous-*-armeabi-v7a.apk` | [**Latest armeabi-v7a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`x86_64`** | Android emulators & ChromeOS | `ferrous-*-x86_64.apk` | [**Latest x86_64 APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
 
 > [!TIP]
 > If you are unsure which build your phone requires, choose **`arm64-v8a`**, which works on virtually all modern Android devices.
@@ -101,12 +110,15 @@ Experience Ferrous Reader's tactile 120Hz interface, native typography engine, a
 ## Key Features
 
 - **Blazing Fast File Indexing**: Scans device storage and Storage Access Framework (SAF) trees in seconds via parallel directory traversal in Rust (`walkdir`).
-- **Smooth 120Hz UI**: Heavy I/O and document decoding run asynchronously outside the UI isolate on a Rust thread pool (`tokio`), avoiding frame drops.
+- **Smooth 120Hz UI & GPU Optimization**: Heavy I/O runs asynchronously off the UI isolate on Rust thread pools (`tokio`). Halftone scrims use an O(1) repeating GPU `ImageShader` tile behind `RepaintBoundary` isolation.
 - **Hardware-Accelerated PDF Rendering**: Powered by Google PDFium via `pdfium-render`, generating thread-safe bitmaps directly for Flutter textures.
-- **Native Non-WebView EPUB Engine**: Renders reflowable book content directly into a native Flutter widget tree with hyphenation and full typography control.
-- **Synchronized Text-to-Speech (TTS)**: Integrated TTS with dynamic word and sentence highlighting across page boundaries and chapters.
+- **Native Non-WebView EPUB Engine**: Renders reflowable book content directly into a native Flutter widget tree with hyphenation, margins, and custom typography control.
+- **5 Spatial Layout Dimensions**: Seamless real-time switching between Modernist, Floating Island, Cyber Terminal, Athenaeum, and Compact Slate layout archetypes.
+- **Kindle Carta 1300 E-Ink Mode & Tactile Textures**: Dedicated high-contrast e-paper architecture with physical halftone scrims, carbon ink borders, 0ms transitions, and tactile paper textures (Japanese Washi, Deckle Rag Folio, Obsidian Velvet).
+- **Native Comic & Manga Reader**: Streaming RAR (`unrar-rs`) and ZIP extraction for CBZ/CBR, interactive scrubber sheet, priority-aware page caching, and adaptive edge-color letterboxing.
+- **Synchronized Text-to-Speech (TTS)**: Integrated TTS with sentence and word highlighting across page boundaries, protected by transient event guards and static DOM caching.
 - **Granular Library Management**: Multi-directory library location support via Android Storage Access Framework (SAF), collection grouping, advanced sorting, and format filtering.
-- **Material 3 Design**: Dynamic color palette adaptation, customizable themes, reading progress persistence, and animated shimmer placeholders.
+- **Material 3 Design**: Dynamic color palette adaptation, customizable themes (OLED Midnight, Matcha, Nord Arctic, Kindle E-Ink), reading progress persistence, and animated shimmer placeholders.
 
 ---
 
@@ -117,7 +129,7 @@ Experience Ferrous Reader's tactile 120Hz interface, native typography engine, a
 | **PDF** (`.pdf`) | Rust (`pdfium-render`) | Native texture bitmaps | Fast page flipping, text selection, TTS extraction, continuous scroll |
 | **EPUB** (`.epub`) | Dart (`epubx`) + Rust cover extractor | Native Flutter widgets (`flutter_html`) | Custom typography, margins, line-height, hyphenation, CSS themes |
 | **MOBI / AZW / AZW3** (`.mobi`, `.azw`, `.azw3`) | Rust (`mobi`) | HTML parser & native widgets | Chapter navigation, embedded images, metadata extraction |
-| **Comic Archives** (`.cbz`, `.zip`) | Rust (`zip`) | Canvas image stream | Direct archive stream extraction, pinch-to-zoom, page spread |
+| **Comic & Manga Archives** (`.cbz`, `.cbr`, `.zip`, `.rar`) | Rust (`zip`, `unrar-rs`) | Canvas image stream | Streaming archive extraction, pinch-to-zoom, page spread, adaptive edge color matching |
 | **Plain Text** (`.txt`) | Rust (`txt`) | Rich HTML & layout widgets | Formatted indentation, lists, checkboxes, and Mermaid diagram rendering |
 | **Word Documents** (`.docx`) | Rust (`docx-rs`) | Structured HTML widgets | Document flow, paragraph formatting, and styled table layouts |
 
@@ -135,7 +147,7 @@ flowchart LR
 
     PDF["PDFium Engine<br/>(PDF Rendering)"]
     SCAN["walkdir<br/>(Storage Scanner)"]
-    PARSERS["Format Decoders<br/>(MOBI, CBZ, DOCX)"]
+    PARSERS["Format Decoders<br/>(MOBI, CBZ, CBR, DOCX)"]
     TTS["TTS Pipeline<br/>(Text Segmentation)"]
 
     UI <===>|"Type-Safe FFI"| FFI
@@ -156,7 +168,7 @@ flowchart LR
 - **Rust (Backend)**:
   - Multi-threaded, non-blocking I/O operations powered by `tokio`.
   - PDFium binding management with safe, asynchronous document loading and page caching.
-  - Archive reading (`zip`) for fast on-the-fly cover extraction without writing temporary files to disk.
+  - Archive decompression (`zip`, `unrar-rs`) for fast streaming cover and page extraction without temporary files.
   - Text segmentation and tokenization for sentence-level TTS highlighting.
 
 ---
@@ -170,6 +182,7 @@ flowchart LR
 | **Backend Language** | Rust 1.80+ (2021 Edition) | High-performance compute engine and file I/O |
 | **FFI Layer** | `flutter_rust_bridge` 2.11.1 | Auto-generated, type-safe foreign function interface |
 | **PDF Renderer** | Google PDFium (`pdfium-render`) | Native C++ rendering via dynamic binary loading |
+| **Comic & Archive Engine** | `zip` & `unrar-rs` (Rust) | Zero-copy streaming decompression of CBZ, CBR, ZIP, and RAR |
 | **Database** | Hive (`hive_flutter`) | Fast, lightweight embedded key-value document store |
 | **Concurrency** | `tokio` (Rust) | Multi-worker thread pool executing off the UI isolate |
 | **File Access** | Android SAF + Rust `walkdir` | Scoped storage compliance with rapid recursive traversal |
