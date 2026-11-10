@@ -49,9 +49,6 @@
 ## Download
 
 <p>
-  <a href="https://github.com/JuanSoFly/Ferrous/releases/latest">
-    <img src="https://img.shields.io/github/v/release/JuanSoFly/Ferrous?style=flat-square&label=Latest%20Release&color=8C1D18" alt="Latest Stable Release" />
-  </a>
   <a href="https://github.com/JuanSoFly/Ferrous/releases">
     <img src="https://img.shields.io/github/downloads/JuanSoFly/Ferrous/total?style=flat-square&color=blue" alt="Total Downloads" />
   </a>
