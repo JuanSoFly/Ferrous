@@ -28,6 +28,120 @@ class HtmlDefragmenter {
     caseSensitive: true,
   );
 
+  static final _contractionPattern = RegExp(
+    r"(\p{L})\uFFFD+(s|t|d|ll|ve|re|m|em|all|am|clock|er)\b",
+    caseSensitive: false,
+    unicode: true,
+  );
+
+  static final _wordTrailingQuotePattern = RegExp(
+    r"(\p{L}[sSnN])\uFFFD+(?=[\s\n)\]\.,!\?;:—]|$)",
+    unicode: true,
+  );
+
+  static final _elisionPrefixPattern = RegExp(
+    r"\b([ODL])\uFFFD+(\p{Lu}\p{L}+)",
+    unicode: true,
+  );
+
+  static final _spacedEmDashPattern = RegExp(
+    r"\s+\uFFFD+\s+",
+  );
+
+  static final _unspacedEmDashPattern = RegExp(
+    r"(\p{L})\uFFFD+(\p{L})",
+    unicode: true,
+  );
+
+  static final _openingQuotePattern = RegExp(
+    r"(?:^|(?<=[\s\n(\[—]))\uFFFD+(?=\p{L})",
+    unicode: true,
+  );
+
+  static final _closingQuotePattern = RegExp(
+    r"([,\.!\?;:—…])\uFFFD+(?=[\s\n)\]\—]|$)",
+  );
+
+  static final _unpunctuatedClosingQuotePattern = RegExp(
+    r"(\p{L})\uFFFD+(?=[\s\n)\]\.,!\?;:]|$)",
+    unicode: true,
+  );
+
+  static final _leadingLetterPattern = RegExp(r'^\p{L}', unicode: true);
+  static final _trailingLetterPattern = RegExp(r'\p{L}$', unicode: true);
+  static final _trailingPunctPattern = RegExp(r'[,\.!\?;:—…]$');
+  static final _trailingFffdPattern = RegExp(r'(?:^|(?<=[\s\n(\[—]))\uFFFD+$');
+  static final _trailingWordFffdPattern = RegExp(r'(?<=\p{L})\uFFFD+$', unicode: true);
+  static final _leadingFffdPattern = RegExp(r'^\uFFFD+(?=[\s\n)\]\—]|$)');
+
+  static String _normalizeRawMojibake(String text) {
+    if (!text.contains('\uFFFD') && !text.contains('\u001A') && !text.contains('ï¿½')) {
+      return text;
+    }
+    return text.replaceAll('ï¿½', '\uFFFD').replaceAll('\u001A', '\uFFFD');
+  }
+
+  /// Heals Unicode replacement characters (\uFFFD), truncated multi-byte sequences,
+  /// and mojibake entities into authentic typographic punctuation.
+  static String healReplacementCharacters(String text, {bool? preferDoubleQuotes}) {
+    if (!text.contains('\uFFFD') && !text.contains('\u001A') && !text.contains('ï¿½')) {
+      return text;
+    }
+
+    var healed = _normalizeRawMojibake(text);
+
+    // 1. Auto-detect dominant quote style (US double quotes vs UK single quotes)
+    final useDouble = preferDoubleQuotes ??
+        (healed.contains('“') || healed.contains('”'));
+    final openQuote = useDouble ? '“' : '‘';
+    final closeQuote = useDouble ? '”' : '’';
+
+    // 2. Contractions & Literary Words: "don\uFFFDt" -> "don’t", "o\uFFFDclock" -> "o’clock"
+    healed = healed.replaceAllMapped(
+      _contractionPattern,
+      (m) => '${m[1]}’${m[2]}',
+    );
+
+    // 3. Prefix Elisions: "O\uFFFDConnor" -> "O’Connor", "d\uFFFDArtagnan" -> "d’Artagnan"
+    healed = healed.replaceAllMapped(
+      _elisionPrefixPattern,
+      (m) => '${m[1]}’${m[2]}',
+    );
+
+    // 4. Spaced Em-Dash: "Ring \uFFFD it" -> "Ring — it"
+    healed = healed.replaceAll(_spacedEmDashPattern, ' — ');
+
+    // 5. Unspaced Em-Dash between words: "quietly\uFFFD\uFFFDand" -> "quietly—and"
+    healed = healed.replaceAllMapped(
+      _unspacedEmDashPattern,
+      (m) => '${m[1]}—${m[2]}',
+    );
+
+    // 6. Word-trailing apostrophes (plural possessives "Hobbits’", dialect "-in’")
+    healed = healed.replaceAllMapped(
+      _wordTrailingQuotePattern,
+      (m) => '${m[1]}’',
+    );
+
+    // 7. Dialogue Opening Quote: "\uFFFD\uFFFDYou ought..." -> "‘You ought..."
+    healed = healed.replaceAll(_openingQuotePattern, openQuote);
+
+    // 8. Dialogue Closing Quote on punctuation: "soon,\uFFFD" -> "soon,’", "Wait—\uFFFD" -> "Wait—’"
+    healed = healed.replaceAllMapped(
+      _closingQuotePattern,
+      (m) => '${m[1]}$closeQuote',
+    );
+
+    // 9. Unpunctuated Closing Quote: "‘friend\uFFFD and" -> "‘friend’ and", "‘no\uFFFD." -> "‘no’."
+    healed = healed.replaceAllMapped(
+      _unpunctuatedClosingQuotePattern,
+      (m) => '${m[1]}$closeQuote',
+    );
+
+    // 10. Residual Fallback: Purge remaining stray replacement glyphs
+    return healed.replaceAll('\uFFFD', '');
+  }
+
   /// Defragments all broken paragraphs across the document in place,
   /// preserving navigation anchors and stripping soft hyphens.
   static void defragmentDocument(dom.Document document) {
@@ -300,16 +414,30 @@ class HtmlDefragmenter {
     p2.remove();
   }
 
-  /// Cleans text nodes by stripping soft hyphens and collapsing consecutive ASCII spaces.
-  static void _cleanTextNodes(dom.Node node) {
+  /// Cleans text nodes by healing replacement characters, stripping soft hyphens,
+  /// and collapsing consecutive ASCII spaces.
+  static void _cleanTextNodes(dom.Node node, {bool? preferDoubleQuotes}) {
+    final bool useDouble;
+    if (preferDoubleQuotes != null) {
+      useDouble = preferDoubleQuotes;
+    } else {
+      final fullText = node.text;
+      useDouble = (fullText?.contains('“') ?? false) || (fullText?.contains('”') ?? false);
+    }
+
     if (node is dom.Element) {
       final tag = node.localName?.toLowerCase();
       if (tag == 'pre' || tag == 'code' || tag == 'script' || tag == 'style') {
         return;
       }
+      _healElementBoundaryNodes(node, preferDoubleQuotes: useDouble);
     }
+
     if (node is dom.Text) {
       var text = node.text;
+      if (text.contains('\uFFFD') || text.contains('\u001A') || text.contains('ï¿½')) {
+        text = healReplacementCharacters(text, preferDoubleQuotes: useDouble);
+      }
       if (text.contains('\u00AD')) {
         text = text.replaceAll('\u00AD', '');
       }
@@ -321,8 +449,64 @@ class HtmlDefragmenter {
       }
       node.text = text;
     }
+
     for (final child in node.nodes) {
-      _cleanTextNodes(child);
+      _cleanTextNodes(child, preferDoubleQuotes: useDouble);
+    }
+  }
+
+  /// Resolves replacement characters split across inline element boundaries:
+  /// - <p>\uFFFD\uFFFD<em>You</em></p>         -> <p>‘<em>You</em></p>
+  /// - <p>quietly\uFFFD\uFFFD<em>and</em></p>   -> <p>quietly—<em>and</em></p>
+  /// - <p>‘You ought to <em>soon,</em>\uFFFD</p> -> <p>‘You ought to <em>soon,</em>’</p>
+  static void _healElementBoundaryNodes(
+    dom.Element el, {
+    required bool preferDoubleQuotes,
+  }) {
+    final openQuote = preferDoubleQuotes ? '“' : '‘';
+    final closeQuote = preferDoubleQuotes ? '”' : '’';
+
+    for (var i = 0; i < el.nodes.length - 1; i++) {
+      final curr = el.nodes[i];
+      final next = el.nodes[i + 1];
+
+      // Case A: curr is a Text node ending with \uFFFD+ before an inline element
+      if (curr is dom.Text) {
+        final normalizedCurr = _normalizeRawMojibake(curr.text);
+        if (normalizedCurr.endsWith('\uFFFD')) {
+          final nextText = next.text;
+          if (nextText != null &&
+              nextText.isNotEmpty &&
+              _leadingLetterPattern.hasMatch(nextText)) {
+            if (_trailingFffdPattern.hasMatch(normalizedCurr)) {
+              // Preceded by start-of-node or whitespace -> Opening quote
+              curr.text = normalizedCurr.replaceFirst(_trailingFffdPattern, openQuote);
+            } else if (_trailingWordFffdPattern.hasMatch(normalizedCurr)) {
+              // Preceded immediately by a letter -> Unspaced em-dash across tag
+              curr.text = normalizedCurr.replaceFirst(_trailingWordFffdPattern, '—');
+            }
+          }
+        }
+      }
+
+      // Case B: curr is an inline Element ending with punctuation/letter and next starts with \uFFFD+
+      if (next is dom.Text) {
+        final normalizedNext = _normalizeRawMojibake(next.text);
+        if (normalizedNext.startsWith('\uFFFD')) {
+          final currText = curr.text;
+          if (currText != null &&
+              _trailingPunctPattern.hasMatch(currText) &&
+              _leadingFffdPattern.hasMatch(normalizedNext)) {
+            // <p>‘You ought to go <em>soon,</em>\uFFFD said Gandalf.</p>
+            next.text = normalizedNext.replaceFirst(_leadingFffdPattern, closeQuote);
+          } else if (currText != null &&
+              _trailingLetterPattern.hasMatch(currText) &&
+              RegExp(r'^\uFFFD+\p{L}', unicode: true).hasMatch(normalizedNext)) {
+            // <p><em>quietly</em>\uFFFD\uFFFDand</p>
+            next.text = normalizedNext.replaceFirst(RegExp(r'^\uFFFD+'), '—');
+          }
+        }
+      }
     }
   }
 }

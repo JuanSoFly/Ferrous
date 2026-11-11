@@ -1,4 +1,4 @@
-## [1.3.3-alpha.1] - 2026-11-11
+## [1.3.3] - 2026-11-11
 
 ### CBR / RAR Comic Extraction & Robustness
 - **3-Tier RAR Member Resolution**: Replaced fragile name lookups with 3-tier index-based matching (`find_member_sanitized`, `find_member`, and path-normalized fallback with pre-computed targets) in Rust `cbz` and `covers` modules.
@@ -11,6 +11,10 @@
 - **In-Progress Filter Precision**: Added `isInProgress` helper to accurately identify books that have been started but not finished, refining the "Continue Reading" shelf logic.
 
 ### Typography & Paragraph Defragmentation
+- **Contextual Mojibake & Replacement Character Healing**: Implemented `healReplacementCharacters` in `HtmlDefragmenter` to intelligently heal Unicode replacement characters (`\uFFFD`), substitute control chars (`\u001A`), and raw mojibake (`ï¿½`) into authentic curly apostrophes, smart quotation marks, and em-dashes across contractions, possessives, elisions, and speech boundaries.
+- **Cross-Tag Element Boundary Healing**: Added `_healElementBoundaryNodes` to repair replacement characters and smart punctuation split across inline markup boundaries (e.g., `<em>` and `<strong>` tags).
+- **Harmonized Search & TTS Normalization**: Integrated typographic replacement healing into `normalizePlainText` to preserve character offset alignment for search and clean TTS pronunciation.
+- **Rust MOBI CP-1252 Decoder Refinement**: Updated `decode_mobi_text` to route undefined CP-1252 bytes (`0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D`) as `\u{FFFD}` instead of literal `?`, enabling downstream contextual typographic healing in Dart.
 - **Advanced Defragmentation Regex**: Expanded `HtmlDefragmenter` with specialized heuristics for parenthetical citations, capitalized continuation phrases, attribution em-dashes, and trailing punctuation (ellipses, colons, em-dashes, commas).
 - **Proactive Soft-Hyphen Cleanup**: Unconditionally stripped soft-hyphens (`\u00AD`, `&shy;`) during text tree traversal in `HyphenationHelper` to prevent rendering artifacts and broken hyphenation line breaks in Flutter's text engine.
 - **Experimental Hyphenation Setting**: Tagged the reader hyphenation toggle with an experimental notice in the layout settings sheet.

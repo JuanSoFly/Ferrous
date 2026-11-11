@@ -165,7 +165,9 @@ fn decode_mobi_text(bytes: &[u8], encoding: u32) -> String {
                 0x9E => s.push('ž'),
                 0x9F => s.push('Ÿ'),
                 0xA0..=0xFF => s.push(b as char),
-                _ => s.push('?'),
+                // Route undefined CP1252 bytes (0x81, 0x8D, 0x8F, 0x90, 0x9D) as '\u{FFFD}'
+                // so Dart's contextual healer can repair them instead of emitting literal '?'
+                _ => s.push('\u{FFFD}'),
             }
         }
         s
