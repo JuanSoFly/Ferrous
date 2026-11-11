@@ -5,9 +5,24 @@ import 'package:html/parser.dart' as html_parser;
 /// PDF/OCR conversions inappropriately split sentences into multiple `<p>` elements.
 class HtmlDefragmenter {
   static final RegExp _terminalPunctuationRegex = RegExp(r'[.!?…][’”"\s\x27]*$');
-  static final RegExp _nonMergeEndingsRegex = RegExp(r'[:;—–][’”"\s\x27]*$');
-  static final RegExp _lowercaseStartRegex = RegExp(r'^\s*[‘“"\x27]?[a-z]');
-  static final RegExp _capitalStartRegex = RegExp(r'^\s*[‘“"\x27]?[A-Z]');
+  static final RegExp _ellipsisEndingRegex = RegExp(r'(?:\.\s*\.\s*\.|…)[’”"\s\x27]*$');
+  static final RegExp _dashOrColonEndingRegex = RegExp(r'[:—–][’”"\s\x27]*$');
+  static final RegExp _commaEndingRegex = RegExp(r',[’”"\s\x27]*$');
+
+  static final RegExp _lowercaseStartRegex =
+      RegExp(r'^\s*[‘“"\x27]*(?:[—–\-]+\s*)?[‘“"\x27]*[a-z]');
+
+  static final RegExp _attributionStartRegex =
+      RegExp(r'^\s*[‘“"\x27]?[—–\-]\s*[A-Z]');
+
+  static final RegExp _capitalizedContinuationRegex = RegExp(
+    r'^\s*[‘“"\x27]?[A-Z][a-zA-Z\-]*(?:\s+[A-Z][a-zA-Z\-]*)*[),;—:]\s+[‘“"\x27]?[a-z]',
+  );
+
+  static final RegExp _parentheticalCitationRegex = RegExp(
+    r'^\s*\([A-Z][^\)]*\)[,;:]?\s+[a-z]',
+  );
+
   static final RegExp _danglingFunctionWordRegex = RegExp(
     r'\b(of|to|in|for|with|from|by|at|on|into|upon|towards|between|through|under|over|after|before|the|a|an|his|her|their|my|our|your|its|and|but|or|as|than|that|which|who|whom|whose)$',
     caseSensitive: true,
@@ -73,9 +88,6 @@ class HtmlDefragmenter {
     // Rule 2c: Neither should contain line breaks (<br>)
     if (p1.querySelector('br') != null || p2.querySelector('br') != null) return false;
 
-    // Rule 2d: Neither should be entirely wrapped in <i> or <em> (poems, songs)
-    if (_isEntirelyItalic(p1) || _isEntirelyItalic(p2)) return false;
-
     // Rule 2e: Neither should be a standalone link (TOC entries)
     if (_isStandaloneLink(p1) || _isStandaloneLink(p2)) return false;
 
@@ -83,25 +95,93 @@ class HtmlDefragmenter {
     final p2Text = p2.text.trim();
     if (p1Text.isEmpty || p2Text.isEmpty) return false;
 
-    // Terminal punctuation check:
-    // . ! ? … : ; — – can NEVER be merged
-    if (_terminalPunctuationRegex.hasMatch(p1Text)) return false;
-    if (_nonMergeEndingsRegex.hasMatch(p1Text)) return false;
+    // Guardrail G1: Never merge an attribution (e.g. "—Arthur Schopenhauer") into preceding text
+    if (_attributionStartRegex.hasMatch(p2Text) && _terminalPunctuationRegex.hasMatch(p1Text)) {
+      return false;
+    }
 
-    // Condition A: P2 starts with lowercase letter or quote + lowercase
-    if (_lowercaseStartRegex.hasMatch(p2Text)) {
+    // Italic rule: Only allow italic merging when BOTH elements are entirely italic (e.g. Screenshot 6)
+    final p1Italic = _isEntirelyItalic(p1);
+    final p2Italic = _isEntirelyItalic(p2);
+    if ((p1Italic || p2Italic) && !(p1Italic && p2Italic)) return false;
+    if (p1Italic && p2Italic && p1Text.length < 40 && _terminalPunctuationRegex.hasMatch(p1Text)) {
+      return false;
+    }
+
+    final hasUnclosedParen = _hasUnclosedParen(p1Text);
+    final isLowercaseContinuation = _lowercaseStartRegex.hasMatch(p2Text);
+    final isCapitalizedContinuation = _capitalizedContinuationRegex.hasMatch(p2Text);
+    final isParentheticalCitation = _parentheticalCitationRegex.hasMatch(p2Text);
+
+    // Terminal punctuation check:
+    // . ! ? … can only merge if p1 ends with an ellipsis AND p2 starts lowercase (Break 1)
+    if (_terminalPunctuationRegex.hasMatch(p1Text)) {
+      final isEllipsis = _ellipsisEndingRegex.hasMatch(p1Text);
+      if (!isEllipsis || !isLowercaseContinuation) {
+        return false;
+      }
+    }
+
+    // Em-dash (—) or colon (:) ends: allow merge if p2 is a lowercase continuation (Breaks 3 & 4)
+    if (_dashOrColonEndingRegex.hasMatch(p1Text)) {
+      return isLowercaseContinuation;
+    }
+
+    // Comma (,) ends: allow merge if p1 has unclosed paren OR (p1 >= 45 chars AND p2 continues)
+    if (_commaEndingRegex.hasMatch(p1Text)) {
+      if (hasUnclosedParen) return true;
+      if (p1Text.length >= 45 && (isLowercaseContinuation || isCapitalizedContinuation)) {
+        return true;
+      }
+      return false;
+    }
+
+    // Unclosed parenthesis continuation (Breaks 5B & 5C):
+    // e.g. "(Wilfred Bion," / "Elliot Aronson)." or "(George Eliot, Henry James, Ralph" / "Ellison), who..."
+    if (hasUnclosedParen && _p2ClosesParen(p2Text)) {
       return true;
     }
 
-    // Condition B: P1 has >= 45 chars AND ends with a dangling lowercase function word
-    // AND P2 starts with a capital letter (or quote + capital letter)
+    // Break 5A: Unpunctuated prose line followed by parenthetical citation
+    // e.g. "of our economic behavior" / "(Daniel Kahneman), and of how..."
+    if (p1Text.length >= 40 && isParentheticalCitation) {
+      return true;
+    }
+
+    // Capitalized name + mid-sentence punctuation continuation (Break 5C)
+    if (isCapitalizedContinuation) {
+      return true;
+    }
+
+    // Lowercase continuation (Break 2 & general prose wraps)
+    if (isLowercaseContinuation) {
+      return true;
+    }
+
+    // Dangling function word continuation (e.g. "...into a calmer and" / "more strategic...")
     if (p1Text.length >= 45 &&
         _danglingFunctionWordRegex.hasMatch(p1Text) &&
-        _capitalStartRegex.hasMatch(p2Text)) {
+        RegExp(r'^\s*[‘“"\x27]?[A-Z]').hasMatch(p2Text)) {
       return true;
     }
 
     return false;
+  }
+
+  static bool _hasUnclosedParen(String text) {
+    var depth = 0;
+    for (final char in text.runes) {
+      if (char == 0x28) depth++; // '('
+      if (char == 0x29) depth = (depth - 1).clamp(0, 9999); // ')'
+    }
+    return depth > 0;
+  }
+
+  static bool _p2ClosesParen(String text) {
+    final closeIdx = text.indexOf(')');
+    final openIdx = text.indexOf('(');
+    if (closeIdx == -1) return false;
+    return openIdx == -1 || closeIdx < openIdx;
   }
 
   /// Checks if a paragraph is explicitly aligned or styled for special presentation.
@@ -133,17 +213,14 @@ class HtmlDefragmenter {
 
   /// Checks if a paragraph's visible text is entirely wrapped in an <i> or <em> tag.
   static bool _isEntirelyItalic(dom.Element p) {
-    final nonAnchorChildren = p.children.where((c) {
-      final tag = c.localName?.toLowerCase();
-      return tag != 'a' && tag != 'p-indent' && tag != 'indent';
-    }).toList();
-    if (nonAnchorChildren.length == 1) {
-      final tag = nonAnchorChildren.first.localName?.toLowerCase();
-      if (tag == 'i' || tag == 'em') {
-        return nonAnchorChildren.first.text.trim() == p.text.trim();
-      }
+    if (p.children.isEmpty) return false;
+    // Reject if there is any non-whitespace text directly inside <p> outside of <i>/<em>
+    for (final node in p.nodes) {
+      if (node is dom.Text && node.text.trim().isNotEmpty) return false;
     }
-    return false;
+    return p.children.every(
+      (c) => c.localName == 'i' || c.localName == 'em',
+    );
   }
 
   /// Checks if a paragraph consists solely of an anchor tag.
@@ -161,7 +238,7 @@ class HtmlDefragmenter {
 
   /// Merges [p2] into [p1], preserving all inline anchors and child elements.
   static void _mergeParagraphs(dom.Element p1, dom.Element p2) {
-    // 1. Remove any whitespace-only text nodes between p1 and p2 in the container
+    // 1. Remove whitespace nodes between p1 and p2 in parent container
     final p1Index = p1.parentNode?.nodes.indexOf(p1) ?? -1;
     final p2Index = p2.parentNode?.nodes.indexOf(p2) ?? -1;
     if (p1Index != -1 && p2Index != -1 && p2Index > p1Index + 1) {
@@ -173,17 +250,44 @@ class HtmlDefragmenter {
       }
     }
 
-    // 2. Ensure a space separates p1 from p2 if needed
-    final p1Text = p1.text;
-    final p2Text = p2.text;
-    if (!p1Text.endsWith(' ') &&
-        !p1Text.endsWith('\n') &&
-        !p2Text.startsWith(' ') &&
-        !p2Text.startsWith('\n')) {
+    // 2. Trim trailing whitespace text nodes in p1 and leading whitespace text nodes in p2
+    while (p1.nodes.isNotEmpty &&
+        p1.nodes.last is dom.Text &&
+        (p1.nodes.last as dom.Text).text.trim().isEmpty) {
+      p1.nodes.removeLast();
+    }
+    while (p2.nodes.isNotEmpty &&
+        p2.nodes.first is dom.Text &&
+        (p2.nodes.first as dom.Text).text.trim().isEmpty) {
+      p2.nodes.removeAt(0);
+    }
+
+    // 3. Coalesce matching inline elements (e.g. <i class="calibre3"> + <i class="calibre3">)
+    final last1 = p1.nodes.isNotEmpty ? p1.nodes.last : null;
+    final first2 = p2.nodes.isNotEmpty ? p2.nodes.first : null;
+
+    final needsSpace = !p1.text.endsWith(' ') &&
+        !p1.text.endsWith('\n') &&
+        !p2.text.startsWith(' ') &&
+        !p2.text.startsWith('\n');
+
+    if (last1 is dom.Element &&
+        first2 is dom.Element &&
+        last1.localName == first2.localName &&
+        last1.attributes['class'] == first2.attributes['class'] &&
+        last1.attributes['style'] == first2.attributes['style']) {
+      if (needsSpace) {
+        last1.nodes.add(dom.Text(' '));
+      }
+      for (final child in List<dom.Node>.from(first2.nodes)) {
+        last1.nodes.add(child);
+      }
+      first2.remove();
+    } else if (needsSpace) {
       p1.nodes.add(dom.Text(' '));
     }
 
-    // 3. Move all child nodes from p2 into p1 (stripping any inner <p-indent> tags)
+    // 4. Move remaining child nodes from p2 into p1 (stripping any inner <p-indent> tags)
     for (final child in List<dom.Node>.from(p2.nodes)) {
       if (child is dom.Element &&
           (child.localName == 'p-indent' || child.localName == 'indent')) {
@@ -192,7 +296,7 @@ class HtmlDefragmenter {
       p1.nodes.add(child);
     }
 
-    // 4. Remove p2 from container
+    // 5. Remove p2 from container
     p2.remove();
   }
 
@@ -208,6 +312,9 @@ class HtmlDefragmenter {
       var text = node.text;
       if (text.contains('\u00AD')) {
         text = text.replaceAll('\u00AD', '');
+      }
+      if (text.contains('&shy;')) {
+        text = text.replaceAll('&shy;', '');
       }
       if (text.contains('  ') || text.contains('\t')) {
         text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');

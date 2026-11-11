@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
 import 'package:reader_app/core/utils/performance.dart';
+import 'package:reader_app/core/errors/exceptions.dart';
+import 'package:reader_app/core/services/diagnostic_logger.dart';
 import '../models/page_corner_colors.dart';
 
 class _ExtractionTask {
@@ -56,6 +58,11 @@ class CbzCacheController {
   bool _disposed = false;
   int _currentPage = 0;
 
+  static final RegExp _errorPrefixRegex = RegExp(r'^(Exception|Error|AnyhowError):\s*');
+
+  // Specific extraction error messages keyed by pageIndex
+  final Map<int, String> _pageErrors = {};
+
   final Map<int, double> _aspectRatios = {};
   double? _averageAspectRatio;
 
@@ -104,6 +111,9 @@ class CbzCacheController {
   /// All currently extracted corner colors for the comic.
   Map<int, PageCornerColors> get allKnownCornerColors => Map.unmodifiable(_cornerColors);
 
+  /// Get the last recorded extraction error message for a page, if any.
+  String? getPageError(int index) => _pageErrors[index];
+
   /// Get an image for a specific page. Returns null if loading or not in cache.
   ui.Image? getCachedImage(int index, [int? maxWidth]) {
     if (index < 0 || index >= pageNames.length) return null;
@@ -130,6 +140,7 @@ class CbzCacheController {
 
     if (isImmediate) {
       _currentPage = index;
+      _pageErrors.remove(index);
     }
 
     // 1. Return cached if available
@@ -241,12 +252,16 @@ class CbzCacheController {
         ui.Image? decodedImage;
         int attempt = 0;
         const maxAttempts = 3;
+        Object? lastError;
+        StackTrace? lastStack;
 
         while (attempt < maxAttempts && decodedImage == null && !_disposed) {
           attempt++;
           try {
             decodedImage = await _extractAndDecodePage(task.pageIndex, task.maxWidth);
-          } catch (e) {
+          } catch (e, st) {
+            lastError = e;
+            lastStack = st;
             debugPrint('Extraction attempt $attempt failed for page ${task.pageIndex}: $e');
             if (attempt < maxAttempts && !_disposed) {
               if (retryDelay > Duration.zero) {
@@ -257,13 +272,34 @@ class CbzCacheController {
         }
 
         if (decodedImage != null && !_disposed) {
+          _pageErrors.remove(task.pageIndex);
           _addToCache(task.pageIndex, decodedImage);
           if (!task.completer.isCompleted) {
             task.completer.complete(decodedImage);
           }
         } else {
+          if (lastError != null) {
+            final formatted = _formatExtractionError(lastError);
+            _pageErrors[task.pageIndex] = formatted;
+            DiagnosticLogger.instance.log(
+              'CBZ',
+              'Failed to extract page ${task.pageIndex} from $archivePath: $formatted',
+            );
+          }
           if (!task.completer.isCompleted) {
-            task.completer.complete(null);
+            if (task.priority == 1 && lastError != null) {
+              task.completer.completeError(
+                ArchiveExtractionException(
+                  _pageErrors[task.pageIndex] ?? 'Failed to extract page',
+                  pageIndex: task.pageIndex,
+                  originalError: lastError,
+                  stackTrace: lastStack,
+                ),
+                lastStack,
+              );
+            } else {
+              task.completer.complete(null);
+            }
           }
         }
         _inFlightRequests.remove(task.pageIndex);
@@ -271,6 +307,26 @@ class CbzCacheController {
     } finally {
       _isProcessingQueue = false;
     }
+  }
+
+  String _formatExtractionError(dynamic error) {
+    final msg = error.toString().replaceFirst(_errorPrefixRegex, '');
+    if (msg.contains('Encrypted') || msg.contains('password')) {
+      return 'Encrypted / password-protected archive';
+    }
+    if (msg.contains('Corrupted') || msg.contains('damaged') || msg.contains('checksum')) {
+      return 'Archive data is corrupted';
+    }
+    if (msg.contains('MemberNotFound') || msg.contains('not found in archive')) {
+      return 'Page file missing or path mismatch in archive';
+    }
+    if (msg.contains('Unrar error') || msg.contains('RarError')) {
+      return 'RAR extraction failed: $msg';
+    }
+    if (msg.contains('Zip error')) {
+      return 'ZIP extraction failed: $msg';
+    }
+    return msg;
   }
 
   Future<ui.Image> _extractAndDecodePage(int index, int maxWidth) async {
@@ -417,5 +473,6 @@ class CbzCacheController {
     _cacheOrder.clear();
     _aspectRatios.clear();
     _cornerColors.clear();
+    _pageErrors.clear();
   }
 }

@@ -25,3 +25,19 @@ class SafException extends FerrousException {
   @override
   String toString() => 'SafException: $message';
 }
+
+/// Exception thrown when extracting or decoding a page from an archive (CBZ, CBR, etc.) fails.
+class ArchiveExtractionException extends FerrousException {
+  final int pageIndex;
+
+  const ArchiveExtractionException(
+    super.message, {
+    required this.pageIndex,
+    super.originalError,
+    super.stackTrace,
+  });
+
+  @override
+  String toString() => message;
+}
+

@@ -165,13 +165,31 @@ fn read_zip_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-fn find_rar_entry_name(archive: &RarArchive, target: &str) -> Option<String> {
-    for member in archive.entries() {
-        if member.name == target
-            || member.name.replace('\\', "/") == target
-            || member.name.replace('/', "\\") == target
-        {
-            return Some(member.name.clone());
+fn find_rar_member_index(archive: &RarArchive, target: &str) -> Option<usize> {
+    // Tier 1: Match against sanitized path (what archive.entries() emits)
+    if let Some(idx) = archive.find_member_sanitized(target) {
+        return Some(idx);
+    }
+    // Tier 2: Match against raw file_header name
+    if let Some(idx) = archive.find_member(target) {
+        return Some(idx);
+    }
+    // Tier 3: Pre-compute normalized target once (avoids O(N) heap allocations)
+    let target_norm = if target.contains('\\') {
+        target.replace('\\', "/")
+    } else {
+        target.to_string()
+    };
+    for (idx, member) in archive.entries().enumerate() {
+        if member.name == target {
+            return Some(idx);
+        }
+        if member.name.contains('\\') {
+            if member.name.replace('\\', "/") == target_norm {
+                return Some(idx);
+            }
+        } else if member.name == target_norm {
+            return Some(idx);
         }
     }
     None
@@ -180,17 +198,17 @@ fn find_rar_entry_name(archive: &RarArchive, target: &str) -> Option<String> {
 fn read_rar_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     let file = File::open(path)?;
     let mut archive = RarArchive::open(file)
-        .with_context(|| "Failed to open RAR archive")?;
+        .with_context(|| format!("Failed to open RAR archive: {}", path))?;
 
-    let resolved = find_rar_entry_name(&archive, entry_name)
-        .unwrap_or_else(|| entry_name.to_string());
+    let index = find_rar_member_index(&archive, entry_name)
+        .ok_or_else(|| anyhow!("Member '{}' not found in RAR archive", entry_name))?;
 
-    let entry = archive.by_name(&resolved)
-        .with_context(|| format!("Failed to find entry in RAR archive: {}", entry_name))?;
+    let entry = archive.by_index(index)
+        .with_context(|| format!("Failed to access member at index {} ({})", index, entry_name))?;
 
     let mut buffer = Vec::new();
     entry.copy_to(&mut buffer)
-        .with_context(|| "Failed to decompress RAR entry")?;
+        .with_context(|| format!("Failed to decompress RAR entry: {}", entry_name))?;
     Ok(buffer)
 }
 
@@ -202,12 +220,8 @@ fn read_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     };
 
     let buffer = if is_rar_file(path) {
-        if let Ok(bytes) = read_rar_image_bytes(path, entry_name) {
-            bytes
-        } else {
-            read_zip_image_bytes(path, entry_name)
-                .with_context(|| format!("Failed to read entry from RAR or ZIP: {}", entry_name))?
-        }
+        read_rar_image_bytes(path, entry_name)
+            .with_context(|| format!("Failed to read RAR entry: {}", entry_name))?
     } else {
         match read_zip_image_bytes(path, entry_name) {
             Ok(bytes) => bytes,

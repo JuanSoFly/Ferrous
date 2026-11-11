@@ -559,6 +559,7 @@ class _LayoutSettingsTab extends StatelessWidget {
           theme: theme,
           isEInk: isEInk,
           title: 'Hyphenation',
+          subtitle: 'Experimental (disabled for rendering stability)',
           value: config.hyphenation,
           onChanged: (_) => repo.toggleHyphenation(),
         ),

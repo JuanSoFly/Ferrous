@@ -1,3 +1,20 @@
+## [1.3.3-alpha.1] - 2026-11-11
+
+### CBR / RAR Comic Extraction & Robustness
+- **3-Tier RAR Member Resolution**: Replaced fragile name lookups with 3-tier index-based matching (`find_member_sanitized`, `find_member`, and path-normalized fallback with pre-computed targets) in Rust `cbz` and `covers` modules.
+- **Index-Based Archive Decompression**: Transitioned entry access from `by_name` to `by_index` for CBR files, eliminating decompression failures on non-standard entry paths and separator encodings.
+- **Archive Extraction Error Pipeline**: Introduced `ArchiveExtractionException` and granular error tracking in `CbzCacheController` to surface specific failure causes (corrupted data, password protection, unsupported compression) in `CbzPageImage`.
+- **Fault-Tolerant Pre-Warming**: Protected comic reader initialization by catching individual neighbor pre-warm failures without crashing the entire viewer.
+
+### Reading Progress & Library Filters
+- **Accurate Section-Based Progress**: Updated `Book.progress` calculation to distinguish section-based reflowable formats (EPUB, MOBI, AZW, AZW3) from fixed-page documents, resolving reading progress discrepancies on early chapters.
+- **In-Progress Filter Precision**: Added `isInProgress` helper to accurately identify books that have been started but not finished, refining the "Continue Reading" shelf logic.
+
+### Typography & Paragraph Defragmentation
+- **Advanced Defragmentation Regex**: Expanded `HtmlDefragmenter` with specialized heuristics for parenthetical citations, capitalized continuation phrases, attribution em-dashes, and trailing punctuation (ellipses, colons, em-dashes, commas).
+- **Proactive Soft-Hyphen Cleanup**: Unconditionally stripped soft-hyphens (`\u00AD`, `&shy;`) during text tree traversal in `HyphenationHelper` to prevent rendering artifacts and broken hyphenation line breaks in Flutter's text engine.
+- **Experimental Hyphenation Setting**: Tagged the reader hyphenation toggle with an experimental notice in the layout settings sheet.
+
 ## [1.3.2] - 2026-11-11
 
 ### HTML Paragraph Defragmentation & Reader Typography

@@ -160,11 +160,25 @@ class Book extends HiveObject {
   }
 
   double get progress {
-    if (format == 'epub' && totalPages > 0) {
-      return sectionIndex / totalPages;
+    if (totalPages <= 0) return 0.0;
+
+    final fmt = format.toLowerCase().trim();
+    final isSectionBased =
+        fmt == 'epub' || fmt == 'mobi' || fmt == 'azw' || fmt == 'azw3';
+
+    final activeIndex = isSectionBased ? sectionIndex : currentPage;
+
+    if (activeIndex == 0) {
+      final hasStartedFirstUnit =
+          scrollPosition > 0.0 || lastReadingSentenceStart > 0;
+      return hasStartedFirstUnit ? (0.5 / totalPages).clamp(0.0, 1.0) : 0.0;
     }
-    return totalPages > 0 ? currentPage / totalPages : 0.0;
+
+    return (activeIndex / totalPages).clamp(0.0, 1.0);
   }
+
+  /// Whether the user has actively started reading this book and hasn't finished it.
+  bool get isInProgress => progress > 0.0 && progress < 1.0;
 
   Book copyWith({
     String? title,

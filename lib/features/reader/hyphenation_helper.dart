@@ -132,9 +132,15 @@ class HyphenationHelper {
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
-      final text = node.text;
+      var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        node.text = hyphenator.hyphenateText(text);
+        if (text.contains('\u00AD')) {
+          text = text.replaceAll('\u00AD', '');
+        }
+        if (text.contains('&shy;')) {
+          text = text.replaceAll('&shy;', '');
+        }
+        node.text = text;
       }
     } else if (node.hasChildNodes()) {
       for (final child in node.nodes) {
@@ -169,10 +175,12 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        if (applyHyphenation) {
-          text = hyphenator.hyphenateText(text);
-        } else if (text.contains('\u00AD')) {
+        // Unconditionally strip \u00AD to prevent Flutter SkParagraph from dropping hyphens at line breaks
+        if (text.contains('\u00AD')) {
           text = text.replaceAll('\u00AD', '');
+        }
+        if (text.contains('&shy;')) {
+          text = text.replaceAll('&shy;', '');
         }
         if (text.contains('  ') || text.contains('\t')) {
           text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');

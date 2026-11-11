@@ -341,9 +341,9 @@ class _LibraryViewState extends State<_LibraryView> {
     
     final displayedBooks = state.filteredBooks;
     final continueReadingBooks = state.searchQuery.isEmpty && state.selectedFormats.isEmpty
-        ? state.books.where((b) => b.progress > 0).toList()
+        ? state.books.where((b) => b.isInProgress).toList()
         : state.searchQuery.isEmpty && state.selectedFormats.isNotEmpty
-            ? state.books.where((b) => b.progress > 0 && state.selectedFormats.contains(b.format.toLowerCase())).toList()
+            ? state.books.where((b) => b.isInProgress && state.selectedFormats.contains(b.format.toLowerCase())).toList()
             : <Book>[];
 
     return CustomScrollView(

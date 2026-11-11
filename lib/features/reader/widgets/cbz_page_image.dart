@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:reader_app/core/errors/exceptions.dart';
 import '../controllers/cbz_cache_controller.dart';
 
 enum CbzPageState { idle, loading, loaded, error }
@@ -119,16 +120,22 @@ class _CbzPageImageState extends State<CbzPageImage> {
         });
         widget.onPageLoaded?.call();
       } else {
+        final specificErr = widget.cacheController.getPageError(pageIndex);
         setState(() {
           _state = CbzPageState.error;
-          _error = 'Page ${pageIndex + 1} could not be loaded';
+          _error = specificErr != null
+              ? 'Page ${pageIndex + 1}: $specificErr'
+              : 'Page ${pageIndex + 1} could not be loaded';
         });
       }
     } catch (e) {
       if (!mounted || _loadGeneration != currentGen) return;
+      final specificErr = (e is ArchiveExtractionException)
+          ? e.message
+          : widget.cacheController.getPageError(pageIndex) ?? e.toString();
       setState(() {
         _state = CbzPageState.error;
-        _error = e.toString();
+        _error = 'Page ${pageIndex + 1}: $specificErr';
       });
     }
   }
@@ -179,7 +186,7 @@ class _CbzPageImageState extends State<CbzPageImage> {
                   _error ?? 'Failed to load Page ${widget.pageIndex + 1}',
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                   textAlign: TextAlign.center,
-                  maxLines: 2,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),

@@ -130,16 +130,18 @@ class CbzPageController extends ChangeNotifier {
           _inPageScrollOffset = 0.0;
         }
 
-        // Pre-warm the target reading page and immediate neighbors before revealing content
+        // Pre-warm the target reading page and immediate neighbors before revealing content.
+        // Catch errors during pre-warming so an individual page extraction issue does not
+        // abort reader initialization; the page widget will display specific error details.
         final targetIndex = (_currentPage >= 0 && _currentPage < names.length) ? _currentPage : 0;
         final futures = <Future<dynamic>>[
-          _cacheController!.loadPage(targetIndex, 1080),
+          _cacheController!.loadPage(targetIndex, 1080).catchError((_) => null),
         ];
         if (targetIndex > 0) {
-          futures.add(_cacheController!.loadPage(targetIndex - 1, 1080));
+          futures.add(_cacheController!.loadPage(targetIndex - 1, 1080).catchError((_) => null));
         }
         if (targetIndex + 1 < names.length) {
-          futures.add(_cacheController!.loadPage(targetIndex + 1, 1080));
+          futures.add(_cacheController!.loadPage(targetIndex + 1, 1080).catchError((_) => null));
         }
         await Future.wait(futures);
 
