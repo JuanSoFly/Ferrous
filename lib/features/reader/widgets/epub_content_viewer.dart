@@ -17,6 +17,7 @@ import 'package:reader_app/features/annotations/annotation_detail_sheet.dart';
 import 'package:reader_app/features/reader/annotation_highlight_helper.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
+import 'package:reader_app/core/utils/safe_screen_paginator.dart';
 import 'package:reader_app/features/reader/hyphenation_helper.dart';
 import 'package:reader_app/data/models/tts_highlight_style.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,6 +28,7 @@ class EpubContentViewer extends StatefulWidget {
   final String htmlContent;
   final EpubChapterController chapterController;
   final EpubTtsController ttsController;
+  final PageSlice? pageSlice;
 
   const EpubContentViewer({
     super.key,
@@ -34,6 +36,7 @@ class EpubContentViewer extends StatefulWidget {
     required this.htmlContent,
     required this.chapterController,
     required this.ttsController,
+    this.pageSlice,
   });
 
   @override
@@ -52,6 +55,15 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     required bool paragraphIndent,
     required List<Annotation> annotations,
   }) {
+    if (widget.pageSlice != null) {
+      // Leaf hyphenation on single page slice (<0.2 ms)
+      return HyphenationHelper.processHtmlAndIndent(
+        rawChunk,
+        applyHyphenation: hyphenation,
+        applyIndent: paragraphIndent,
+      );
+    }
+
     final bookId = widget.chapterController.book.id;
     final annotationSig = annotations.isEmpty
         ? '0'
@@ -92,6 +104,9 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
   }
 
   List<String> _getChapterChunks() {
+    if (widget.pageSlice != null) {
+      return [widget.pageSlice!.html];
+    }
     final allChunks = widget.chapterController.allChapterChunks;
     if (widget.chapterIndex >= 0 && widget.chapterIndex < allChunks.length) {
       final chunks = allChunks[widget.chapterIndex];
@@ -552,10 +567,43 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         }
 
         widget.ttsController.highlightKeyAssigned = false;
-
-        final baseChunks = _getChapterChunks();
         final highlightStart = widget.ttsController.lastHighlightStart!;
         final highlightEnd = widget.ttsController.lastHighlightEnd ?? highlightStart;
+
+        // Paged mode: single slice TTS highlight
+        if (widget.pageSlice != null) {
+          final slice = widget.pageSlice!;
+          if (highlightStart >= slice.startCharOffset && highlightStart < slice.endCharOffset) {
+            final localStart = (highlightStart - slice.startCharOffset).clamp(0, slice.html.length);
+            final localEnd = (highlightEnd - slice.startCharOffset).clamp(localStart, slice.html.length);
+
+            var sliceHtml = widget.ttsController.buildTtsHighlightedHtml(
+              slice.html,
+              overrideStart: localStart,
+              overrideEnd: localEnd,
+            );
+            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
+              sliceHtml = HyphenationHelper.processHtmlAndIndent(
+                sliceHtml,
+                applyHyphenation: themeConfig.hyphenation,
+                applyIndent: themeConfig.paragraphIndent,
+              );
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              widget.ttsController.maybeEnsureHighlightVisible();
+            });
+            return _buildHtmlWidget(
+              [sliceHtml],
+              extensions: extensions,
+              horizontalMargin: horizontalMargin,
+              themeConfig: themeConfig,
+            );
+          } else {
+            return child!;
+          }
+        }
+
+        final baseChunks = _getChapterChunks();
         final chunkOffsets = widget.chapterController.allChapterChunkOffsets.length > widget.chapterIndex
             ? widget.chapterController.allChapterChunkOffsets[widget.chapterIndex]
             : const <int>[0];

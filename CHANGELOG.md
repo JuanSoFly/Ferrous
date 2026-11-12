@@ -1,3 +1,19 @@
+## [1.4.0-alpha.1] - 2026-11-13
+
+### Screen-Fitted Paging & Safe Screen Paginator
+- **SafeScreenPaginator Engine**: Introduced `SafeScreenPaginator` to accurately partition reflowable EPUB and MOBI/AZW chapters into screen-fitted `PageSlice` units using paragraph budgeting, DOM hierarchy traversal, and `TextPainter` text layout measurement.
+- **Bounded Typography & Layout Cache**: Built an LRU page slice cache keyed on viewport dimensions, typography settings (font size, family, line height, paragraph indentation/spacing), hyphenation, and active annotations for instant pagination lookups.
+- **True Screen-Fitted PageView**: Overhauled `EpubPagedViewer` and `MobiPagedViewer` to use pure screen-sized `PageView.builder` widgets for both horizontal page-turn and vertical paged reading modes, replacing monolithic scroll containers.
+- **Seamless Chapter Boundary Swapping**: Added adjacent chapter edge slots (leading and trailing chapter previews) allowing continuous swiping across chapter boundaries with automatic chapter transition handling.
+
+### Rust Direct JPEG Decoding & Archive Reliability
+- **Direct JPEG Decoder Bypass**: Added `jpeg-decoder` in the Rust backend (`rust/src/api/cbz.rs`) to decode JPEG comic pages directly, eliminating `zune-jpeg` decoding errors and reducing allocation overhead.
+- **Broad Color Space Support**: Implemented direct conversion to 32-bit RGBA for `RGB24`, `L8` grayscale, `L16`, and `CMYK32` JPEG streams before transferring pixel buffers over FFI to Flutter.
+
+### Reading Position & State Synchronization
+- **Slice-Granular Position Tracking**: Implemented `savePagedReadingPosition` in `EpubChapterController` and `MobiChapterController` to synchronize book progress to exact sentence spans and character offsets per page slice.
+- **Streamlined Paged Position Restoration**: Optimized mode switching between continuous scroll and paged reading, instantly resolving reading location via slice offsets without post-frame scroll client retries.
+
 ## [1.3.4-alpha.1] - 2026-11-12
 
 ### DOM Chunking & Reader View Performance
@@ -18,6 +34,7 @@
 - **Pre-Allocated RAR Decompression**: Enhanced `cbz` and `covers` Rust modules to query unpacked entry sizes prior to extraction, pre-allocating buffer memory to prevent iterative reallocation overhead.
 - **Decompression Integrity Checks**: Added size validation and FNV-1a 64-bit diagnostic logging to ensure verified, intact image extraction from CBR archives.
 - **Targeted SIMD Optimization**: Configured release profile with `lto = "thin"` and isolated `opt-level = 3` for `unrar-rs`, `image`, `zune-jpeg`, and `jpeg-decoder` crates to guarantee optimal NEON SIMD codegen on AArch64.
+- **Pinned `unrar-rs` Dependency**: Strictly pinned `unrar-rs = "=0.15.0"` to avoid upstream compilation failures in `link_anchor.rs` introduced in `0.15.1+`.
 
 ## [1.3.3] - 2026-11-11
 
