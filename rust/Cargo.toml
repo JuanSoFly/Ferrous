@@ -27,7 +27,9 @@ image = "0.25.9"
 
 # Archive extraction (for EPUB/CBZ covers and CBR/RAR archives)
 zip = "2.2"
-unrar-rs = "0.15"
+
+# Pinned to 0.15.0: unrar-rs 0.15.1-0.16.1 introduced link_anchor.rs which fails to compile
+unrar-rs = "=0.15.0"
 
 # MOBI/AZW3 parsing
 mobi = "0.8"
