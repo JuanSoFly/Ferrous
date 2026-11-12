@@ -9,6 +9,8 @@
 ### Rust Direct JPEG Decoding & Archive Reliability
 - **Direct JPEG Decoder Bypass**: Added `jpeg-decoder` in the Rust backend (`rust/src/api/cbz.rs`) to decode JPEG comic pages directly, eliminating `zune-jpeg` decoding errors and reducing allocation overhead.
 - **Broad Color Space Support**: Implemented direct conversion to 32-bit RGBA for `RGB24`, `L8` grayscale, `L16`, and `CMYK32` JPEG streams before transferring pixel buffers over FFI to Flutter.
+- **Zero-Cost Pixel Conversion**: Optimized JPEG decoding loops using const-generic `as_chunks` with pattern destructuring, eliminating slice indexing and bounds checks.
+- **Dependency Clean Up**: Removed unused `mobi` dependency from `rust/Cargo.toml` to streamline Rust compilation.
 
 ### Reading Position & State Synchronization
 - **Slice-Granular Position Tracking**: Implemented `savePagedReadingPosition` in `EpubChapterController` and `MobiChapterController` to synchronize book progress to exact sentence spans and character offsets per page slice.
