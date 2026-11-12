@@ -223,10 +223,10 @@ class EpubTtsController extends ChangeNotifier {
     }
   }
 
-  String buildTtsHighlightedHtml(String html) {
-    // Use the raw positions already computed in _handleTtsProgress
-    final highlightStart = _lastHighlightStart;
-    final highlightEnd = _lastHighlightEnd;
+  String buildTtsHighlightedHtml(String html, {int? overrideStart, int? overrideEnd}) {
+    // Use the raw positions already computed in _handleTtsProgress or chunk-local overrides
+    final highlightStart = overrideStart ?? _lastHighlightStart;
+    final highlightEnd = overrideEnd ?? _lastHighlightEnd;
     if (highlightStart == null || highlightEnd == null) return html;
 
     if (_cachedHighlightedHtml != null && _lastHighlightedSourceHtml == html) {
@@ -292,7 +292,7 @@ class EpubTtsController extends ChangeNotifier {
 
       while (processedIdx < nodeText.length) {
         final codeUnit = nodeText.codeUnitAt(processedIdx);
-        if (codeUnit == 0x00AD) { // Soft hyphen
+        if (codeUnit == 0x00AD || codeUnit == 0x200B) { // Soft hyphen or zero-width space
           processedIdx++;
           continue;
         }

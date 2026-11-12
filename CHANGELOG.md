@@ -1,3 +1,24 @@
+## [1.3.4-alpha.1] - 2026-11-12
+
+### DOM Chunking & Reader View Performance
+- **DOM Chunking Pipeline**: Introduced `DomChunker` to decompose monolithic HTML chapters (>15,000 characters) into ~18-paragraph standalone DOM chunks, unwrapping oversized containers while preserving ancestor classes, CSS hierarchy, and anchor jump targets.
+- **Chunk-Level Rendering & LRU Cache**: Overhauled `EpubContentViewer` and `MobiContentViewer` with a chunk-level static LRU cache (`_chunkCache`), rendering individual DOM fragments to eliminate rendering lag, reflow bottlenecks, and memory spikes on long chapters.
+- **Offset-Mapped TTS Highlights**: Integrated dynamic chapter-to-chunk offset translation into `EpubContentViewer` and `MobiContentViewer`, enabling accurate word/sentence highlighting across arbitrary DOM chunks.
+
+### Continuous Scroll & Typography Invalidation
+- **Continuous Scroll Bounds Tracking**: Converted `EpubContinuousViewer` and `MobiContinuousViewer` to stateful observers that automatically detect typography changes (font size, line height, margins, spacing) and viewport resizing, clearing cached chapter heights and bounds to prevent scroll position drift.
+- **Dynamic Scroll Boundary Invalidation**: Added `invalidateScrollBounds()` and `clearRecordedChapterHeights()` in chapter controllers to ensure immediate chapter index snapping when switching reading configurations.
+
+### Smart Hyphenation & Text Selection Polish
+- **Proper Noun Preservation in Hyphenation**: Refined `smartHyphenateText` in `HyphenationHelper` to bypass capitalized proper nouns, enforce a minimum word length threshold (>=7 characters), and ignore symbols/numeric words.
+- **Clean Text Copy & Annotation Export**: Stripped invisible formatting artifacts (`\u00AD`, `\u200B`, `&shy;`) from user selections during text copy and annotation creation in EPUB and MOBI reader screens.
+- **TTS Zero-Width Space Normalization**: Updated sentence boundary tokenization in TTS controllers to safely ignore `\u200B` alongside soft hyphens.
+
+### Rust RAR Decompression & SIMD Codegen
+- **Pre-Allocated RAR Decompression**: Enhanced `cbz` and `covers` Rust modules to query unpacked entry sizes prior to extraction, pre-allocating buffer memory to prevent iterative reallocation overhead.
+- **Decompression Integrity Checks**: Added size validation and FNV-1a 64-bit diagnostic logging to ensure verified, intact image extraction from CBR archives.
+- **Targeted SIMD Optimization**: Configured release profile with `lto = "thin"` and isolated `opt-level = 3` for `unrar-rs`, `image`, `zune-jpeg`, and `jpeg-decoder` crates to guarantee optimal NEON SIMD codegen on AArch64.
+
 ## [1.3.3] - 2026-11-11
 
 ### CBR / RAR Comic Extraction & Robustness

@@ -7,6 +7,7 @@ import 'package:reader_app/core/utils/html_defragmenter.dart';
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
   static const String indentTag = 'p-indent';
+  static final RegExp _wordRegex = RegExp(r'\b[a-zA-Z]{7,}\b');
 
   static Hyphenator? _hyphenator;
 
@@ -16,6 +17,32 @@ class HyphenationHelper {
       Language_en_us(),
       symbol: softHyphen,
     );
+  }
+
+  /// Applies smart hyphenation to text:
+  /// - Only words of length >= 7 are considered.
+  /// - Words starting with an uppercase letter (capitalized proper nouns, e.g., Gandalf, Tolkien, Frodo) are skipped.
+  /// - Words with numbers or symbols are untouched.
+  /// - Inserts \u00AD soft hyphen using Liang's hyphenation algorithm.
+  static String smartHyphenateText(String text) {
+    if (text.isEmpty || text.length < 7) return text;
+
+    var clean = text;
+    if (clean.contains('\u00AD')) {
+      clean = clean.replaceAll('\u00AD', '');
+    }
+    if (clean.contains('&shy;')) {
+      clean = clean.replaceAll('&shy;', '');
+    }
+
+    return clean.replaceAllMapped(_wordRegex, (match) {
+      final word = match[0]!;
+      // Skip capitalized words (proper nouns)
+      if (word[0] == word[0].toUpperCase() && word[0] != word[0].toLowerCase()) {
+        return word;
+      }
+      return hyphenator.hyphenateWord(word);
+    });
   }
 
   /// Initialize the hyphenator synchronously. Returns a `Future<void>` so existing callers
@@ -60,10 +87,10 @@ class HyphenationHelper {
   }
 
   /// Process HTML for hyphenation only.
-  static String processHtml(String html) {
+  static String processHtml(String html, {bool applyHyphenation = false}) {
     try {
       final document = html_parser.parse(html);
-      _processNode(document.body);
+      _processNode(document.body, applyHyphenation: applyHyphenation);
       return document.body?.innerHtml ?? html;
     } catch (_) {
       return html;
@@ -71,8 +98,8 @@ class HyphenationHelper {
   }
 
   /// Entry point for compute() isolate - hyphenation only.
-  static Future<String> processHtmlIsolated(String html) async {
-    return processHtml(html);
+  static Future<String> processHtmlIsolated(String html, {bool applyHyphenation = false}) async {
+    return processHtml(html, applyHyphenation: applyHyphenation);
   }
 
   /// Single-pass: applies hyphenation, paragraph indentation, or both.
@@ -123,7 +150,7 @@ class HyphenationHelper {
   }
 
   /// Traversal for hyphenation only.
-  static void _processNode(dom.Node? node) {
+  static void _processNode(dom.Node? node, {bool applyHyphenation = false}) {
     if (node == null) return;
 
     if (node is dom.Element &&
@@ -134,17 +161,21 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        if (text.contains('\u00AD')) {
-          text = text.replaceAll('\u00AD', '');
-        }
-        if (text.contains('&shy;')) {
-          text = text.replaceAll('&shy;', '');
+        if (applyHyphenation) {
+          text = smartHyphenateText(text);
+        } else {
+          if (text.contains('\u00AD')) {
+            text = text.replaceAll('\u00AD', '');
+          }
+          if (text.contains('&shy;')) {
+            text = text.replaceAll('&shy;', '');
+          }
         }
         node.text = text;
       }
     } else if (node.hasChildNodes()) {
       for (final child in node.nodes) {
-        _processNode(child);
+        _processNode(child, applyHyphenation: applyHyphenation);
       }
     }
   }
@@ -175,12 +206,15 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        // Unconditionally strip \u00AD to prevent Flutter SkParagraph from dropping hyphens at line breaks
-        if (text.contains('\u00AD')) {
-          text = text.replaceAll('\u00AD', '');
-        }
-        if (text.contains('&shy;')) {
-          text = text.replaceAll('&shy;', '');
+        if (applyHyphenation) {
+          text = smartHyphenateText(text);
+        } else {
+          if (text.contains('\u00AD')) {
+            text = text.replaceAll('\u00AD', '');
+          }
+          if (text.contains('&shy;')) {
+            text = text.replaceAll('&shy;', '');
+          }
         }
         if (text.contains('  ') || text.contains('\t')) {
           text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
@@ -42,114 +41,93 @@ class EpubContentViewer extends StatefulWidget {
 }
 
 class _EpubContentViewerState extends State<EpubContentViewer> {
-  // Static cache keyed by bookId:chapterIndex:hyphenation:paragraphIndent
-  // Theme changes like font size, font family, etc. do NOT invalidate this cache.
-  static final Map<String, String> _processedHtmlCache = {};
-  Future<String>? _processedFuture;
-  String? _loadedKey;
+  // Static chunk-level LRU cache keyed by bookId:chapterIndex:chunkIndex:hyphenation:paragraphIndent:annotationHash
+  // Theme changes like font size, font family, margins, etc. do NOT invalidate this cache.
+  static final Map<String, String> _chunkCache = {};
 
-  String _cacheKey(bool hyphenation, bool paragraphIndent) {
-    final bookId = widget.chapterController.book.id;
-    return '$bookId:${widget.chapterIndex}:$hyphenation:$paragraphIndent';
-  }
-
-  @override
-  void didUpdateWidget(EpubContentViewer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.htmlContent != widget.htmlContent ||
-        oldWidget.chapterIndex != widget.chapterIndex) {
-      _loadedKey = null;
-      _processedFuture = null;
-    }
-  }
-
-  void _ensureFuture(String key, String content, bool hyphenation, bool paragraphIndent) {
-    if (_loadedKey == key) return;
-    _loadedKey = key;
-    if (_processedHtmlCache.containsKey(key)) {
-      _processedFuture = null;
-    } else if (hyphenation || paragraphIndent) {
-      _processedFuture = _getProcessedHtml(key, content, hyphenation, paragraphIndent);
-    } else {
-      _processedFuture = null;
-    }
-  }
-
-  Widget _buildHtmlContent(
-    String content, {
+  String _formatChunk(
+    String rawChunk,
+    int chunkIndex, {
     required bool hyphenation,
     required bool paragraphIndent,
+    required List<Annotation> annotations,
+  }) {
+    final bookId = widget.chapterController.book.id;
+    final annotationSig = annotations.isEmpty
+        ? '0'
+        : annotations.map((a) => '${a.id}:${a.color}').join(',');
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$annotationSig';
+
+    final cached = _chunkCache[key];
+    if (cached != null) return cached;
+
+    // Strict Pipeline Order:
+    // 1. Base chunk HTML
+    // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
+    var processed = annotations.isNotEmpty
+        ? AnnotationHighlightHelper.applyHighlights(rawChunk, annotations)
+        : rawChunk;
+
+    // 3. Process hyphenation and paragraph indentation
+    if (hyphenation || paragraphIndent) {
+      processed = HyphenationHelper.processHtmlAndIndent(
+        processed,
+        applyHyphenation: hyphenation,
+        applyIndent: paragraphIndent,
+      );
+    } else {
+      // Clean strip if hyphenation is false
+      processed = HyphenationHelper.processHtmlAndIndent(
+        processed,
+        applyHyphenation: false,
+        applyIndent: false,
+      );
+    }
+
+    if (_chunkCache.length > 500) {
+      _chunkCache.remove(_chunkCache.keys.first);
+    }
+    _chunkCache[key] = processed;
+    return processed;
+  }
+
+  List<String> _getChapterChunks() {
+    final allChunks = widget.chapterController.allChapterChunks;
+    if (widget.chapterIndex >= 0 && widget.chapterIndex < allChunks.length) {
+      final chunks = allChunks[widget.chapterIndex];
+      if (chunks.isNotEmpty) return chunks;
+    }
+    return [widget.htmlContent];
+  }
+
+  Widget _buildHtmlContent({
     required List<HtmlExtension> extensions,
     required double horizontalMargin,
     required ReaderThemeConfig themeConfig,
     List<Annotation> annotations = const [],
   }) {
-    final key = _cacheKey(hyphenation, paragraphIndent);
-
-    // Cache hit: render synchronously, no FutureBuilder
-    if (_processedHtmlCache.containsKey(key)) {
-      final base = _processedHtmlCache[key]!;
-      final display = annotations.isNotEmpty
-          ? AnnotationHighlightHelper.applyHighlights(base, annotations)
-          : base;
-      return _buildHtmlWidget(
-        display,
-        extensions: extensions,
-        horizontalMargin: horizontalMargin,
-        themeConfig: themeConfig,
+    final baseChunks = _getChapterChunks();
+    final displayChunks = <String>[];
+    for (int i = 0; i < baseChunks.length; i++) {
+      final formatted = _formatChunk(
+        baseChunks[i],
+        i,
+        hyphenation: themeConfig.hyphenation,
+        paragraphIndent: themeConfig.paragraphIndent,
+        annotations: annotations,
       );
+      displayChunks.add(formatted);
     }
-
-    _ensureFuture(key, content, hyphenation, paragraphIndent);
-
-    // Cache miss: process in background isolate, show raw content immediately
-    return FutureBuilder<String>(
-      future: _processedFuture,
-      initialData: content,
-      builder: (context, snapshot) {
-        final base = snapshot.data ?? content;
-        final display = annotations.isNotEmpty
-            ? AnnotationHighlightHelper.applyHighlights(base, annotations)
-            : base;
-        return _buildHtmlWidget(
-          display,
-          extensions: extensions,
-          horizontalMargin: horizontalMargin,
-          themeConfig: themeConfig,
-        );
-      },
+    return _buildHtmlWidget(
+      displayChunks,
+      extensions: extensions,
+      horizontalMargin: horizontalMargin,
+      themeConfig: themeConfig,
     );
-  }
-
-  Future<String> _getProcessedHtml(
-    String key,
-    String rawHtml,
-    bool hyphenation,
-    bool paragraphIndent,
-  ) async {
-    if (!hyphenation && !paragraphIndent) return rawHtml;
-
-    await HyphenationHelper.init();
-    final processed = await compute(
-      HyphenationHelper.processHtmlAndIndentIsolated,
-      {
-        'html': rawHtml,
-        'hyphenation': hyphenation,
-        'paragraphIndent': paragraphIndent,
-      },
-    );
-    if (_processedHtmlCache.length > 50) {
-      _processedHtmlCache.remove(_processedHtmlCache.keys.first);
-    }
-    _processedHtmlCache[key] = processed;
-    if (mounted) {
-      setState(() {});
-    }
-    return processed;
   }
 
   Widget _buildHtmlWidget(
-    String content, {
+    List<String> chunks, {
     required List<HtmlExtension> extensions,
     required double horizontalMargin,
     required ReaderThemeConfig themeConfig,
@@ -159,10 +137,18 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       final textStyle = GoogleFonts.getFont(themeConfig.fontFamily);
       fontData = (
         fontFamily: textStyle.fontFamily,
-        fontFamilyFallback: textStyle.fontFamilyFallback,
+        fontFamilyFallback: [
+          if (textStyle.fontFamilyFallback != null) ...textStyle.fontFamilyFallback!,
+          'Roboto',
+          'Noto Sans',
+          'sans-serif',
+        ],
       );
     } catch (_) {
-      fontData = (fontFamily: themeConfig.fontFamily, fontFamilyFallback: null);
+      fontData = (
+        fontFamily: themeConfig.fontFamily,
+        fontFamilyFallback: const ['Roboto', 'Noto Sans', 'sans-serif'],
+      );
     }
 
     TextAlign parseTextAlign(String align) {
@@ -196,39 +182,49 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     return Padding(
       key: ValueKey('chapter-html-pad-${widget.chapterIndex}'),
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
-      child: Html(
-        key: ValueKey('chapter-html-core-${widget.chapterIndex}'),
-        data: content,
-        extensions: extensions,
-        onLinkTap: (url, attributes, element) {
-          if (url == null || url.trim().isEmpty) return;
-          final trimmed = url.trim();
-          if (trimmed.startsWith('http://') ||
-              trimmed.startsWith('https://') ||
-              trimmed.startsWith('mailto:')) {
-            try {
-              launchUrl(Uri.parse(trimmed), mode: LaunchMode.externalApplication);
-            } catch (e) {
-              debugPrint('Error launching external URL $trimmed: $e');
-            }
-          } else {
-            widget.chapterController.navigateToHref(trimmed);
-          }
-        },
-        style: {
-          "body": Style(
-            fontSize: FontSize(themeConfig.fontSize),
-            lineHeight: LineHeight(themeConfig.lineHeight),
-            fontFamily: fontData.fontFamily,
-            fontFamilyFallback: fontData.fontFamilyFallback,
-            fontWeight: FontWeight.values[
-                (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
-            textAlign: parseTextAlign(themeConfig.textAlign),
-            letterSpacing: themeConfig.wordSpacing,
-            color: effectiveTextColor,
-            padding: HtmlPaddings.zero,
-            margin: Margins.zero,
-          ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < chunks.length; i++)
+            RepaintBoundary(
+              key: ValueKey('chunk_rb_${widget.chapterIndex}_$i'),
+              child: Html(
+                key: ValueKey('chapter-html-chunk-${widget.chapterIndex}-$i'),
+                data: chunks[i],
+                extensions: extensions,
+                onLinkTap: (url, attributes, element) {
+                  if (url == null || url.trim().isEmpty) return;
+                  final trimmed = url.trim();
+                  if (trimmed.startsWith('http://') ||
+                      trimmed.startsWith('https://') ||
+                      trimmed.startsWith('mailto:')) {
+                    try {
+                      launchUrl(Uri.parse(trimmed), mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      debugPrint('Error launching external URL $trimmed: $e');
+                    }
+                  } else {
+                    widget.chapterController.navigateToHref(trimmed);
+                  }
+                },
+                style: {
+                  "html": Style(
+                    padding: HtmlPaddings.zero,
+                    margin: Margins.zero,
+                  ),
+                  "body": Style(
+                    fontSize: FontSize(themeConfig.fontSize),
+                    lineHeight: LineHeight(themeConfig.lineHeight),
+                    fontFamily: fontData.fontFamily,
+                    fontFamilyFallback: fontData.fontFamilyFallback,
+                    fontWeight: FontWeight.values[
+                        (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+                    textAlign: parseTextAlign(themeConfig.textAlign),
+                    letterSpacing: themeConfig.wordSpacing,
+                    color: effectiveTextColor,
+                    padding: HtmlPaddings.zero,
+                    margin: Margins.zero,
+                  ),
           "a": Style(
             color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
           ),
@@ -289,7 +285,10 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             display: Display.block,
             textAlign: TextAlign.center,
           ),
-        },
+                },
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -532,9 +531,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     ];
 
     final staticChild = _buildHtmlContent(
-      widget.htmlContent,
-      hyphenation: themeConfig.hyphenation,
-      paragraphIndent: themeConfig.paragraphIndent,
       extensions: extensions,
       horizontalMargin: horizontalMargin,
       themeConfig: themeConfig,
@@ -542,10 +538,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     );
 
     return ListenableBuilder(
-      listenable: Listenable.merge([
-        widget.ttsController,
-        widget.chapterController,
-      ]),
+      listenable: widget.ttsController,
       child: staticChild,
       builder: (context, child) {
         final isCurrentChapter =
@@ -559,29 +552,64 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         }
 
         widget.ttsController.highlightKeyAssigned = false;
-        final key = _cacheKey(themeConfig.hyphenation, themeConfig.paragraphIndent);
-        if (!_processedHtmlCache.containsKey(key) &&
-            (themeConfig.hyphenation || themeConfig.paragraphIndent)) {
-          _getProcessedHtml(
-            key,
-            widget.htmlContent,
-            themeConfig.hyphenation,
-            themeConfig.paragraphIndent,
-          ).then((_) {
-            if (mounted) setState(() {});
-          });
+
+        final baseChunks = _getChapterChunks();
+        final highlightStart = widget.ttsController.lastHighlightStart!;
+        final highlightEnd = widget.ttsController.lastHighlightEnd ?? highlightStart;
+        final chunkOffsets = widget.chapterController.allChapterChunkOffsets.length > widget.chapterIndex
+            ? widget.chapterController.allChapterChunkOffsets[widget.chapterIndex]
+            : const <int>[0];
+
+        // Guardrail 2: Translate chapter-level TTS offsets to chunk-local offsets
+        int activeChunkIndex = 0;
+        for (var i = 0; i < chunkOffsets.length; i++) {
+          final start = chunkOffsets[i];
+          final nextStart = (i + 1 < chunkOffsets.length) ? chunkOffsets[i + 1] : double.maxFinite.toInt();
+          if (highlightStart >= start && highlightStart < nextStart) {
+            activeChunkIndex = i;
+            break;
+          }
         }
-        final processedHtml = _processedHtmlCache[key] ?? widget.htmlContent;
-        String content = widget.ttsController
-            .buildTtsHighlightedHtml(processedHtml);
-        if (chapterAnnotations.isNotEmpty) {
-          content = AnnotationHighlightHelper.applyHighlights(content, chapterAnnotations);
+
+        final chunkStartOffset = chunkOffsets.length > activeChunkIndex ? chunkOffsets[activeChunkIndex] : 0;
+        final localStart = highlightStart - chunkStartOffset;
+        final localEnd = highlightEnd - chunkStartOffset;
+
+        final ttsChunks = <String>[];
+        for (var i = 0; i < baseChunks.length; i++) {
+          if (i == activeChunkIndex) {
+            var chunk = widget.ttsController.buildTtsHighlightedHtml(
+              baseChunks[i],
+              overrideStart: localStart,
+              overrideEnd: localEnd,
+            );
+            if (chapterAnnotations.isNotEmpty) {
+              chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);
+            }
+            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
+              chunk = HyphenationHelper.processHtmlAndIndent(
+                chunk,
+                applyHyphenation: themeConfig.hyphenation,
+                applyIndent: themeConfig.paragraphIndent,
+              );
+            }
+            ttsChunks.add(chunk);
+          } else {
+            ttsChunks.add(_formatChunk(
+              baseChunks[i],
+              i,
+              hyphenation: themeConfig.hyphenation,
+              paragraphIndent: themeConfig.paragraphIndent,
+              annotations: chapterAnnotations,
+            ));
+          }
         }
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.ttsController.maybeEnsureHighlightVisible();
         });
         return _buildHtmlWidget(
-          content,
+          ttsChunks,
           extensions: extensions,
           horizontalMargin: horizontalMargin,
           themeConfig: themeConfig,

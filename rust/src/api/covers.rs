@@ -667,10 +667,15 @@ fn extract_rar_cover(book_path: &str, save_path: &str) -> Result<String> {
             })
             .ok_or_else(|| anyhow::anyhow!("Failed to find cover image in CBR archive: {}", first_image))?;
 
+        let expected_size = archive.entries().nth(member_index).and_then(|m| m.unpacked_size);
+
         let entry = archive.by_index(member_index)
             .context("Failed to access cover entry in RAR archive")?;
 
-        let mut buffer = Vec::new();
+        let mut buffer = match expected_size {
+            Some(size) if size > 0 => Vec::with_capacity(size as usize),
+            _ => Vec::new(),
+        };
         entry.copy_to(&mut buffer)?;
         if let Ok(saved) = save_cover_thumbnail(&buffer, save_path) {
             return Ok(saved);

@@ -27,7 +27,7 @@ image = "0.25.9"
 
 # Archive extraction (for EPUB/CBZ covers and CBR/RAR archives)
 zip = "2.2"
-unrar-rs = "0.14"
+unrar-rs = "0.15"
 
 # MOBI/AZW3 parsing
 mobi = "0.8"
@@ -39,11 +39,27 @@ regex = "1.11"
 roxmltree = "0.21.1"
 
 [profile.release]
-lto = true
+lto = "thin"
 codegen-units = 1
 opt-level = "z"
 panic = "unwind"
 strip = true
+
+# Guarantee correct AArch64 loop & NEON SIMD codegen for RAR + JPEG IDCT
+[profile.release.package.unrar-rs]
+opt-level = 3
+
+[profile.release.package.image]
+opt-level = 3
+
+[profile.release.package.zune-jpeg]
+opt-level = 3
+
+[profile.release.package.zune-core]
+opt-level = 3
+
+[profile.release.package.jpeg-decoder]
+opt-level = 3
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
@@ -508,20 +509,42 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
               _selectedContent = content;
             },
             contextMenuBuilder: (context, selectableRegionState) {
+              final buttonItems = selectableRegionState.contextMenuButtonItems.map((item) {
+                if (item.type == ContextMenuButtonType.copy) {
+                  return ContextMenuButtonItem(
+                    type: ContextMenuButtonType.copy,
+                    onPressed: () {
+                      final raw = _selectedContent?.plainText ?? '';
+                      final clean = raw
+                          .replaceAll('\u00AD', '')
+                          .replaceAll('\u200B', '')
+                          .replaceAll('&shy;', '');
+                      Clipboard.setData(ClipboardData(text: clean));
+                      selectableRegionState.hideToolbar();
+                    },
+                  );
+                }
+                return item;
+              }).toList();
+
               return AdaptiveTextSelectionToolbar.buttonItems(
                 anchors: selectableRegionState.contextMenuAnchors,
                 buttonItems: [
                   ContextMenuButtonItem(
                     label: 'Annotate',
                     onPressed: () {
-                      final text = _selectedContent?.plainText.trim() ?? '';
+                      final raw = _selectedContent?.plainText.trim() ?? '';
+                      final clean = raw
+                          .replaceAll('\u00AD', '')
+                          .replaceAll('\u200B', '')
+                          .replaceAll('&shy;', '');
                       selectableRegionState.hideToolbar();
-                      if (text.isNotEmpty) {
-                        _showAnnotationDialog(text);
+                      if (clean.isNotEmpty) {
+                        _showAnnotationDialog(clean);
                       }
                     },
                   ),
-                  ...selectableRegionState.contextMenuButtonItems,
+                  ...buttonItems,
                 ],
               );
             },

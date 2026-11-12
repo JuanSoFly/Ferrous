@@ -203,12 +203,42 @@ fn read_rar_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     let index = find_rar_member_index(&archive, entry_name)
         .ok_or_else(|| anyhow!("Member '{}' not found in RAR archive", entry_name))?;
 
+    let expected_size = archive.entries().nth(index).and_then(|m| m.unpacked_size);
+
     let entry = archive.by_index(index)
         .with_context(|| format!("Failed to access member at index {} ({})", index, entry_name))?;
 
-    let mut buffer = Vec::new();
+    let mut buffer = match expected_size {
+        Some(size) if size > 0 => Vec::with_capacity(size as usize),
+        _ => Vec::new(),
+    };
     entry.copy_to(&mut buffer)
         .with_context(|| format!("Failed to decompress RAR entry: {}", entry_name))?;
+
+    if let Some(expected) = expected_size {
+        if expected > 0 && buffer.len() != expected as usize {
+            return Err(anyhow!(
+                "Decompressed byte size mismatch for '{}': got {} bytes, expected {} bytes",
+                entry_name,
+                buffer.len(),
+                expected
+            ));
+        }
+    }
+
+    // Ground-truth isolation check: FNV-1a 64-bit hash + first 32 bytes (JPEG SOI & DQT)
+    let fnv1a_hash = buffer.iter().fold(0xcbf29ce484222325u64, |acc, &b| {
+        (acc ^ (b as u64)).wrapping_mul(0x100000001b3)
+    });
+    let header_hex: String = buffer.iter().take(32).map(|b| format!("{:02X}", b)).collect();
+    println!(
+        "[CBR-DIAG] entry='{}' len={} fnv1a=0x{:016X} head32={}",
+        entry_name,
+        buffer.len(),
+        fnv1a_hash,
+        header_hex
+    );
+
     Ok(buffer)
 }
 

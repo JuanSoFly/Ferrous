@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:provider/provider.dart';
+import 'package:reader_app/data/models/reader_theme_config.dart';
+import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
 import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
 import 'epub_content_viewer.dart';
 
-class EpubContinuousViewer extends StatelessWidget {
+class EpubContinuousViewer extends StatefulWidget {
   final EpubChapterController chapterController;
   final EpubTtsController ttsController;
   final ReaderModeController modeController;
@@ -28,54 +31,80 @@ class EpubContinuousViewer extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (chapterController.chapters == null) return const SizedBox.shrink();
+  State<EpubContinuousViewer> createState() => _EpubContinuousViewerState();
+}
 
-    final totalCount = chapterController.chapters!.length;
+class _EpubContinuousViewerState extends State<EpubContinuousViewer> {
+  ReaderThemeConfig? _lastThemeConfig;
+  Size? _lastScreenSize;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.chapterController.chapters == null) return const SizedBox.shrink();
+
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final themeConfig = themeRepo.config;
+    final screenSize = MediaQuery.sizeOf(context);
+
+    // Invalidate cached chapter heights and bounds when typography or screen orientation changes
+    if (_lastThemeConfig != null &&
+        (_lastThemeConfig!.fontSize != themeConfig.fontSize ||
+         _lastThemeConfig!.lineHeight != themeConfig.lineHeight ||
+         _lastThemeConfig!.fontFamily != themeConfig.fontFamily ||
+         _lastThemeConfig!.pageMargins != themeConfig.pageMargins ||
+         _lastThemeConfig!.paragraphSpacing != themeConfig.paragraphSpacing ||
+         _lastThemeConfig!.paragraphIndent != themeConfig.paragraphIndent ||
+         _lastScreenSize != screenSize)) {
+      widget.chapterController.clearRecordedChapterHeights();
+    }
+    _lastThemeConfig = themeConfig;
+    _lastScreenSize = screenSize;
+
+    final totalCount = widget.chapterController.chapters!.length;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        if (chapterController.isTransitioningMode ||
-            chapterController.isRestoringPosition ||
-            chapterController.isProgrammaticScroll) {
+        if (widget.chapterController.isTransitioningMode ||
+            widget.chapterController.isRestoringPosition ||
+            widget.chapterController.isProgrammaticScroll) {
           return false;
         }
         if (notification is ScrollEndNotification ||
             (notification is UserScrollNotification &&
                 notification.direction == ScrollDirection.idle)) {
-          chapterController.updateCurrentChapterFromScroll(context, force: true);
+          widget.chapterController.updateCurrentChapterFromScroll(context, force: true);
         } else if (notification is ScrollUpdateNotification) {
-          chapterController.updateCurrentChapterFromScroll(context);
+          widget.chapterController.updateCurrentChapterFromScroll(context);
         }
         return false;
       },
       child: GestureDetector(
-        onTap: onToggleChrome,
-        onTapUp: onTapUp,
+        onTap: widget.onToggleChrome,
+        onTapUp: widget.onTapUp,
         child: ListView.builder(
-          key: ValueKey('epub-continuous-${chapterController.scrollEpoch}'),
-          controller: chapterController.scrollController,
+          key: ValueKey('epub-continuous-${widget.chapterController.scrollEpoch}'),
+          controller: widget.chapterController.scrollController,
           scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
           addRepaintBoundaries: false,
           itemCount: totalCount,
           itemBuilder: (context, index) {
             final chapterIndex = index;
-            final isLast = chapterIndex == chapterController.chapters!.length - 1;
-            final htmlContent = chapterController.allChapterContents[chapterIndex];
+            final isLast = chapterIndex == widget.chapterController.chapters!.length - 1;
+            final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
 
             return Padding(
-              key: chapterController.chapterKeys[chapterIndex],
+              key: widget.chapterController.chapterKeys[chapterIndex],
               padding: EdgeInsets.only(
                 left: 16.0,
                 right: 16.0,
-                top: chapterIndex == 0 ? topPadding : chapterSpacing,
-                bottom: isLast ? bottomPadding : 0.0,
+                top: chapterIndex == 0 ? widget.topPadding : widget.chapterSpacing,
+                bottom: isLast ? widget.bottomPadding : 0.0,
               ),
               child: EpubContentViewer(
                 chapterIndex: chapterIndex,
                 htmlContent: htmlContent,
-                chapterController: chapterController,
-                ttsController: ttsController,
+                chapterController: widget.chapterController,
+                ttsController: widget.ttsController,
               ),
             );
           },

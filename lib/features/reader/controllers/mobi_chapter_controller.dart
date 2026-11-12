@@ -15,6 +15,7 @@ import 'package:reader_app/core/utils/html_defragmenter.dart';
 import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
 import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:reader_app/core/utils/dom_chunker.dart';
 
 class MobiChapterInfo {
   final String? title;
@@ -28,12 +29,16 @@ class ParsedMobiBook {
   final List<String> contents;
   final List<String> plainTexts;
   final List<List<SentenceSpan>> sentenceSpans;
+  final List<List<String>> chapterChunks;
+  final List<List<int>> chapterChunkOffsets;
 
   ParsedMobiBook({
     required this.chapters,
     required this.contents,
     required this.plainTexts,
     required this.sentenceSpans,
+    this.chapterChunks = const [],
+    this.chapterChunkOffsets = const [],
   });
 }
 
@@ -56,6 +61,8 @@ class MobiChapterController extends ChangeNotifier {
   List<String> _allChapterContents = const [];
   List<String> _allChapterPlainTexts = const [];
   List<List<SentenceSpan>> _allChapterSentenceSpans = const [];
+  List<List<String>> _allChapterChunks = const [];
+  List<List<int>> _allChapterChunkOffsets = const [];
   List<GlobalKey> _chapterKeys = const [];
   int _currentChapterIndex = 0;
   String? _currentContent;
@@ -73,6 +80,16 @@ class MobiChapterController extends ChangeNotifier {
   final Map<int, double> _chapterScrollOffsets = {};
   ResolvedBookFile? _resolvedFile;
 
+  double _activeChapterTop = 0.0;
+  double _activeChapterBottom = -1.0;
+  int _lastTrackedChapter = -1;
+
+  void invalidateScrollBounds() {
+    _activeChapterTop = 0.0;
+    _activeChapterBottom = -1.0;
+    _lastTrackedChapter = -1;
+  }
+
   bool _isRestoringPosition = false;
   int _restoreGeneration = 0;
   bool _isProgrammaticScroll = false;
@@ -87,6 +104,8 @@ class MobiChapterController extends ChangeNotifier {
   List<MobiChapterInfo>? get chapters => _chapters;
   List<String> get allChapterContents => _allChapterContents;
   List<String> get allChapterPlainTexts => _allChapterPlainTexts;
+  List<List<String>> get allChapterChunks => _allChapterChunks;
+  List<List<int>> get allChapterChunkOffsets => _allChapterChunkOffsets;
   List<GlobalKey> get chapterKeys => _chapterKeys;
   int get currentChapterIndex => _currentChapterIndex;
   String? get currentContent => _currentContent;
@@ -178,6 +197,8 @@ class MobiChapterController extends ChangeNotifier {
         _allChapterContents = parsedBook.contents;
         _allChapterPlainTexts = parsedBook.plainTexts;
         _allChapterSentenceSpans = parsedBook.sentenceSpans;
+        _allChapterChunks = parsedBook.chapterChunks;
+        _allChapterChunkOffsets = parsedBook.chapterChunkOffsets;
         _chapterKeys = allKeys;
         _currentContent = parsedBook.contents[_currentChapterIndex];
         _currentPlainText = parsedBook.plainTexts[_currentChapterIndex];
@@ -200,6 +221,8 @@ class MobiChapterController extends ChangeNotifier {
     final contents = <String>[];
     final plainTexts = <String>[];
     final sentenceSpans = <List<SentenceSpan>>[];
+    final chapterChunks = <List<String>>[];
+    final chapterChunkOffsets = <List<int>>[];
     String? previousContent;
 
     for (var i = 0; i < rawChapters.length; i++) {
@@ -227,10 +250,15 @@ class MobiChapterController extends ChangeNotifier {
       final defragmentedHtml = doc.body?.innerHtml ?? content;
       final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
 
+      // DOM-Level Chunking to keep GPU textures bounded (<4,096px)
+      final chunkResult = DomChunker.split(contentWithIndent);
+
       chapters.add(MobiChapterInfo(title: title));
       contents.add(contentWithIndent);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
+      chapterChunks.add(chunkResult.chunks);
+      chapterChunkOffsets.add(chunkResult.chunkStartOffsets);
     }
 
     if (chapters.isEmpty && rawChapters.isNotEmpty) {
@@ -241,10 +269,13 @@ class MobiChapterController extends ChangeNotifier {
       final spans = splitIntoSentences(plainText);
       final defragmentedHtml = doc.body?.innerHtml ?? first.htmlContent;
       final firstWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
+      final chunkResult = DomChunker.split(firstWithIndent);
       chapters.add(MobiChapterInfo(title: first.title));
       contents.add(firstWithIndent);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
+      chapterChunks.add(chunkResult.chunks);
+      chapterChunkOffsets.add(chunkResult.chunkStartOffsets);
     }
 
     return ParsedMobiBook(
@@ -252,6 +283,8 @@ class MobiChapterController extends ChangeNotifier {
       contents: contents,
       plainTexts: plainTexts,
       sentenceSpans: sentenceSpans,
+      chapterChunks: chapterChunks,
+      chapterChunkOffsets: chapterChunkOffsets,
     );
   }
 
@@ -278,6 +311,11 @@ class MobiChapterController extends ChangeNotifier {
     if (height > 0) {
       _chapterHeights[index] = height;
     }
+  }
+
+  void clearRecordedChapterHeights() {
+    _chapterHeights.clear();
+    invalidateScrollBounds();
   }
 
   @visibleForTesting
@@ -410,6 +448,7 @@ class MobiChapterController extends ChangeNotifier {
     }
 
     if (userInitiated) {
+      invalidateScrollBounds();
       _chapterProgress = 0.0;
       _chapterScrollOffsets[index] = 0.0;
       final pagedController = _chapterScrollControllers[index];
@@ -445,6 +484,7 @@ class MobiChapterController extends ChangeNotifier {
   void _scrollToChapter(int index, {int attempt = 0}) {
     if (index < 0 || _chapters == null || index >= _chapters!.length) return;
     if (attempt == 0) {
+      invalidateScrollBounds();
       _isProgrammaticScroll = true;
       _currentChapterIndex = index;
       _chapterProgress = 0.0;
@@ -533,6 +573,36 @@ class MobiChapterController extends ChangeNotifier {
     }
     _lastScrollCheckTime = now;
 
+    if (force) {
+      invalidateScrollBounds();
+    }
+
+    final viewportTop = _scrollController.offset;
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final viewportMiddle = viewportTop + viewportHeight / 2;
+
+    // Fast Path (O(1)): Viewport is still inside the current tracked chapter bounds.
+    // Avoids walking the RenderObject tree and avoids localToGlobal coordinate transformations.
+    if (_lastTrackedChapter == _currentChapterIndex &&
+        _activeChapterBottom > _activeChapterTop &&
+        viewportMiddle >= _activeChapterTop &&
+        viewportMiddle < _activeChapterBottom) {
+      final chapterHeight = _activeChapterBottom - _activeChapterTop;
+      final visibleFraction = chapterHeight > 0
+          ? ((viewportMiddle - _activeChapterTop) / chapterHeight).clamp(0.0, 1.0)
+          : 0.0;
+      _chapterProgress = visibleFraction;
+      final span = _sentenceSpanForFraction(_currentChapterIndex, visibleFraction);
+      _lastReadingSentenceStart = span.start;
+      _lastReadingSentenceEnd = span.end;
+      _lastScrollPosition = viewportTop;
+      book.scrollPosition = _lastScrollPosition;
+      book.lastReadingSentenceStart = span.start;
+      book.lastReadingSentenceEnd = span.end;
+      return;
+    }
+
+    // Slow Path: Viewport has scrolled outside previous chapter bounds or bounds are unmeasured.
     int? visibleChapter;
     double visibleFraction = 0.0;
 
@@ -542,11 +612,15 @@ class MobiChapterController extends ChangeNotifier {
           ? scrollableBox.localToGlobal(Offset.zero).dy
           : 0.0;
 
-      final viewportTop = _scrollController.offset;
-      final viewportHeight = _scrollController.position.viewportDimension;
-      final viewportMiddle = viewportTop + viewportHeight / 2;
+      // 1. Check immediate neighbors first: [current, current + 1, current - 1]
+      final candidateIndices = <int>[
+        _currentChapterIndex,
+        _currentChapterIndex + 1,
+        _currentChapterIndex - 1,
+      ].where((idx) => idx >= 0 && idx < _chapterKeys.length).toList();
 
-      for (int i = 0; i < _chapterKeys.length; i++) {
+      bool found = false;
+      for (final i in candidateIndices) {
         final key = _chapterKeys[i];
         final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox == null || !renderBox.attached || !renderBox.hasSize) continue;
@@ -562,13 +636,43 @@ class MobiChapterController extends ChangeNotifier {
           if (renderBox.size.height > 0) {
             visibleFraction = ((viewportMiddle - chapterTop) / renderBox.size.height).clamp(0.0, 1.0);
           }
+          _activeChapterTop = chapterTop;
+          _activeChapterBottom = chapterBottom;
+          _lastTrackedChapter = i;
+          found = true;
           break;
         }
-        if (chapterTop > viewportMiddle) {
-          visibleChapter ??= (i > 0) ? i - 1 : 0;
-          break;
+      }
+
+      // 2. Fallback: Search all mounted chapter keys (e.g., on fast jump or fling)
+      if (!found) {
+        for (int i = 0; i < _chapterKeys.length; i++) {
+          final key = _chapterKeys[i];
+          final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+          if (renderBox == null || !renderBox.attached || !renderBox.hasSize) continue;
+
+          recordChapterHeight(i, renderBox.size.height);
+
+          final position = renderBox.localToGlobal(Offset.zero);
+          final chapterTop = (position.dy - scrollableTop) + viewportTop;
+          final chapterBottom = chapterTop + renderBox.size.height;
+
+          if (viewportMiddle >= chapterTop && viewportMiddle < chapterBottom) {
+            visibleChapter = i;
+            if (renderBox.size.height > 0) {
+              visibleFraction = ((viewportMiddle - chapterTop) / renderBox.size.height).clamp(0.0, 1.0);
+            }
+            _activeChapterTop = chapterTop;
+            _activeChapterBottom = chapterBottom;
+            _lastTrackedChapter = i;
+            break;
+          }
+          if (chapterTop > viewportMiddle) {
+            visibleChapter ??= (i > 0) ? i - 1 : 0;
+            break;
+          }
+          visibleChapter = i;
         }
-        visibleChapter = i;
       }
     } catch (_) {
       return;
@@ -938,6 +1042,7 @@ class MobiChapterController extends ChangeNotifier {
     _chapterScrollControllers.clear();
     _chapterScrollOffsets.clear();
     _chapterHeights.clear();
+    invalidateScrollBounds();
   }
 
   @override
