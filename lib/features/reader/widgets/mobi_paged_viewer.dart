@@ -98,16 +98,25 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     _syncActiveChapter();
   }
 
+  BoxConstraints _getInnerConstraints() {
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final width = (size.width - padding.left - padding.right).clamp(50.0, size.width);
+    final height = (size.height - padding.top - padding.bottom).clamp(50.0, size.height);
+    return BoxConstraints.tightFor(width: width, height: height);
+  }
+
   void _calibrateActiveSlotForCurrentPosition() {
     if (!mounted) return;
-    final size = MediaQuery.sizeOf(context);
+    final constraints = _getInnerConstraints();
+    final size = Size(constraints.maxWidth, constraints.maxHeight);
     if (_lastMeasuredSize != null && _lastMeasuredSize == size) return;
     _lastMeasuredSize = size;
 
     final themeRepo = context.read<ReaderThemeRepository>();
     final annotationRepo = context.read<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeRepo.config);
 
     final slices = _getPagedSlices(
       _currentChapter,
@@ -151,8 +160,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final themeRepo = context.read<ReaderThemeRepository>();
     final annotationRepo = context.read<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
-    final size = MediaQuery.sizeOf(context);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final constraints = _getInnerConstraints();
+    final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeRepo.config);
     final slices = _getPagedSlices(targetChapter, availWidth, availHeight, themeRepo.config, annotations);
 
     final hasLeading = targetChapter > 0;
@@ -196,8 +205,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final annotationRepo = context.read<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
-    final size = MediaQuery.sizeOf(context);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final constraints = _getInnerConstraints();
+    final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeRepo.config);
 
     final slices = _getPagedSlices(
       _currentChapter,
@@ -234,10 +243,11 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     }
   }
 
-  (double, double) _computeAvailableDimensions(Size size, ReaderThemeConfig config) {
-    final horizontalMargin = config.pageMargins ? 32.0 : 0.0;
-    final availWidth = (size.width - horizontalMargin - 32.0).clamp(50.0, size.width);
-    final availHeight = (size.height - 32.0).clamp(50.0, size.height);
+  (double, double) _computeAvailableDimensions(BoxConstraints constraints, ReaderThemeConfig config) {
+    final horizontalMargin = config.pageMargins ? 32.0 : 16.0;
+    const verticalTopBottomPadding = 32.0; // 16.0 top + 16.0 bottom
+    final availWidth = (constraints.maxWidth - (horizontalMargin * 2)).clamp(50.0, constraints.maxWidth);
+    final availHeight = (constraints.maxHeight - verticalTopBottomPadding).clamp(50.0, constraints.maxHeight);
     return (availWidth, availHeight);
   }
 
@@ -292,6 +302,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       textAlign: parseTextAlign(themeConfig.textAlign),
       fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
       wordSpacing: themeConfig.wordSpacing,
+      textScaler: MediaQuery.textScalerOf(context),
     );
   }
 
@@ -327,6 +338,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   void _swapToAdjacentChapter({
     required int targetChapter,
     required bool landOnLastPage,
+    BoxConstraints? constraints,
   }) {
     if (_isSwappingChapter) return;
     _isSwappingChapter = true;
@@ -335,8 +347,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final annotationRepo = context.read<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
-    final size = MediaQuery.sizeOf(context);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final innerConstraints = constraints ?? _getInnerConstraints();
+    final (availWidth, availHeight) = _computeAvailableDimensions(innerConstraints, themeRepo.config);
 
     final targetSlices = _getPagedSlices(
       targetChapter,
@@ -448,7 +460,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     }
   }
 
-  void _handleSlotChanged(int newSlot) {
+  void _handleSlotChanged(int newSlot, [BoxConstraints? constraints]) {
     if (_isSwappingChapter) return;
     _activeSlot = newSlot;
 
@@ -456,8 +468,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final annotationRepo = context.read<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
-    final size = MediaQuery.sizeOf(context);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final innerConstraints = constraints ?? _getInnerConstraints();
+    final (availWidth, availHeight) = _computeAvailableDimensions(innerConstraints, themeRepo.config);
 
     final slices = _getPagedSlices(
       _currentChapter,
@@ -473,9 +485,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final trailingSlot = leadingOffset + slices.length;
 
     if (hasLeading && newSlot == 0) {
-      _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true);
+      _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true, constraints: innerConstraints);
     } else if (_currentChapter < totalChapters - 1 && newSlot == trailingSlot) {
-      _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false);
+      _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false, constraints: innerConstraints);
     } else {
       final sliceIdx = newSlot - leadingOffset;
       _saveReadingPositionForSlot(sliceIdx, slices);
@@ -516,141 +528,148 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     final annotationRepo = context.watch<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
-    final size = MediaQuery.sizeOf(context);
-    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    return SafeArea(
+      top: true,
+      bottom: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeRepo.config);
 
-    final slices = _getPagedSlices(
-      _currentChapter,
-      availWidth,
-      availHeight,
-      themeRepo.config,
-      annotations,
-    );
+          final slices = _getPagedSlices(
+            _currentChapter,
+            availWidth,
+            availHeight,
+            themeRepo.config,
+            annotations,
+          );
 
-    final hasLeading = _currentChapter > 0;
-    final leadingOffset = hasLeading ? 1 : 0;
-    final hasTrailing = _currentChapter < totalChapters - 1;
-    final trailingSlot = leadingOffset + slices.length;
-    final totalSlots = slices.length + leadingOffset + (hasTrailing ? 1 : 0);
+          final hasLeading = _currentChapter > 0;
+          final leadingOffset = hasLeading ? 1 : 0;
+          final hasTrailing = _currentChapter < totalChapters - 1;
+          final trailingSlot = leadingOffset + slices.length;
+          final totalSlots = slices.length + leadingOffset + (hasTrailing ? 1 : 0);
 
-    // Ensure _activeSlot is clamped within valid bounds
-    if (_activeSlot >= totalSlots) {
-      _activeSlot = (totalSlots - 1).clamp(0, totalSlots);
-    }
-
-    // Schedule background pre-pagination for adjacent sentinels
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_currentChapter + 1 < totalChapters) {
-        _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
-      }
-      if (_currentChapter - 1 >= 0) {
-        _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
-      }
-    });
-
-    final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
-        themeRepo.config.pageFlip;
-
-    if (useRealisticCurl) {
-      return RealisticPageTurn(
-        key: ValueKey('mobi-curl-ch-$_currentChapter'),
-        pageCount: totalSlots,
-        currentPage: _activeSlot,
-        textureId: themeRepo.config.paperTexture,
-        showSpine: themeRepo.config.showBookSpine,
-        onPageChanged: _handleSlotChanged,
-        onToggleChrome: widget.onToggleChrome,
-        onTapUp: widget.onTapUp,
-        pageBuilder: (context, slot) {
-          if (hasLeading && slot == 0) {
-            final prevSlices = _getPagedSlices(
-              _currentChapter - 1,
-              availWidth,
-              availHeight,
-              themeRepo.config,
-              annotations,
-            );
-            final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
-            return _buildPageItem(context, _currentChapter - 1, prevSlice);
+          // Ensure _activeSlot is clamped within valid bounds
+          if (_activeSlot >= totalSlots) {
+            _activeSlot = (totalSlots - 1).clamp(0, totalSlots);
           }
-          if (hasTrailing && slot == trailingSlot) {
-            final nextSlices = _getPagedSlices(
-              _currentChapter + 1,
-              availWidth,
-              availHeight,
-              themeRepo.config,
-              annotations,
+
+          // Schedule background pre-pagination for adjacent sentinels
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (_currentChapter + 1 < totalChapters) {
+              _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
+            }
+            if (_currentChapter - 1 >= 0) {
+              _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
+            }
+          });
+
+          final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+              themeRepo.config.pageFlip;
+
+          if (useRealisticCurl) {
+            return RealisticPageTurn(
+              key: ValueKey('mobi-curl-ch-$_currentChapter'),
+              pageCount: totalSlots,
+              currentPage: _activeSlot,
+              textureId: themeRepo.config.paperTexture,
+              showSpine: themeRepo.config.showBookSpine,
+              onPageChanged: (slot) => _handleSlotChanged(slot, constraints),
+              onToggleChrome: widget.onToggleChrome,
+              onTapUp: widget.onTapUp,
+              pageBuilder: (context, slot) {
+                if (hasLeading && slot == 0) {
+                  final prevSlices = _getPagedSlices(
+                    _currentChapter - 1,
+                    availWidth,
+                    availHeight,
+                    themeRepo.config,
+                    annotations,
+                  );
+                  final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
+                  return _buildPageItem(context, _currentChapter - 1, prevSlice);
+                }
+                if (hasTrailing && slot == trailingSlot) {
+                  final nextSlices = _getPagedSlices(
+                    _currentChapter + 1,
+                    availWidth,
+                    availHeight,
+                    themeRepo.config,
+                    annotations,
+                  );
+                  final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
+                  return _buildPageItem(context, _currentChapter + 1, nextSlice);
+                }
+                final sliceIdx = slot - leadingOffset;
+                final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
+                return _buildPageItem(context, _currentChapter, slice);
+              },
             );
-            final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
-            return _buildPageItem(context, _currentChapter + 1, nextSlice);
           }
-          final sliceIdx = slot - leadingOffset;
-          final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
-          return _buildPageItem(context, _currentChapter, slice);
+
+          return NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollEndNotification) {
+                if (notification.depth != 0 || !_viewPageController.hasClients) return false;
+                final settledSlot = _viewPageController.page?.round();
+                if (settledSlot == null || _isSwappingChapter) return false;
+
+                if (hasLeading && settledSlot == 0) {
+                  _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true, constraints: constraints);
+                } else if (hasTrailing && settledSlot == trailingSlot) {
+                  _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false, constraints: constraints);
+                } else {
+                  final sliceIdx = settledSlot - leadingOffset;
+                  if (sliceIdx >= 0 && sliceIdx < slices.length) {
+                    _activeSlot = settledSlot;
+                    _saveReadingPositionForSlot(sliceIdx, slices);
+                  }
+                }
+              }
+              return false;
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapUp: (details) => _handleTapUp(details, MediaQuery.sizeOf(context), totalSlots),
+              child: PageView.builder(
+                key: ValueKey('mobi-paged-pv-$_currentChapter'),
+                controller: _viewPageController,
+                scrollDirection: widget.readingMode == ReadingMode.vertical
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                itemCount: totalSlots,
+                itemBuilder: (context, slot) {
+                  if (hasLeading && slot == 0) {
+                    final prevSlices = _getPagedSlices(
+                      _currentChapter - 1,
+                      availWidth,
+                      availHeight,
+                      themeRepo.config,
+                      annotations,
+                    );
+                    final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
+                    return _buildPageItem(context, _currentChapter - 1, prevSlice);
+                  }
+                  if (hasTrailing && slot == trailingSlot) {
+                    final nextSlices = _getPagedSlices(
+                      _currentChapter + 1,
+                      availWidth,
+                      availHeight,
+                      themeRepo.config,
+                      annotations,
+                    );
+                    final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
+                    return _buildPageItem(context, _currentChapter + 1, nextSlice);
+                  }
+                  final sliceIdx = slot - leadingOffset;
+                  final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
+                  return _buildPageItem(context, _currentChapter, slice);
+                },
+              ),
+            ),
+          );
         },
-      );
-    }
-
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollEndNotification) {
-          if (notification.depth != 0 || !_viewPageController.hasClients) return false;
-          final settledSlot = _viewPageController.page?.round();
-          if (settledSlot == null || _isSwappingChapter) return false;
-
-          if (hasLeading && settledSlot == 0) {
-            _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true);
-          } else if (hasTrailing && settledSlot == trailingSlot) {
-            _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false);
-          } else {
-            final sliceIdx = settledSlot - leadingOffset;
-            if (sliceIdx >= 0 && sliceIdx < slices.length) {
-              _activeSlot = settledSlot;
-              _saveReadingPositionForSlot(sliceIdx, slices);
-            }
-          }
-        }
-        return false;
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTapUp: (details) => _handleTapUp(details, size, totalSlots),
-        child: PageView.builder(
-          key: ValueKey('mobi-paged-pv-$_currentChapter'),
-          controller: _viewPageController,
-          scrollDirection: widget.readingMode == ReadingMode.vertical
-              ? Axis.vertical
-              : Axis.horizontal,
-          itemCount: totalSlots,
-          itemBuilder: (context, slot) {
-            if (hasLeading && slot == 0) {
-              final prevSlices = _getPagedSlices(
-                _currentChapter - 1,
-                availWidth,
-                availHeight,
-                themeRepo.config,
-                annotations,
-              );
-              final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
-              return _buildPageItem(context, _currentChapter - 1, prevSlice);
-            }
-            if (hasTrailing && slot == trailingSlot) {
-              final nextSlices = _getPagedSlices(
-                _currentChapter + 1,
-                availWidth,
-                availHeight,
-                themeRepo.config,
-                annotations,
-              );
-              final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
-              return _buildPageItem(context, _currentChapter + 1, nextSlice);
-            }
-            final sliceIdx = slot - leadingOffset;
-            final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
-            return _buildPageItem(context, _currentChapter, slice);
-          },
-        ),
       ),
     );
   }

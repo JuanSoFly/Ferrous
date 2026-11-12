@@ -7,7 +7,6 @@ import 'package:reader_app/core/utils/html_defragmenter.dart';
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
   static const String indentTag = 'p-indent';
-  static final RegExp _wordRegex = RegExp(r'\b[a-zA-Z]{7,}\b');
 
   static Hyphenator? _hyphenator;
 
@@ -19,13 +18,10 @@ class HyphenationHelper {
     );
   }
 
-  /// Applies smart hyphenation to text:
-  /// - Only words of length >= 7 are considered.
-  /// - Words starting with an uppercase letter (capitalized proper nouns, e.g., Gandalf, Tolkien, Frodo) are skipped.
-  /// - Words with numbers or symbols are untouched.
-  /// - Inserts \u00AD soft hyphen using Liang's hyphenation algorithm.
+  /// Strips \u00AD and &shy; unconditionally so words never break
+  /// across lines without a visible hyphen glyph on Android SkParagraph.
   static String smartHyphenateText(String text) {
-    if (text.isEmpty || text.length < 7) return text;
+    if (text.isEmpty) return text;
 
     var clean = text;
     if (clean.contains('\u00AD')) {
@@ -35,14 +31,7 @@ class HyphenationHelper {
       clean = clean.replaceAll('&shy;', '');
     }
 
-    return clean.replaceAllMapped(_wordRegex, (match) {
-      final word = match[0]!;
-      // Skip capitalized words (proper nouns)
-      if (word[0] == word[0].toUpperCase() && word[0] != word[0].toLowerCase()) {
-        return word;
-      }
-      return hyphenator.hyphenateWord(word);
-    });
+    return clean;
   }
 
   /// Initialize the hyphenator synchronously. Returns a `Future<void>` so existing callers
@@ -161,16 +150,7 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        if (applyHyphenation) {
-          text = smartHyphenateText(text);
-        } else {
-          if (text.contains('\u00AD')) {
-            text = text.replaceAll('\u00AD', '');
-          }
-          if (text.contains('&shy;')) {
-            text = text.replaceAll('&shy;', '');
-          }
-        }
+        text = smartHyphenateText(text);
         node.text = text;
       }
     } else if (node.hasChildNodes()) {
@@ -206,16 +186,7 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        if (applyHyphenation) {
-          text = smartHyphenateText(text);
-        } else {
-          if (text.contains('\u00AD')) {
-            text = text.replaceAll('\u00AD', '');
-          }
-          if (text.contains('&shy;')) {
-            text = text.replaceAll('&shy;', '');
-          }
-        }
+        text = smartHyphenateText(text);
         if (text.contains('  ') || text.contains('\t')) {
           text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
         }

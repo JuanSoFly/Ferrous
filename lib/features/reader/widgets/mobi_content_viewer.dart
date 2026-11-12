@@ -187,6 +187,14 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     } catch (_) {}
     final isEInk = currentTheme == AppTheme.eInk;
 
+    final isPaged = widget.pageSlice != null;
+    final blockMargin = isPaged
+        ? Margins.only(top: 0.0, bottom: themeConfig.paragraphSpacing)
+        : Margins.only(bottom: themeConfig.paragraphSpacing);
+    final pagedOnlyMargin = isPaged
+        ? Margins.only(top: 0.0, bottom: themeConfig.paragraphSpacing)
+        : null;
+
     final effectiveTextColor = isEInk
         ? const Color(0xFF1A1A18)
         : (themeConfig.paperTexture != BookTextures.none
@@ -237,13 +245,13 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
             color: isEInk ? const Color(0xFF1A1A18) : null,
           ),
           "p": Style(
-            margin: Margins.only(bottom: themeConfig.paragraphSpacing),
+            margin: blockMargin,
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
           "div": Style(
-            margin: Margins.only(bottom: themeConfig.paragraphSpacing),
+            margin: blockMargin,
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
@@ -252,13 +260,13 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
-          "h1": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h2": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h3": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h4": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h5": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h6": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "blockquote": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h1": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h2": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h3": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h4": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h5": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h6": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "blockquote": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "img": Style(
             width: Width(100, Unit.percent),

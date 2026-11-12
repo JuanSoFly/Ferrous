@@ -5,6 +5,18 @@
 - **Bounded Typography & Layout Cache**: Built an LRU page slice cache keyed on viewport dimensions, typography settings (font size, family, line height, paragraph indentation/spacing), hyphenation, and active annotations for instant pagination lookups.
 - **True Screen-Fitted PageView**: Overhauled `EpubPagedViewer` and `MobiPagedViewer` to use pure screen-sized `PageView.builder` widgets for both horizontal page-turn and vertical paged reading modes, replacing monolithic scroll containers.
 - **Seamless Chapter Boundary Swapping**: Added adjacent chapter edge slots (leading and trailing chapter previews) allowing continuous swiping across chapter boundaries with automatic chapter transition handling.
+- **Binary Word-Boundary Page Splitting**: Replaced sentence-based paragraph splitting with binary-search over word boundaries for precise text fitting, with sentence-boundary preference heuristics for clean page breaks.
+- **TextScaler-Aware Pagination**: Integrated `MediaQuery.textScalerOf` into paginator and paged viewers so system-level font scaling is correctly reflected in page layout and cache keys.
+- **Safe-Area-Aware Viewport Dimensions**: Switched paged viewers from raw `MediaQuery.sizeOf` to inner constraints subtracting safe area padding, preventing content from rendering behind system UI on notched and edge-to-edge displays.
+- **Reduced Safety Ceiling**: Tightened the per-page safety margin from 2 lines to 0.5 lines after normalizing whitespace and locking block margins, maximizing usable reading area per page.
+
+### Hyphenation Simplification
+- **Soft-Hyphen Strip-Only Mode**: Simplified `HyphenationHelper.smartHyphenateText` to unconditionally strip `\u00AD` and `&shy;` characters, resolving Android SkParagraph rendering artifacts where words broke across lines without visible hyphen glyphs.
+- **Removed Dead Hyphenation Codepaths**: Eliminated the conditional `applyHyphenation` branching and `_wordRegex`-based insertion logic from DOM text traversal, consolidating all text nodes through the uniform strip path.
+
+### Paged Reader Margin & Layout Fixes
+- **Zero-Top-Margin Block Rendering**: Applied `Margins.only(top: 0.0)` to `p`, `div`, `h1`–`h6`, and `blockquote` elements in paged mode to prevent double spacing between paginator-measured and flutter_html-rendered block heights.
+- **Symmetric Horizontal Margins**: Corrected available width calculation to apply horizontal margin on both sides (`horizontalMargin * 2`) instead of only one, and distinguished margin-on (32px) from margin-off (16px) padding.
 
 ### Rust Direct JPEG Decoding & Archive Reliability
 - **Direct JPEG Decoder Bypass**: Added `jpeg-decoder` in the Rust backend (`rust/src/api/cbz.rs`) to decode JPEG comic pages directly, eliminating `zune-jpeg` decoding errors and reducing allocation overhead.
