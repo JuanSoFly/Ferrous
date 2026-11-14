@@ -55,6 +55,7 @@ class SafeScreenPaginator {
     TextAlign textAlign = TextAlign.justify,
     FontWeight fontWeight = FontWeight.normal,
     double wordSpacing = 0.0,
+    TextScaler textScaler = TextScaler.noScaling,
   }) {
     if (availableWidth <= 0 || availableHeight <= 0) {
       return [
@@ -71,10 +72,11 @@ class SafeScreenPaginator {
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
 
+    final textScale = textScaler.scale(10.0) / 10.0;
     final cacheKey =
         '$bookId:$chapterIndex:${availableWidth.toInt()}x${availableHeight.toInt()}:'
         '${fontSize.toStringAsFixed(1)}:${lineHeight.toStringAsFixed(2)}:'
-        '${fontFamily ?? "default"}:$paragraphIndent:$hyphenation:$annotationSig';
+        '${fontFamily ?? "default"}:$paragraphIndent:$hyphenation:${textScale.toStringAsFixed(2)}:$annotationSig';
 
     final cached = _cache[cacheKey];
     if (cached != null && cached.isNotEmpty) {
@@ -105,18 +107,20 @@ class SafeScreenPaginator {
         document.head?.outerHtml ?? '<head><meta charset="utf-8"></head>';
     final bodyAttrs = _serializeAttributes(body, stripId: false);
 
-    // 2-line safety ceiling ensures flutter_html never overflows into RenderFlex crashes
+    // 0.5-line safety ceiling now that whitespace is normalized and margins are locked
+    final safetyCeiling = fontSize * lineHeight * 0.5;
     final maxPageHeight =
-        (availableHeight - (fontSize * lineHeight * 2.0)).clamp(100.0, availableHeight);
+        (availableHeight - safetyCeiling).clamp(100.0, availableHeight);
 
     final textPainter = TextPainter(
       textDirection: TextDirection.ltr,
       textAlign: textAlign,
+      textScaler: textScaler,
       strutStyle: StrutStyle(
         fontFamily: fontFamily,
         fontSize: fontSize,
         height: lineHeight,
-        forceStrutHeight: true,
+        forceStrutHeight: false,
       ),
     );
 
@@ -133,11 +137,12 @@ class SafeScreenPaginator {
       double fontScale = 1.0,
       bool isIndent = false,
       double extraBottomMargin = 0.0,
+      bool isPre = false,
     }) {
-      final trimmed = text.trim();
-      if (trimmed.isEmpty) return fontSize * lineHeight + extraBottomMargin;
+      final normalized = isPre ? text : text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (normalized.isEmpty) return fontSize * lineHeight + extraBottomMargin;
 
-      final measurementText = isIndent ? '\u2003\u2003$trimmed' : trimmed;
+      final measurementText = isIndent ? '\u2003\u2003$normalized' : normalized;
       textPainter.text = TextSpan(
         text: measurementText,
         style: fontScale == 1.0
@@ -149,6 +154,7 @@ class SafeScreenPaginator {
     }
 
     final pages = <PageSlice>[];
+    final pageHeights = <double>[];
     final currentBuffer = StringBuffer();
     double currentHeight = 0.0;
     int runningCharOffset = 0;
@@ -157,6 +163,7 @@ class SafeScreenPaginator {
     void flushPage() {
       if (currentBuffer.isEmpty) return;
       final pageIndex = pages.length;
+      pageHeights.add(currentHeight);
       pages.add(
         PageSlice(
           html:
@@ -205,13 +212,14 @@ class SafeScreenPaginator {
                   node.text,
                   fontScale: isHeading ? 1.35 : 1.0,
                   isIndent: paragraphIndent && tag == 'p',
-                  extraBottomMargin: isHeading ? fontSize * 0.8 : 0.0,
+                  extraBottomMargin: 0.0,
+                  isPre: tag == 'pre',
                 );
 
           // Keep headings attached to at least 2 lines of text
           if (isHeading &&
               currentHeight > 0 &&
-              (currentHeight + blockHeight + (fontSize * lineHeight * 2.5)) >
+              (currentHeight + blockHeight + (fontSize * lineHeight * 2.0)) >
                   maxPageHeight) {
             flushPage();
           }
@@ -238,33 +246,45 @@ class SafeScreenPaginator {
             continue;
           }
 
-          // Multi-page paragraph/block splitting
+          // Multi-page paragraph/block splitting without arbitrary length gates
           final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div') &&
-              !hasImage &&
-              node.text.length > 40;
+              !hasImage;
 
           if (canSplit) {
-            final double minRemainingSpace = fontSize * lineHeight * 2.5;
-            final double remainingHeight = maxPageHeight - currentHeight;
+            final double minRemainingSpace = fontSize * lineHeight * 2.0;
+            double remainingHeight = maxPageHeight - currentHeight;
 
-            // If remaining space on current page is too small, start fresh on next page
+            // If remaining space on current page is too small (< 2 lines), start fresh on next page
             if (currentHeight > 0 && remainingHeight < minRemainingSpace) {
               flushPage();
+              remainingHeight = maxPageHeight;
             }
 
             // Perform non-destructive multi-page splitting
-            final splitParts = _splitBlockAcrossPages(
+            var splitParts = _splitBlockAcrossPages(
               node: node,
-              firstBudget: (maxPageHeight - currentHeight).clamp(
-                minRemainingSpace,
-                maxPageHeight,
-              ),
+              firstBudget: remainingHeight,
               maxPageHeight: maxPageHeight,
               measureText: (txt, isIndent) => measureTextHeight(
                 txt,
                 isIndent: isIndent && paragraphIndent,
+                isPre: tag == 'pre',
               ),
             );
+
+            if (splitParts.isEmpty && currentBuffer.isNotEmpty) {
+              flushPage();
+              splitParts = _splitBlockAcrossPages(
+                node: node,
+                firstBudget: maxPageHeight,
+                maxPageHeight: maxPageHeight,
+                measureText: (txt, isIndent) => measureTextHeight(
+                  txt,
+                  isIndent: isIndent && paragraphIndent,
+                  isPre: tag == 'pre',
+                ),
+              );
+            }
 
             for (int partIdx = 0; partIdx < splitParts.length; partIdx++) {
               final part = splitParts[partIdx];
@@ -297,6 +317,23 @@ class SafeScreenPaginator {
     processNodes(body.nodes, const []);
     flushPage();
 
+    // Prevent 1-page short chapters from splitting into a tiny page-2 tail
+    if (pages.length == 2 && pageHeights.length == 2) {
+      final combinedHeight = pageHeights[0] + pageHeights[1];
+      if (combinedHeight <= availableHeight * 0.98) {
+        pages.clear();
+        pages.add(
+          PageSlice(
+            html:
+                '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>${body.innerHtml}</body></html>',
+            startCharOffset: 0,
+            endCharOffset: chapterPlainText.length,
+            pageIndex: 0,
+          ),
+        );
+      }
+    }
+
     final result = pages.isNotEmpty
         ? pages
         : [
@@ -322,15 +359,10 @@ class SafeScreenPaginator {
     required double maxPageHeight,
     required double Function(String, bool) measureText,
   }) {
-    final text = node.text;
-    final sentenceMatches =
-        RegExp(r'[^.!?]+[.!?]+["”’\)]*\s*|[^.!?]+$').allMatches(text);
-    final sentences = sentenceMatches.map((m) => m.group(0)!).toList();
-
-    if (sentences.length <= 1) {
-      final h = measureText(text, true);
+    final rawText = node.text;
+    if (rawText.trim().isEmpty) {
       final len = DomTextUtils.extractPlainText(node).length;
-      return [_BlockPart(html: node.outerHtml, height: h, charLength: len)];
+      return [_BlockPart(html: node.outerHtml, height: measureText(rawText, true), charLength: len)];
     }
 
     final tag = node.localName ?? 'p';
@@ -338,45 +370,122 @@ class SafeScreenPaginator {
     final attrsNoId = _serializeAttributes(node, stripId: true);
 
     final parts = <_BlockPart>[];
-    int sentenceIndex = 0;
-    int currentBlockOffset = 0;
+    int currentOffset = 0;
     double currentBudget = firstBudget;
     bool isFirstPart = true;
 
-    while (sentenceIndex < sentences.length) {
-      final accumulated = StringBuffer();
-      double accumulatedHeight = 0.0;
-      int chunkSentenceCount = 0;
+    while (currentOffset < rawText.length) {
+      final remainingText = rawText.substring(currentOffset);
+      if (remainingText.trim().isEmpty) {
+        break;
+      }
 
-      while (sentenceIndex < sentences.length) {
-        final sentence = sentences[sentenceIndex];
-        final candidate = '${accumulated.toString()}$sentence';
-        final candidateHeight = measureText(candidate, isFirstPart);
-
-        if (candidateHeight > currentBudget && chunkSentenceCount > 0) {
-          break;
+      // Check if all remaining text fits in currentBudget
+      final remainingHeight = measureText(remainingText, isFirstPart);
+      if (remainingHeight <= currentBudget) {
+        final partInnerHtml = _sliceNodeInnerHtmlForRange(
+          node,
+          currentOffset,
+          rawText.length,
+        );
+        final String partHtml;
+        if (isFirstPart) {
+          partHtml = '<$tag$attrs>$partInnerHtml</$tag>';
+        } else {
+          partHtml =
+              '<$tag$attrsNoId style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
         }
-
-        accumulated.write(sentence);
-        accumulatedHeight = candidateHeight;
-        chunkSentenceCount++;
-        sentenceIndex++;
+        // Trailing '\n' only exists on the final closing block in DomTextUtils
+        final int charLength = (rawText.length - currentOffset) + 1;
+        parts.add(_BlockPart(
+          html: partHtml,
+          height: remainingHeight,
+          charLength: charLength,
+        ));
+        break;
       }
 
-      if (chunkSentenceCount == 0 && sentenceIndex < sentences.length) {
-        final sentence = sentences[sentenceIndex];
-        accumulated.write(sentence);
-        accumulatedHeight = measureText(sentence, isFirstPart);
-        sentenceIndex++;
+      // Remaining text exceeds currentBudget. Find word boundaries in remainingText
+      final wordBoundaries = <int>[];
+      final wsRegex = RegExp(r'\s+');
+      for (final m in wsRegex.allMatches(remainingText)) {
+        if (m.end > 0 && m.end < remainingText.length) {
+          wordBoundaries.add(m.end);
+        }
       }
 
-      final chunkText = accumulated.toString();
-      final isLastPart = sentenceIndex >= sentences.length;
-      final chunkEndOffset = currentBlockOffset + chunkText.length;
+      if (wordBoundaries.isEmpty) {
+        // No whitespace boundaries (e.g., giant single word or unspaced text)
+        final partInnerHtml = _sliceNodeInnerHtmlForRange(
+          node,
+          currentOffset,
+          rawText.length,
+        );
+        final String partHtml;
+        if (isFirstPart) {
+          partHtml = '<$tag$attrs>$partInnerHtml</$tag>';
+        } else {
+          partHtml =
+              '<$tag$attrsNoId style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
+        }
+        final int charLength = (rawText.length - currentOffset) + 1;
+        parts.add(_BlockPart(
+          html: partHtml,
+          height: remainingHeight,
+          charLength: charLength,
+        ));
+        break;
+      }
 
-      // Extract non-destructive DOM HTML for this exact text range
-      final partInnerHtml = _sliceNodeInnerHtmlForRange(node, currentBlockOffset, chunkEndOffset);
-      currentBlockOffset = chunkEndOffset;
+      // Binary search for the maximum word boundary that fits within currentBudget
+      int low = 0;
+      int high = wordBoundaries.length - 1;
+      int bestIndex = -1;
+
+      while (low <= high) {
+        final mid = (low + high) ~/ 2;
+        final splitPoint = wordBoundaries[mid];
+        final candidateText = remainingText.substring(0, splitPoint);
+        final candidateHeight = measureText(candidateText, isFirstPart);
+
+        if (candidateHeight <= currentBudget) {
+          bestIndex = mid;
+          low = mid + 1; // Try fitting more
+        } else {
+          high = mid - 1; // Over budget, try less
+        }
+      }
+
+      // Prefer clean sentence boundary if one exists within 2 words before bestIndex
+      if (bestIndex > 0) {
+        final sentencePunct = RegExp(r'[.!?]["”’\)]*\s*$');
+        for (int back = 1; back <= 2 && (bestIndex - back) >= 0; back++) {
+          final candidateSub = remainingText.substring(0, wordBoundaries[bestIndex - back]);
+          if (sentencePunct.hasMatch(candidateSub.trimRight())) {
+            bestIndex = bestIndex - back;
+            break;
+          }
+        }
+      }
+
+      if (bestIndex == -1) {
+        // Not even 1 word boundary fits in currentBudget
+        if (isFirstPart && currentBudget < maxPageHeight) {
+          return const []; // Signal to flush page and retry with full budget
+        }
+        bestIndex = 0; // At full page height, force taking first word to make progress
+      }
+
+      final splitLength = wordBoundaries[bestIndex];
+      final chunkText = remainingText.substring(0, splitLength);
+      final chunkHeight = measureText(chunkText, isFirstPart);
+      final chunkEndOffset = currentOffset + splitLength;
+
+      final partInnerHtml = _sliceNodeInnerHtmlForRange(
+        node,
+        currentOffset,
+        chunkEndOffset,
+      );
 
       final String partHtml;
       if (isFirstPart) {
@@ -386,17 +495,13 @@ class SafeScreenPaginator {
             '<$tag$attrsNoId style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
       }
 
-      // Trailing '\n' only exists on the final closing block in DomTextUtils
-      final int charLength = chunkText.length + (isLastPart ? 1 : 0);
+      parts.add(_BlockPart(
+        html: partHtml,
+        height: chunkHeight,
+        charLength: splitLength,
+      ));
 
-      parts.add(
-        _BlockPart(
-          html: partHtml,
-          height: accumulatedHeight,
-          charLength: charLength,
-        ),
-      );
-
+      currentOffset = chunkEndOffset;
       isFirstPart = false;
       currentBudget = maxPageHeight;
     }
@@ -406,7 +511,7 @@ class SafeScreenPaginator {
         : [
             _BlockPart(
               html: node.outerHtml,
-              height: measureText(text, true),
+              height: measureText(rawText, true),
               charLength: DomTextUtils.extractPlainText(node).length,
             ),
           ];
