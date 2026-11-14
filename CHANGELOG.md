@@ -1,24 +1,4 @@
-## [1.4.0-alpha.1] - 2026-11-15
-
-### APK Size & Binary Optimization
-- **Rust Crate Feature Trimming**: Stripped default features from `image` (retaining only `png`, `jpeg`, and `webp`) and `zip` (retaining `deflate` and `time`), shedding unneeded compression codecs like bzip2 and zstd.
-- **Pure-Rust Unrar Crypto**: Configured `unrar-rs` to use pure Rust crypto (`crypto-rust`), eliminating native C dependencies on BoringSSL (`aws-lc-sys`) and accelerating Android NDK builds.
-- **Fat Link-Time Optimization**: Configured `lto = "fat"` and `panic = "abort"` in Rust release profile for aggressive dead-code elimination and minimal native library binary footprint.
-
-### Hyphenation Engine & Asset Pruning
-- **Dynamic Language Pattern Loading**: Refactored `HyphenationHelper` to asynchronously load language pattern files on demand via `Hyphenator.loadAsyncByAbbr()`, replacing monolithic static Dart language classes and slashing memory overhead.
-- **Gradle Asset Stripping**: Added a Gradle packaging filter in `android/app/build.gradle` to exclude upstream test fixtures and unused language JSON dictionaries from the final APK assets.
-
-### Release Hardening & Debug Symbols
-- **Obfuscation & Tree-Shaking**: Configured production APK builds with `--obfuscate`, `--split-debug-info`, and `--tree-shake-icons`.
-- **Debug Symbol Artifacts**: Added automated CI artifact upload for Dart debug symbols with 90-day retention for production stack trace de-obfuscation.
-
-## [1.3.4-alpha.2] - 2026-11-15
-
-### Core Package & Crate Rebranding
-- **Unified Branding**: Renamed the root Dart package to `ferrous` and the Rust native bridge library crate to `rust_lib_ferrous`, aligning the internal module identity with the app's official name.
-- **Cross-Platform Bridge Synchronization**: Updated build scripts, Android Gradle configs, CMake files (Linux/Windows), and macOS/iOS CocoaPods podspecs to bind against `rust_lib_ferrous`.
-- **Global Import Migration**: Updated all imports across the entire codebase to reference `package:ferrous/...`.
+## [1.4.0] - 2026-11-15
 
 ### Screen-Fitted Paging & Safe Screen Paginator
 - **SafeScreenPaginator Engine**: Introduced `SafeScreenPaginator` to accurately partition reflowable EPUB and MOBI/AZW chapters into screen-fitted `PageSlice` units using paragraph budgeting, DOM hierarchy traversal, and `TextPainter` text layout measurement.
@@ -33,11 +13,16 @@
 - **ReaderTypographyMetrics**: Extracted centralized typography calculation formulas (`ReaderTypographyMetrics`) to guarantee mathematical parity between `SafeScreenPaginator` measurements and `FlutterHtml` rendering for headings, block margins, and indentation widths.
 - **TTS Highlight Precision**: Refactored `EpubTtsController` and `MobiTtsController` to utilize offset resolution and unified typography metrics for reliable sentence highlighting and progress tracking across paged and continuous reader views.
 
-### Hyphenation Simplification & Layout Polish
+### Hyphenation Engine & Layout Polish
+- **Dynamic Language Pattern Loading**: Refactored `HyphenationHelper` to asynchronously load language pattern files on demand via `Hyphenator.loadAsyncByAbbr()`, replacing monolithic static Dart language classes and slashing memory overhead.
 - **Soft-Hyphen Strip-Only Mode**: Simplified `HyphenationHelper.smartHyphenateText` to unconditionally strip `\u00AD` and `&shy;` characters, resolving Android SkParagraph rendering artifacts where words broke across lines without visible hyphen glyphs.
 - **Paged Reader Margin Fixes**: Applied `Margins.only(top: 0.0)` to block elements in paged mode to prevent double vertical spacing, and corrected available width calculations for symmetric horizontal margins.
+- **Gradle Asset Stripping**: Added a Gradle packaging filter in `android/app/build.gradle` to exclude upstream test fixtures and unused language JSON dictionaries from the final APK assets.
 
-### Rust Direct JPEG Decoding & Archive Reliability
+### APK Size & Rust Binary Optimization
+- **Rust Crate Feature Trimming**: Stripped default features from `image` (retaining only `png`, `jpeg`, and `webp`) and `zip` (retaining `deflate` and `time`), shedding unneeded compression codecs like bzip2 and zstd.
+- **Pure-Rust Unrar Crypto**: Configured `unrar-rs` to use pure Rust crypto (`crypto-rust`), eliminating native C dependencies on BoringSSL (`aws-lc-sys`) and accelerating Android NDK builds.
+- **Fat Link-Time Optimization**: Configured `lto = "fat"` and `panic = "abort"` in Rust release profile for aggressive dead-code elimination and minimal native library binary footprint.
 - **Direct JPEG Decoder Bypass**: Added `jpeg-decoder` in the Rust backend (`rust/src/api/cbz.rs`) to decode JPEG comic pages directly, eliminating `zune-jpeg` decoding errors and reducing allocation overhead.
 - **Broad Color Space Support**: Implemented direct conversion to 32-bit RGBA for `RGB24`, `L8` grayscale, `L16`, and `CMYK32` JPEG streams before transferring pixel buffers over FFI to Flutter.
 - **Zero-Cost Pixel Conversion**: Optimized JPEG decoding loops using const-generic `as_chunks` with pattern destructuring, eliminating slice indexing and bounds checks.
@@ -47,11 +32,18 @@
 - **Slice-Granular Position Tracking**: Implemented `savePagedReadingPosition` in `EpubChapterController` and `MobiChapterController` to synchronize book progress to exact sentence spans and character offsets per page slice.
 - **Streamlined Paged Position Restoration**: Optimized mode switching between continuous scroll and paged reading, instantly resolving reading location via slice offsets without post-frame scroll client retries.
 
+### Core Package & Crate Rebranding
+- **Unified Branding**: Renamed the root Dart package to `ferrous` and the Rust native bridge library crate to `rust_lib_ferrous`, aligning the internal module identity with the app's official name.
+- **Cross-Platform Bridge Synchronization**: Updated build scripts, Android Gradle configs, CMake files (Linux/Windows), and macOS/iOS CocoaPods podspecs to bind against `rust_lib_ferrous`.
+- **Global Import Migration**: Updated all imports across the entire codebase to reference `package:ferrous/...`.
+
 ### Android Adaptive Launcher Icon
 - **Updated Icon Assets**: Refreshed adaptive launcher icons across all Android display densities (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`) with refined vector foreground assets.
 - **Dark Theme Background**: Updated adaptive icon background color in `colors.xml` to match the reader's dark theme aesthetic.
 
-### CI & Static Analysis Tuning
+### Release Hardening, Debug Symbols & CI
+- **Obfuscation & Tree-Shaking**: Configured production APK builds with `--obfuscate`, `--split-debug-info`, and `--tree-shake-icons`.
+- **Debug Symbol Artifacts**: Added automated CI artifact upload for Dart debug symbols with 90-day retention for production stack trace de-obfuscation.
 - **Streamlined CI Pipeline**: Optimized `.github/workflows/ci.yml` and release workflows to focus strictly on fast, reliable Flutter and Rust lint verification.
 - **Analysis Options Tuning**: Updated `analysis_options.yaml` to exclude generated source files from static analysis, eliminating false positives in CI.
 
