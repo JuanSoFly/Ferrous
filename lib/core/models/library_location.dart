@@ -1,5 +1,5 @@
-﻿import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/services/saf_service.dart';
+﻿import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/services/saf_service.dart';
 
 /// Represents a configured book scan directory or storage location in Ferrous.
 class LibraryLocation {

@@ -1,12 +1,12 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/book_textures.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
+import 'package:ferrous/core/constants/book_textures.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/features/library/widgets/book_cover.dart';
 
 /// Full-page or in-flow authentic book cover presentation.
 ///

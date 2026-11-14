@@ -1,5 +1,5 @@
-name: reader_app
-description: "A new Flutter project."
+name: ferrous
+description: "Ferrous: Fast, minimal, cross-platform e-reader built with Flutter and Rust."
 
 publish_to: 'none' 
 
@@ -28,7 +28,7 @@ dependencies:
   flutter_html_table: ^3.0.0
   archive: ^3.6.1
   xml: ^6.5.0
-  rust_lib_reader_app:
+  rust_lib_ferrous:
     path: rust_builder
   uuid: ^4.5.2
   http: ^1.2.2
@@ -54,9 +54,8 @@ flutter_icons:
   ios: false
   image_path: "assets/ic_launcher.png"
   min_sdk_android: 23
-  adaptive_icon_background: "#8C1D18"
-  adaptive_icon_foreground: "assets/ic_launcher.png"
-  remove_alpha_android: true
+  adaptive_icon_background: "#1A1D24"
+  adaptive_icon_foreground: "assets/ic_launcher_foreground.png"
 
 flutter:
 

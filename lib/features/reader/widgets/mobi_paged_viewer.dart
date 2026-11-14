@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/annotation.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/utils/safe_screen_paginator.dart';
-import 'package:reader_app/data/models/reader_theme_config.dart';
-import 'package:reader_app/data/repositories/annotation_repository.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.dart';
-import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
+import 'package:ferrous/core/models/annotation.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/utils/safe_screen_paginator.dart';
+import 'package:ferrous/data/models/reader_theme_config.dart';
+import 'package:ferrous/data/repositories/annotation_repository.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/features/reader/controllers/mobi_chapter_controller.dart';
+import 'package:ferrous/features/reader/controllers/mobi_tts_controller.dart';
 import 'mobi_content_viewer.dart';
 import 'realistic_page_turn.dart';
 
@@ -41,6 +42,23 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   bool _isPageAnimating = false;
   int? _lastTtsHandledOffset;
   Size? _lastMeasuredSize;
+  String? _lastFontFamily;
+
+  void _checkFontReadiness() {
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final family = themeRepo.config.fontFamily;
+    if (family.isNotEmpty && family != 'default') {
+      try {
+        GoogleFonts.getFont(family);
+        GoogleFonts.pendingFonts().then((_) {
+          if (mounted) {
+            SafeScreenPaginator.clearCache();
+            setState(() {});
+          }
+        }).catchError((_) {});
+      } catch (_) {}
+    }
+  }
 
   @override
   void initState() {
@@ -60,6 +78,12 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final currentFont = themeRepo.config.fontFamily;
+    if (_lastFontFamily != currentFont) {
+      _lastFontFamily = currentFont;
+      _checkFontReadiness();
+    }
     _calibrateActiveSlotForCurrentPosition();
   }
 
@@ -322,6 +346,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   void _saveReadingPositionForSlot(int sliceIndex, List<PageSlice> slices) {
     if (sliceIndex < 0 || sliceIndex >= slices.length) return;
     final slice = slices[sliceIndex];
+    widget.chapterController.setActivePageBounds(
+      slice.startCharOffset,
+      slice.endCharOffset,
+    );
     final totalTextLen = widget.chapterController.allChapterPlainTexts.length > _currentChapter
         ? widget.chapterController.allChapterPlainTexts[_currentChapter].length
         : 1;
@@ -552,6 +580,16 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
           // Ensure _activeSlot is clamped within valid bounds
           if (_activeSlot >= totalSlots) {
             _activeSlot = (totalSlots - 1).clamp(0, totalSlots);
+          }
+
+          // Seed active page slice bounds on ChapterController
+          final activeSliceIdx = _activeSlot - leadingOffset;
+          if (activeSliceIdx >= 0 && activeSliceIdx < slices.length) {
+            final activeSlice = slices[activeSliceIdx];
+            widget.chapterController.setActivePageBounds(
+              activeSlice.startCharOffset,
+              activeSlice.endCharOffset,
+            );
           }
 
           // Schedule background pre-pagination for adjacent sentinels

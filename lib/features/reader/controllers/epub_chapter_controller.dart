@@ -1,22 +1,23 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:epubx/epubx.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/book_file_resolver.dart';
-import 'package:reader_app/features/reader/epub_fallback_parser.dart';
-import 'package:reader_app/core/utils/performance.dart';
-import 'package:reader_app/core/utils/sentence_utils.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/book_file_resolver.dart';
+import 'package:ferrous/features/reader/epub_fallback_parser.dart';
+import 'package:ferrous/core/utils/performance.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:path_provider/path_provider.dart';
-import 'package:reader_app/core/utils/dom_text_utils.dart';
-import 'package:reader_app/data/services/epub_cover_extractor.dart';
-import 'package:reader_app/features/reader/hyphenation_helper.dart';
-import 'package:reader_app/core/utils/html_defragmenter.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
-import 'package:reader_app/core/utils/dom_chunker.dart';
+import 'package:ferrous/core/utils/dom_text_utils.dart';
+import 'package:ferrous/data/services/epub_cover_extractor.dart';
+import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/core/utils/html_defragmenter.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/utils/dom_chunker.dart';
+import 'reader_mode_controller.dart';
 
 class EpubChapterInfo {
   final String? title;
@@ -139,6 +140,54 @@ class EpubChapterController extends ChangeNotifier {
   int get lastReadingSentenceStart => _lastReadingSentenceStart;
   int get lastReadingSentenceEnd => _lastReadingSentenceEnd;
   double get lastScrollPosition => _lastScrollPosition;
+
+  int _activePageStartCharOffset = -1;
+  int _activePageEndCharOffset = -1;
+
+  int get activePageStartCharOffset => _activePageStartCharOffset;
+  int get activePageEndCharOffset => _activePageEndCharOffset;
+
+  void setActivePageBounds(int start, int end) {
+    _activePageStartCharOffset = start;
+    _activePageEndCharOffset = end;
+  }
+
+  void resetActivePageBounds() {
+    _activePageStartCharOffset = -1;
+    _activePageEndCharOffset = -1;
+  }
+
+  ({int start, int end, int expected}) getReadingBoundsForTap({
+    required double tapDy,
+    required double viewportHeight,
+    required ReaderModeController modeController,
+    int? chapterLength,
+    int? tappedChapterIndex,
+  }) {
+    final len = chapterLength ?? _currentPlainText.length;
+    if (tappedChapterIndex != null && tappedChapterIndex != _currentChapterIndex) {
+      return (start: 0, end: len, expected: 0);
+    }
+    final ratio = viewportHeight > 0 ? (tapDy / viewportHeight).clamp(0.0, 1.0) : 0.0;
+    if (modeController.isPagedMode) {
+      final rawStart = _activePageStartCharOffset >= 0
+          ? _activePageStartCharOffset
+          : (_lastReadingSentenceStart >= 0 ? _lastReadingSentenceStart : 0);
+      final start = rawStart.clamp(0, len);
+      final rawEnd = _activePageEndCharOffset > start
+          ? _activePageEndCharOffset
+          : (start + 3000);
+      final end = rawEnd.clamp(start, len);
+      final expected = start + ((end - start) * ratio).round();
+      return (start: start, end: end, expected: expected);
+    } else {
+      final rawAnchor = _lastReadingSentenceStart >= 0 ? _lastReadingSentenceStart : 0;
+      final anchor = rawAnchor.clamp(0, len);
+      final start = (anchor - 2500).clamp(0, len);
+      final end = (anchor + 3500).clamp(start, len);
+      return (start: start, end: end, expected: anchor);
+    }
+  }
 
   void init() {
     _currentChapterIndex = book.sectionIndex;
@@ -488,6 +537,7 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   void prepareForContinuousMode(int targetChapter, {double? progress}) {
+    resetActivePageBounds();
     _isTransitioningMode = true;
     _isRestoringPosition = true;
     _restoreGeneration++;
@@ -513,6 +563,7 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   void prepareForPagedMode(int targetChapter, {double? progress}) {
+    resetActivePageBounds();
     _isTransitioningMode = true;
     _isRestoringPosition = true;
     _restoreGeneration++;
@@ -530,6 +581,7 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   Future<void> loadChapter(int index, {bool userInitiated = false, VoidCallback? onBeforeLoad}) async {
+    resetActivePageBounds();
     if (_chapters == null || index < 0 || index >= _chapters!.length) return;
     if (_allChapterContents.isEmpty) return;
 

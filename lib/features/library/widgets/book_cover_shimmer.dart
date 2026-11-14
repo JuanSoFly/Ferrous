@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 /// Animated shimmer skeleton placeholder for book covers.
 /// Shows a sweeping light band over the cover gradient while content loads.

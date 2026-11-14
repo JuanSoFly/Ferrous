@@ -1,9 +1,9 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:reader_app/core/models/book.dart';
+import 'package:ferrous/core/models/book.dart';
 
 /// Subtle monochrome halftone dot pattern overlay scrim for Kindle Carta display.
 /// Highly optimized using a GPU-accelerated repeating [ImageShader] tile to eliminate

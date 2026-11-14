@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:state_notifier/state_notifier.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/app_dimension.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 /// State snapshot for Ferrous App Dimension.
 class DimensionState {

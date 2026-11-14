@@ -1,10 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
-import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
-import 'package:reader_app/core/utils/performance.dart';
-import 'package:reader_app/core/errors/exceptions.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:ferrous/src/rust/api/cbz.dart' as cbz_api;
+import 'package:ferrous/core/utils/performance.dart';
+import 'package:ferrous/core/errors/exceptions.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
 import '../models/page_corner_colors.dart';
 
 class _ExtractionTask {

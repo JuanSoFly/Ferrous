@@ -1,13 +1,13 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/core/utils/sentence_utils.dart';
-import 'package:reader_app/core/utils/normalized_text_map.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
+import 'package:ferrous/core/utils/normalized_text_map.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
-import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/dom_text_utils.dart';
 
 class HtmlTtsController extends ChangeNotifier {
   final Book book;

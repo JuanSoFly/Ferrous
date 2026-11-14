@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
-import 'package:reader_app/core/models/collection.dart';
+import 'package:ferrous/core/models/collection.dart';
 
 class CollectionRepository extends ChangeNotifier {
   static const String _boxName = 'collections';

@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:reader_app/data/models/reader_theme_config.dart';
-import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:ferrous/data/models/reader_theme_config.dart';
+import 'package:ferrous/data/models/tts_highlight_style.dart';
 
 class ReaderThemeRepository extends ChangeNotifier {
   static const String _boxName = 'reader_theme';
@@ -36,6 +36,10 @@ class ReaderThemeRepository extends ChangeNotifier {
     // Ensure we handle potential type mismatches or incomplete data
     try {
       _config = _box!.get(_key, defaultValue: const ReaderThemeConfig())!;
+      if (_config.fontSize < 12.0 || _config.fontSize > 100.0) {
+        _config = _config.copyWith(fontSize: _config.fontSize.clamp(12.0, 100.0));
+        _box?.put(_key, _config).catchError((_) {});
+      }
     } catch (e) {
       debugPrint('Error reading config: $e. Using default.');
       _config = const ReaderThemeConfig();
@@ -72,13 +76,17 @@ class ReaderThemeRepository extends ChangeNotifier {
   }
 
   Future<void> updateConfig(ReaderThemeConfig newConfig) async {
-    _config = newConfig;
+    final clampedFontSize = newConfig.fontSize.clamp(12.0, 100.0);
+    final sanitized = newConfig.fontSize != clampedFontSize
+        ? newConfig.copyWith(fontSize: clampedFontSize)
+        : newConfig;
+    _config = sanitized;
     notifyListeners();
     
     // Only persist if box is available
     if (_box != null) {
       try {
-        await _box!.put(_key, newConfig);
+        await _box!.put(_key, sanitized);
       } catch (e) {
         debugPrint('Failed to persist config: $e');
       }
@@ -86,7 +94,9 @@ class ReaderThemeRepository extends ChangeNotifier {
   }
 
   Future<void> setFontSize(double size) async {
-    await updateConfig(_config.copyWith(fontSize: size));
+    final clamped = size.clamp(12.0, 100.0);
+    if (_config.fontSize == clamped) return;
+    await updateConfig(_config.copyWith(fontSize: clamped));
   }
   
   Future<void> setFontFamily(String family) async {

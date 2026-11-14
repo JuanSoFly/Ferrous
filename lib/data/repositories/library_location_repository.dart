@@ -1,13 +1,13 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/saf_service.dart';
-import 'package:reader_app/src/rust/api/mobi.dart' as rust_mobi;
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/saf_service.dart';
+import 'package:ferrous/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:uuid/uuid.dart';
 
 class LibraryLocationScanResult {

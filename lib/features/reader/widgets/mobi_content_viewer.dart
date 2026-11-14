@@ -1,26 +1,27 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
-import 'package:reader_app/features/reader/widgets/html_table_viewer.dart';
+import 'package:ferrous/features/reader/widgets/html_table_viewer.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:reader_app/core/constants/book_textures.dart';
-import 'package:reader_app/core/models/annotation.dart';
-import 'package:reader_app/data/repositories/annotation_repository.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/data/models/reader_theme_config.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/features/annotations/annotation_detail_sheet.dart';
-import 'package:reader_app/features/reader/annotation_highlight_helper.dart';
-import 'package:reader_app/features/reader/controllers/mobi_chapter_controller.dart';
-import 'package:reader_app/features/reader/controllers/mobi_tts_controller.dart';
-import 'package:reader_app/core/utils/safe_screen_paginator.dart';
-import 'package:reader_app/features/reader/hyphenation_helper.dart';
-import 'package:reader_app/data/models/tts_highlight_style.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/book_textures.dart';
+import 'package:ferrous/core/models/annotation.dart';
+import 'package:ferrous/data/repositories/annotation_repository.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/models/reader_theme_config.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/features/annotations/annotation_detail_sheet.dart';
+import 'package:ferrous/features/reader/annotation_highlight_helper.dart';
+import 'package:ferrous/features/reader/controllers/mobi_chapter_controller.dart';
+import 'package:ferrous/features/reader/controllers/mobi_tts_controller.dart';
+import 'package:ferrous/core/utils/reader_typography_metrics.dart';
+import 'package:ferrous/core/utils/safe_screen_paginator.dart';
+import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/data/models/tts_highlight_style.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class MobiContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -251,21 +252,61 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
           "div": Style(
-            margin: blockMargin,
+            margin: isPaged ? Margins.zero : blockMargin,
+            padding: HtmlPaddings.zero,
             textAlign: parseTextAlign(themeConfig.textAlign),
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
+          "section": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+          "article": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+          "main": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
           "span": Style(
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
-          "h1": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h2": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h3": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h4": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h5": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "h6": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "h1": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h1')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h2": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h2')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h3": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h3')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h4": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h4')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h5": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h5')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "h6": Style(
+            fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h6')),
+            fontWeight: FontWeight.bold,
+            margin: pagedOnlyMargin,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
           "blockquote": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "img": Style(

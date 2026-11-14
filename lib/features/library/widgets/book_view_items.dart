@@ -1,18 +1,18 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/core/widgets/delete_book_dialog.dart';
-import 'package:reader_app/data/repositories/collection_repository.dart';
-import 'package:reader_app/features/library/library_state.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
-import 'package:reader_app/features/library/widgets/kindle_book_action_sheet.dart';
-import 'package:reader_app/features/reader/reader_screen.dart';
-import 'package:reader_app/features/reader/split_reader_screen.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/core/widgets/delete_book_dialog.dart';
+import 'package:ferrous/data/repositories/collection_repository.dart';
+import 'package:ferrous/features/library/library_state.dart';
+import 'package:ferrous/features/library/widgets/book_cover.dart';
+import 'package:ferrous/features/library/widgets/kindle_book_action_sheet.dart';
+import 'package:ferrous/features/reader/reader_screen.dart';
+import 'package:ferrous/features/reader/split_reader_screen.dart';
 
 /// Central action handler for all book view items to guarantee 100% feature
 /// parity across all 8 view modes (tap, split mode, long-press, more options).

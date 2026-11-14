@@ -1,7 +1,7 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
-import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/dom_text_utils.dart';
 
 class DomChunkResult {
   final List<String> chunks;

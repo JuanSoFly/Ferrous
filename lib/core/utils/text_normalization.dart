@@ -1,4 +1,4 @@
-import 'package:reader_app/core/utils/html_defragmenter.dart';
+﻿import 'package:ferrous/core/utils/html_defragmenter.dart';
 
 String normalizePlainText(String text) {
   // First heal replacement characters identically to the DOM pipeline

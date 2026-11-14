@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/features/reader/html_reader_screen.dart';
-import 'package:reader_app/src/rust/api/txt.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/features/reader/html_reader_screen.dart';
+import 'package:ferrous/src/rust/api/txt.dart';
 
 class TxtReaderScreen extends HtmlReaderScreen {
   const TxtReaderScreen({

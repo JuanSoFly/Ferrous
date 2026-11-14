@@ -1,7 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
-import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
+import 'package:ferrous/src/rust/api/cbz.dart' as cbz_api;
 
 /// Service for asynchronous extraction, thumbnailing, and LRU memory caching
 /// of comic/manga page thumbnails.

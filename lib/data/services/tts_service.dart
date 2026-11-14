@@ -1,9 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:reader_app/core/utils/performance.dart';
-import 'package:reader_app/src/rust/api/tts_text.dart';
+import 'package:ferrous/core/utils/performance.dart';
+import 'package:ferrous/src/rust/api/tts_text.dart';
 
 enum TtsState { stopped, playing, paused }
 

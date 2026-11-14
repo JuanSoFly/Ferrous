@@ -1,6 +1,6 @@
-import 'package:flutter/cupertino.dart';
+﻿import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
+import 'package:ferrous/core/models/app_dimension.dart';
 
 /// Semantic iconography pack resolver corresponding to each App Dimension.
 class DimensionIcons {

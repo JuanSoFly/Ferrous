@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/services/feedback_service.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/services/feedback_service.dart';
 
 /// Modal bottom sheet presenting user feedback and issue reporting options.
 /// Respects E-Ink display guidelines with instantaneous animations when [isEInk] is true.

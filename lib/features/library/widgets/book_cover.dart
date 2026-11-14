@@ -1,11 +1,11 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/features/library/library_state.dart';
-import 'package:reader_app/features/library/widgets/book_cover_shimmer.dart';
-import 'package:reader_app/core/constants/e_ink_tokens.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/features/library/library_state.dart';
+import 'package:ferrous/features/library/widgets/book_cover_shimmer.dart';
+import 'package:ferrous/core/constants/e_ink_tokens.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 /// Shared widget for displaying book covers consistently across the app.
 ///

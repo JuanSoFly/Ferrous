@@ -1,14 +1,15 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/core/utils/sentence_utils.dart';
-import 'package:reader_app/core/utils/normalized_text_map.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
+import 'package:ferrous/core/utils/normalized_text_map.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
-import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/text_offset_resolver.dart';
 import 'epub_chapter_controller.dart';
 import 'reader_mode_controller.dart';
 
@@ -438,8 +439,13 @@ class EpubTtsController extends ChangeNotifier {
     if (rawText.trim().isEmpty) return '';
 
     if (modeController.isPagedMode) {
-      _ttsRawBaseOffset = 0;
-      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+      final rawStart = chapterController.activePageStartCharOffset >= 0
+          ? chapterController.activePageStartCharOffset
+          : (chapterController.lastReadingSentenceStart >= 0 ? chapterController.lastReadingSentenceStart : 0);
+      final start = rawStart.clamp(0, rawText.length);
+      _ttsRawBaseOffset = start;
+      final textToSpeak = rawText.substring(start);
+      _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
       return _ttsNormalizationMap!.normalized;
     }
 
@@ -486,81 +492,30 @@ class EpubTtsController extends ChangeNotifier {
     if (chapterText.trim().isEmpty) return null;
 
     final hit = _hitTestTextAt(tap, context: context);
-    int? absoluteOffset;
-    String? detectedWord;
+    if (hit == null || hit.rawText.trim().isEmpty) return null;
 
-    if (hit != null) {
-      final rawFragment = hit.rawText;
-      if (rawFragment.trim().isNotEmpty) {
-        // Extract the target word directly from the tapped paragraph
-        final localWordStart = _wordStartForOffset(rawFragment, hit.rawOffset);
-        final localWordEnd = _findWordEnd(rawFragment, localWordStart);
-        if (localWordEnd > localWordStart) {
-          detectedWord = rawFragment.substring(localWordStart, localWordEnd).trim();
-        }
+    final bounds = chapterController.getReadingBoundsForTap(
+      tapDy: tap.dy,
+      viewportHeight: MediaQuery.sizeOf(context).height,
+      modeController: modeController,
+      chapterLength: chapterText.length,
+      tappedChapterIndex: chapterIndex,
+    );
 
-        final fragmentMap = buildNormalizedTextMap(rawFragment);
-        final fragment = fragmentMap.normalized;
+    final resolved = TextOffsetResolver.resolveExactOffset(
+      chapterText: chapterText,
+      rawParagraphFragment: hit.rawText,
+      rawHitOffset: hit.rawOffset,
+      windowStart: bounds.start,
+      windowEnd: bounds.end,
+      expectedOffset: bounds.expected,
+    );
 
-        var approxIndex = 0;
-        if (modeController.isContinuousMode) {
-          final ctx = chapterController.chapterKeys[chapterIndex].currentContext;
-          final chapterBox = ctx?.findRenderObject() as RenderBox?;
-          if (chapterBox != null && chapterBox.hasSize) {
-            final topLeft = chapterBox.localToGlobal(Offset.zero);
-            final dy = (tap.dy - topLeft.dy).clamp(0.0, chapterBox.size.height);
-            final frac = chapterBox.size.height <= 0 ? 0.0 : (dy / chapterBox.size.height).clamp(0.0, 1.0);
-            approxIndex = (frac * (chapterText.length - 1)).floor().clamp(0, chapterText.length - 1);
-          }
-        }
-
-        int? fragmentStart;
-        if (fragment.isNotEmpty) {
-          final startFrom = approxIndex.clamp(0, chapterText.length);
-          final forward = chapterText.indexOf(fragment, startFrom);
-          final backward = chapterText.lastIndexOf(fragment, startFrom);
-
-          fragmentStart = switch ((forward, backward)) {
-            (int f, int b) when f >= 0 && b >= 0 => (f - startFrom).abs() < (b - startFrom).abs() ? f : b,
-            (int f, _) when f >= 0 => f,
-            (_, int b) when b >= 0 => b,
-            _ => null,
-          };
-        }
-
-        if (fragmentStart != null) {
-          final fragmentOffset = _normalizedOffsetForRawOffset(fragmentMap, hit.rawOffset);
-          absoluteOffset = _wordStartForOffset(chapterText, fragmentStart + fragmentOffset);
-        } else if (detectedWord != null && detectedWord.isNotEmpty) {
-          // Fallback: locate detectedWord near approxIndex in chapterText
-          final cleanTarget = detectedWord.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
-          final query = cleanTarget.isNotEmpty ? cleanTarget : detectedWord;
-          final startFrom = approxIndex.clamp(0, chapterText.length);
-          final forward = chapterText.indexOf(query, startFrom);
-          final backward = chapterText.lastIndexOf(query, startFrom);
-          final matchPos = switch ((forward, backward)) {
-            (int f, int b) when f >= 0 && b >= 0 => (f - startFrom).abs() < (b - startFrom).abs() ? f : b,
-            (int f, _) when f >= 0 => f,
-            (_, int b) when b >= 0 => b,
-            _ => null,
-          };
-          if (matchPos != null) {
-            absoluteOffset = _wordStartForOffset(chapterText, matchPos);
-          }
-        }
-
-        if ((detectedWord == null || detectedWord.isEmpty) && absoluteOffset != null && absoluteOffset < chapterText.length) {
-          final wordEnd = _findWordEnd(chapterText, absoluteOffset);
-          detectedWord = chapterText.substring(absoluteOffset, wordEnd).trim();
-        }
-      }
-    }
-
-    if (absoluteOffset != null && detectedWord != null && detectedWord.isNotEmpty) {
+    if (resolved != null) {
       return TapDetectionResult(
-        word: detectedWord,
+        word: resolved.word,
         chapterIndex: chapterIndex,
-        offset: absoluteOffset,
+        offset: resolved.offset,
         tapPosition: tap,
       );
     }
@@ -696,35 +651,6 @@ class EpubTtsController extends ChangeNotifier {
       }
     }
     return null;
-  }
-
-  int _normalizedOffsetForRawOffset(NormalizedTextMap map, int rawOffset) {
-    if (map.normalizedToRaw.isEmpty) return 0;
-    if (rawOffset <= 0) return 0;
-    if (rawOffset > map.normalizedToRaw.last) return map.normalizedToRaw.length;
-
-    var lo = 0;
-    var hi = map.normalizedToRaw.length;
-    while (lo < hi) {
-      final mid = (lo + hi) >> 1;
-      if (map.normalizedToRaw[mid] <= rawOffset) {
-        lo = mid + 1;
-      } else {
-        hi = mid;
-      }
-    }
-    return (lo - 1).clamp(0, map.normalizedToRaw.length);
-  }
-
-  int _wordStartForOffset(String text, int offset) {
-    if (text.isEmpty) return 0;
-    var i = offset.clamp(0, text.length);
-    if (i >= text.length) return text.length;
-    while (i < text.length && text[i].trim().isEmpty) { i++; }
-    if (i >= text.length) return text.length;
-    var start = i;
-    while (start > 0 && text[start - 1].trim().isNotEmpty) { start--; }
-    return start;
   }
 
   void maybeEnsureHighlightVisible() {

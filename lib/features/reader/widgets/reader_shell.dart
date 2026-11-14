@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/features/reader/controllers/reader_chrome_controller.dart';
 
 /// A shared shell widget that wraps reader content with chrome (UI overlays).
 class ReaderShell extends StatelessWidget {

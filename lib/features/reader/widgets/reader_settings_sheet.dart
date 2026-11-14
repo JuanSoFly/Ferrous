@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:reader_app/core/constants/book_textures.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/book_textures.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 // ==========================================
 // E-INK HARDWARE SLIDER & MECHANICAL CONTROLS
@@ -335,11 +335,11 @@ class _TextSettingsTab extends StatelessWidget {
             if (isEInk)
               _KindleStepButton(
                 icon: Icons.remove,
-                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 160.0)),
+                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 100.0)),
               )
             else
               IconButton.filledTonal(
-                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 160.0)),
+                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 100.0)),
                 icon: const Icon(Icons.remove),
               ),
             Expanded(
@@ -347,21 +347,21 @@ class _TextSettingsTab extends StatelessWidget {
                 context: context,
                 theme: theme,
                 isEInk: isEInk,
-                value: config.fontSize,
+                value: config.fontSize.clamp(12.0, 100.0),
                 min: 12.0,
-                max: 160.0,
-                divisions: ((160 - 12) / 2).round(),
+                max: 100.0,
+                divisions: ((100 - 12) / 2).round(),
                 onChanged: (val) => repo.setFontSize(val),
               ),
             ),
             if (isEInk)
               _KindleStepButton(
                 icon: Icons.add,
-                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 160.0)),
+                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 100.0)),
               )
             else
               IconButton.filledTonal(
-                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 160.0)),
+                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 100.0)),
                 icon: const Icon(Icons.add),
               ),
           ],

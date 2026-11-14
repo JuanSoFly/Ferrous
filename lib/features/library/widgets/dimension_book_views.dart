@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/models/app_dimension.dart';
+import 'package:ferrous/features/library/widgets/book_cover.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 typedef BookCallback = void Function(Book book);
 

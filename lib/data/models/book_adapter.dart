@@ -1,5 +1,5 @@
-import 'package:hive/hive.dart';
-import 'package:reader_app/core/models/book.dart';
+﻿import 'package:hive/hive.dart';
+import 'package:ferrous/core/models/book.dart';
 
 class BookAdapter extends TypeAdapter<Book> {
   @override
