@@ -1,11 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/features/reader/pdf_text_picker_sheet.dart';
-import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/features/reader/pdf_text_picker_sheet.dart';
+import 'package:ferrous/features/reader/reading_mode_sheet.dart';
 import 'controllers/pdf_page_controller.dart';
 import 'controllers/pdf_tts_controller.dart';
 import 'controllers/reader_chrome_controller.dart';
@@ -15,7 +15,7 @@ import 'widgets/pdf_page_viewer.dart';
 import 'widgets/pdf_reader_top_bar.dart';
 import 'widgets/pdf_page_controls.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'tts_controls_sheet.dart';
 
 class PdfReaderScreen extends StatefulWidget {

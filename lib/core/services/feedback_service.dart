@@ -1,8 +1,8 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
 
 /// Context-free service to launch GitHub issue templates and discussions,
 /// copying full diagnostic logs to clipboard to overcome URI length limitations.

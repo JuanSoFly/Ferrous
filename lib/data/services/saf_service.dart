@@ -1,8 +1,8 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/errors/exceptions.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/errors/exceptions.dart';
 
 
 enum SafStorageMode { linked, imported }

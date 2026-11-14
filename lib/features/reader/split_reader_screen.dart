@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/features/reader/reader_screen.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/features/reader/reader_screen.dart';
 
 class SplitReaderScreen extends StatefulWidget {
   final Book leftBook;

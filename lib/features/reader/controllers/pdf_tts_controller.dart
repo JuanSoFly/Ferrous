@@ -1,11 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:reader_app/src/rust/api/pdf.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/core/utils/sentence_utils.dart';
-import 'package:reader_app/core/utils/text_normalization.dart';
+import 'package:ferrous/src/rust/api/pdf.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
+import 'package:ferrous/core/utils/text_normalization.dart';
 import 'pdf_page_controller.dart';
 import 'pdf_document_text.dart';
 

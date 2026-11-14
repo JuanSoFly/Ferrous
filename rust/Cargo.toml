@@ -1,6 +1,6 @@
 [package]
-name = "rust_lib_reader_app"
-version = "0.1.0"
+name = "rust_lib_ferrous"
+version = "1.4.0"
 edition = "2021"
 
 [lib]

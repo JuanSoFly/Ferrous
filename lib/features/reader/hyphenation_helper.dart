@@ -1,8 +1,8 @@
-import 'package:html/dom.dart' as dom;
+﻿import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:hyphenatorx/hyphenatorx.dart';
 import 'package:hyphenatorx/languages/language_en_us.dart';
-import 'package:reader_app/core/utils/html_defragmenter.dart';
+import 'package:ferrous/core/utils/html_defragmenter.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
@@ -270,6 +270,11 @@ class HyphenationHelper {
 
   /// Indents a paragraph by inserting a `<p-indent></p-indent>` element as the first child.
   static void _indentParagraph(dom.Element p) {
+    if (p.classes.contains('page-continuation') ||
+        (p.attributes['style'] ?? '').contains('text-indent: 0') ||
+        (p.attributes['style'] ?? '').contains('text-indent:0')) {
+      return;
+    }
     if (p.children.isNotEmpty && p.children.first.localName == 'p-indent') {
       return;
     }

@@ -1,15 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/models/annotation.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/annotation_repository.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/features/annotations/annotation_dialog.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
-import 'package:reader_app/features/reader/reader_screen.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/models/annotation.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/annotation_repository.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/features/annotations/annotation_dialog.dart';
+import 'package:ferrous/features/library/widgets/book_cover.dart';
+import 'package:ferrous/features/reader/reader_screen.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class AnnotationsHubScreen extends StatefulWidget {
   const AnnotationsHubScreen({super.key});

@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:reader_app/core/services/update_service.dart';
+import 'package:ferrous/core/services/update_service.dart';
 
 /// Shows update dialog and returns true if user chose to update
 Future<bool> showUpdateDialog(BuildContext context, UpdateInfo updateInfo) async {

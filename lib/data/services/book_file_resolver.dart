@@ -1,5 +1,5 @@
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/services/saf_service.dart';
+﻿import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/services/saf_service.dart';
 
 class ResolvedBookFile {
   final String path;

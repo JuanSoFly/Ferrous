@@ -1,5 +1,5 @@
-import 'dart:async';
-import 'package:reader_app/data/repositories/book_repository.dart';
+﻿import 'dart:async';
+import 'package:ferrous/data/repositories/book_repository.dart';
 
 /// A debounced reading progress tracker that batches frequent progress updates.
 /// 

@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/features/library/widgets/book_cover.dart';
-import 'package:reader_app/features/reader/reader_screen.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/features/library/widgets/book_cover.dart';
+import 'package:ferrous/features/reader/reader_screen.dart';
 
 class LocationBooksSheet extends StatefulWidget {
   final LibraryLocation location;

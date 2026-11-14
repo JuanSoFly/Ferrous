@@ -1,7 +1,7 @@
-import 'package:html/parser.dart' as html_parser;
+﻿import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
-import 'package:reader_app/core/models/annotation.dart';
-import 'package:reader_app/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/models/annotation.dart';
+import 'package:ferrous/core/utils/dom_text_utils.dart';
 
 /// Helper to inject annotation highlight tags into chapter HTML.
 class AnnotationHighlightHelper {

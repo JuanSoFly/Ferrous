@@ -72,7 +72,7 @@ NormalizedTextMap buildNormalizedTextMap(String raw) {
     var ch = String.fromCharCode(rune);
     final codeUnitLen = ch.length;
     
-    if (ch == '\u200B') {
+    if (ch == '\u200B' || ch == '\uFFFC' || ch == '\uFFFD' || ch == '\u00AD') {
       i += codeUnitLen;
       continue;
     }

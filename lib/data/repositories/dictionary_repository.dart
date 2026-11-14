@@ -1,6 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:reader_app/core/models/word_definition.dart';
+import 'package:ferrous/core/models/word_definition.dart';
 
 class DictionaryRepository {
   static const String _baseUrl = 'https://api.dictionaryapi.dev/api/v2/entries/en';

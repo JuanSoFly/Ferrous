@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/models/reader_theme_config.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
-import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
-import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
+import 'package:ferrous/data/models/reader_theme_config.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/features/reader/controllers/epub_chapter_controller.dart';
+import 'package:ferrous/features/reader/controllers/epub_tts_controller.dart';
+import 'package:ferrous/features/reader/controllers/reader_mode_controller.dart';
 import 'epub_content_viewer.dart';
 
 class EpubContinuousViewer extends StatefulWidget {

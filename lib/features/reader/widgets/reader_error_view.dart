@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
-import 'package:reader_app/core/services/feedback_service.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/services/feedback_service.dart';
 
 /// Fullscreen error fallback widget displayed when a reader encounters
 /// a parsing, decompression, or rendering failure.

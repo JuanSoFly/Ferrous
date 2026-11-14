@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/features/reader/controllers/reader_chrome_controller.dart';
-import 'package:reader_app/features/reader/controllers/reader_mode_controller.dart';
-import 'package:reader_app/features/reader/reading_mode_sheet.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/features/reader/controllers/reader_chrome_controller.dart';
+import 'package:ferrous/features/reader/controllers/reader_mode_controller.dart';
+import 'package:ferrous/features/reader/reading_mode_sheet.dart';
 import 'widgets/cbz_adaptive_background.dart';
 
 import 'controllers/cbz_page_controller.dart';

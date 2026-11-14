@@ -1,16 +1,16 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/data/repositories/library_location_repository.dart';
-import 'package:reader_app/data/services/saf_service.dart';
-import 'package:reader_app/features/reader/widgets/kindle_popup_menu.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/features/settings/library_locations/widgets/add_location_dialog.dart';
-import 'package:reader_app/features/settings/library_locations/widgets/location_books_sheet.dart';
-import 'package:reader_app/features/settings/library_locations/widgets/location_card.dart';
-import 'package:reader_app/features/settings/library_locations/widgets/location_details_sheet.dart';
-import 'package:reader_app/features/settings/library_locations/widgets/remove_location_dialog.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/data/repositories/library_location_repository.dart';
+import 'package:ferrous/data/services/saf_service.dart';
+import 'package:ferrous/features/reader/widgets/kindle_popup_menu.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:ferrous/features/settings/library_locations/widgets/add_location_dialog.dart';
+import 'package:ferrous/features/settings/library_locations/widgets/location_books_sheet.dart';
+import 'package:ferrous/features/settings/library_locations/widgets/location_card.dart';
+import 'package:ferrous/features/settings/library_locations/widgets/location_details_sheet.dart';
+import 'package:ferrous/features/settings/library_locations/widgets/remove_location_dialog.dart';
 
 class LibraryLocationsScreen extends StatelessWidget {
   const LibraryLocationsScreen({super.key});

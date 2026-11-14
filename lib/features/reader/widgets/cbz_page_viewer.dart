@@ -1,17 +1,17 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/book_textures.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/core/constants/book_textures.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
 import 'cbz_adaptive_background.dart';
 import 'cbz_page_image.dart';
 import 'realistic_page_turn.dart';
-import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/features/reader/widgets/reader_error_view.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class CbzPageViewer extends StatefulWidget {
   final CbzPageController pageController;

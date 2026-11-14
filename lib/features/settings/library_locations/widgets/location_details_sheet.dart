@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/data/services/saf_service.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/data/services/saf_service.dart';
 
 class LocationDetailsSheet extends StatelessWidget {
   final LibraryLocation location;
