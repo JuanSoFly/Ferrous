@@ -427,6 +427,7 @@ class EpubChapterController extends ChangeNotifier {
   void setMockChapters({
     required List<String> contents,
     required List<String> plainTexts,
+    List<List<SentenceSpan>>? sentenceSpans,
   }) {
     _chapters = List.generate(
       contents.length,
@@ -434,7 +435,7 @@ class EpubChapterController extends ChangeNotifier {
     );
     _allChapterContents = contents;
     _allChapterPlainTexts = plainTexts;
-    _allChapterSentenceSpans = List.generate(contents.length, (_) => []);
+    _allChapterSentenceSpans = sentenceSpans ?? List.generate(contents.length, (_) => []);
     _chapterKeys = List.generate(contents.length, (i) => GlobalKey(debugLabel: 'mock-chapter-$i'));
     _currentContent = contents.isNotEmpty ? contents[_currentChapterIndex.clamp(0, contents.length - 1)] : '';
     _currentPlainText = plainTexts.isNotEmpty ? plainTexts[_currentChapterIndex.clamp(0, plainTexts.length - 1)] : '';
@@ -538,7 +539,6 @@ class EpubChapterController extends ChangeNotifier {
     _currentContent = _allChapterContents[index];
     _currentPlainText = _allChapterPlainTexts[index];
     _sentenceSpans = _allChapterSentenceSpans[index];
-    notifyListeners();
 
     SentenceSpan? resetSpan;
     if (_currentPlainText.trim().isNotEmpty) {
@@ -567,6 +567,8 @@ class EpubChapterController extends ChangeNotifier {
       book.sectionIndex = index;
       book.scrollPosition = _lastScrollPosition;
     }
+
+    notifyListeners();
 
     unawaited(repository.updateReadingProgress(
       book.id,
@@ -958,6 +960,30 @@ class EpubChapterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void savePagedReadingPosition(int chapterIndex, int startCharOffset, double fraction) {
+    if (chapterIndex < 0 || chapterIndex >= _allChapterPlainTexts.length) return;
+    final span = _sentenceSpanForFraction(chapterIndex, fraction);
+    _lastReadingSentenceStart = startCharOffset;
+    _lastReadingSentenceEnd = span.end > startCharOffset ? span.end : startCharOffset + 1;
+    _currentChapterIndex = chapterIndex;
+    _chapterProgress = fraction.clamp(0.0, 1.0);
+    _lastScrollPosition = estimateScrollOffsetForChapter(chapterIndex, fraction);
+
+    book.sectionIndex = chapterIndex;
+    book.scrollPosition = _lastScrollPosition;
+    book.lastReadingSentenceStart = _lastReadingSentenceStart;
+    book.lastReadingSentenceEnd = _lastReadingSentenceEnd;
+
+    unawaited(repository.updateReadingProgress(
+      book.id,
+      sectionIndex: chapterIndex,
+      totalPages: _chapters?.length ?? 0,
+      scrollPosition: _lastScrollPosition,
+      lastReadingSentenceStart: _lastReadingSentenceStart,
+      lastReadingSentenceEnd: _lastReadingSentenceEnd,
+    ));
+  }
+
   void _saveReadingPositionFromPagedController(int chapterIndex) {
     if (chapterIndex < 0 || chapterIndex >= _allChapterPlainTexts.length) return;
     final controller = _chapterScrollControllers[chapterIndex];
@@ -1117,7 +1143,7 @@ class EpubChapterController extends ChangeNotifier {
     });
   }
 
-  void _restorePagedPosition({int attempt = 0}) {
+  void _restorePagedPosition() {
     if (_allChapterContents.isEmpty) {
       endModeTransition();
       return;
@@ -1127,11 +1153,9 @@ class EpubChapterController extends ChangeNotifier {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller = chapterScrollController(chapterIndex);
       if (!controller.hasClients) {
-        if (attempt < 10) {
-          _restorePagedPosition(attempt: attempt + 1);
-        } else {
-          endModeTransition();
-        }
+        // In screen-fitted paged mode, position is restored directly via PageSlice in EpubPagedViewer
+        _markRestoringPosition();
+        endModeTransition();
         return;
       }
 

@@ -269,29 +269,68 @@ fn read_image_bytes(path: &str, entry_name: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-fn decode_and_process_image(buffer: &[u8], max_width: Option<i32>) -> Result<CbzPageData> {
+fn decode_and_process_image(buffer: &[u8], _max_width: Option<i32>) -> Result<CbzPageData> {
     if buffer.is_empty() {
         return Err(anyhow!("Cannot decode empty image buffer"));
     }
 
+    // Direct JPEG bypass: avoid zune-jpeg entirely by using jpeg-decoder
+    if buffer.len() >= 2 && buffer[0] == 0xFF && buffer[1] == 0xD8 {
+        let mut decoder = jpeg_decoder::Decoder::new(buffer);
+        let pixels = decoder.decode().with_context(|| "Failed to decode JPEG image")?;
+        let info = decoder.info().ok_or_else(|| anyhow!("Failed to read JPEG metadata"))?;
+        let width = info.width as i32;
+        let height = info.height as i32;
+
+        let rgba_bytes = match info.pixel_format {
+            jpeg_decoder::PixelFormat::RGB24 => {
+                let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
+                for chunk in pixels.chunks_exact(3) {
+                    rgba.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]);
+                }
+                rgba
+            }
+            jpeg_decoder::PixelFormat::L8 => {
+                let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
+                for &l in &pixels {
+                    rgba.extend_from_slice(&[l, l, l, 255]);
+                }
+                rgba
+            }
+            jpeg_decoder::PixelFormat::L16 => {
+                let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
+                for chunk in pixels.chunks_exact(2) {
+                    let l = chunk[0];
+                    rgba.extend_from_slice(&[l, l, l, 255]);
+                }
+                rgba
+            }
+            jpeg_decoder::PixelFormat::CMYK32 => {
+                let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
+                for chunk in pixels.chunks_exact(4) {
+                    let c = chunk[0] as u32;
+                    let m = chunk[1] as u32;
+                    let y = chunk[2] as u32;
+                    let k = chunk[3] as u32;
+                    let r = ((255 - c) * (255 - k) / 255) as u8;
+                    let g = ((255 - m) * (255 - k) / 255) as u8;
+                    let b = ((255 - y) * (255 - k) / 255) as u8;
+                    rgba.extend_from_slice(&[r, g, b, 255]);
+                }
+                rgba
+            }
+        };
+
+        return Ok(CbzPageData {
+            width,
+            height,
+            rgba_bytes,
+        });
+    }
+
+    // Fallback for non-JPEG formats (PNG, WebP, GIF, etc.)
     let img = image::load_from_memory(buffer)
-        .with_context(|| "Failed to decode image")?;
-
-    let img = if let Some(max_w) = max_width {
-        let (w, h) = img.dimensions();
-        let threshold = (max_w as f32 * 1.5).max(2048.0) as u32;
-        if w > threshold {
-            let target_w = threshold.min(2560);
-            let scale = target_w as f32 / w as f32;
-            let new_h = (h as f32 * scale) as u32;
-            img.resize(target_w, new_h, image::imageops::FilterType::Triangle)
-        } else {
-            img
-        }
-    } else {
-        img
-    };
-
+        .with_context(|| "Failed to decode non-JPEG image")?;
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
 

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:reader_app/core/models/annotation.dart';
 import 'package:reader_app/core/models/book.dart';
+import 'package:reader_app/core/utils/safe_screen_paginator.dart';
+import 'package:reader_app/data/models/reader_theme_config.dart';
+import 'package:reader_app/data/repositories/annotation_repository.dart';
 import 'package:reader_app/data/repositories/reader_theme_repository.dart';
 import 'package:reader_app/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:reader_app/features/reader/controllers/epub_tts_controller.dart';
@@ -30,21 +34,33 @@ class EpubPagedViewer extends StatefulWidget {
 }
 
 class _EpubPagedViewerState extends State<EpubPagedViewer> {
-  late int _activePage;
+  late int _currentChapter;
+  late int _activeSlot;
   late PageController _viewPageController;
-  double _accumulatedOverscroll = 0.0;
-  DateTime? _lastPageTurnTime;
+  bool _isSwappingChapter = false;
   bool _isPageAnimating = false;
+  int? _lastTtsHandledOffset;
+  Size? _lastMeasuredSize;
 
   @override
   void initState() {
     super.initState();
-    widget.chapterController.addListener(_onChapterControllerChanged);
-    _activePage = widget.chapterController.currentChapterIndex.clamp(
+    _currentChapter = widget.chapterController.currentChapterIndex.clamp(
       0,
       (widget.chapterController.chapters?.length ?? 1) - 1,
     );
-    _viewPageController = PageController(initialPage: _activePage);
+    final hasLeading = _currentChapter > 0;
+    _activeSlot = hasLeading ? 1 : 0;
+    _viewPageController = PageController(initialPage: _activeSlot);
+
+    widget.chapterController.addListener(_onChapterControllerChanged);
+    widget.ttsController.addListener(_onTtsControllerChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _calibrateActiveSlotForCurrentPosition();
   }
 
   @override
@@ -54,118 +70,357 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       oldWidget.chapterController.removeListener(_onChapterControllerChanged);
       widget.chapterController.addListener(_onChapterControllerChanged);
     }
+    if (oldWidget.ttsController != widget.ttsController) {
+      oldWidget.ttsController.removeListener(_onTtsControllerChanged);
+      widget.ttsController.addListener(_onTtsControllerChanged);
+    }
     if (oldWidget.readingMode != widget.readingMode) {
       if (_viewPageController.hasClients) {
-        _viewPageController.dispose();
-        _viewPageController = PageController(initialPage: _activePage);
+        final oldController = _viewPageController;
+        _viewPageController = PageController(initialPage: _activeSlot);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          oldController.dispose();
+        });
       }
     }
-    _syncActivePage();
+    _syncActiveChapter();
   }
 
   @override
   void dispose() {
     widget.chapterController.removeListener(_onChapterControllerChanged);
+    widget.ttsController.removeListener(_onTtsControllerChanged);
     _viewPageController.dispose();
     super.dispose();
   }
 
   void _onChapterControllerChanged() {
-    _syncActivePage();
+    _syncActiveChapter();
   }
 
-  PageController _getOrUpdatePageController() {
-    if (!_viewPageController.hasClients) {
-      if (_viewPageController.initialPage != _activePage) {
-        _viewPageController.dispose();
-        _viewPageController = PageController(initialPage: _activePage);
-      }
+  void _calibrateActiveSlotForCurrentPosition() {
+    if (!mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    if (_lastMeasuredSize != null && _lastMeasuredSize == size) return;
+    _lastMeasuredSize = size;
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final annotationRepo = context.read<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+
+    final slices = _getPagedSlices(
+      _currentChapter,
+      availWidth,
+      availHeight,
+      themeRepo.config,
+      annotations,
+    );
+    if (slices.isEmpty) return;
+
+    final hasLeading = _currentChapter > 0;
+    final leadingOffset = hasLeading ? 1 : 0;
+    final maxSlot = slices.isNotEmpty ? leadingOffset + slices.length - 1 : leadingOffset;
+    final targetSliceIdx = _findSliceForOffset(slices, widget.chapterController.lastReadingSentenceStart);
+    final targetSlot = (targetSliceIdx + leadingOffset).clamp(leadingOffset, maxSlot);
+
+    if (_activeSlot != targetSlot) {
+      _activeSlot = targetSlot;
+      final oldController = _viewPageController;
+      _viewPageController = PageController(initialPage: targetSlot);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        oldController.dispose();
+      });
+      if (mounted) setState(() {});
     }
-    return _viewPageController;
   }
 
-  void _syncActivePage() {
-    final targetPage = widget.chapterController.currentChapterIndex.clamp(
+  void _syncActiveChapter() {
+    if (_isSwappingChapter) return;
+    // Never interrupt an active user drag or fling animation
+    if (_viewPageController.hasClients &&
+        _viewPageController.position.isScrollingNotifier.value) {
+      return;
+    }
+
+    final targetChapter = widget.chapterController.currentChapterIndex.clamp(
       0,
       (widget.chapterController.chapters?.length ?? 1) - 1,
     );
-    if (_activePage != targetPage) {
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final annotationRepo = context.read<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
+    final size = MediaQuery.sizeOf(context);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+    final slices = _getPagedSlices(targetChapter, availWidth, availHeight, themeRepo.config, annotations);
+
+    final hasLeading = targetChapter > 0;
+    final leadingOffset = hasLeading ? 1 : 0;
+    final maxSlot = slices.isNotEmpty ? leadingOffset + slices.length - 1 : leadingOffset;
+    final targetSliceIdx = _findSliceForOffset(slices, widget.chapterController.lastReadingSentenceStart);
+    final targetSlot = (targetSliceIdx + leadingOffset).clamp(leadingOffset, maxSlot);
+
+    if (_currentChapter != targetChapter) {
+      _currentChapter = targetChapter;
+      _activeSlot = targetSlot;
+
+      final oldController = _viewPageController;
+      _viewPageController = PageController(initialPage: targetSlot);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        oldController.dispose();
+      });
+
       if (mounted) {
-        setState(() {
-          _activePage = targetPage;
-        });
-      } else {
-        _activePage = targetPage;
+        setState(() {});
       }
+    } else if (_activeSlot != targetSlot) {
+      // Same chapter (e.g., TOC re-anchor to Page 0): jump existing controller in place
+      _activeSlot = targetSlot;
       if (_viewPageController.hasClients) {
-        if (_viewPageController.page?.round() != targetPage) {
-          _viewPageController.jumpToPage(targetPage);
-        }
-      } else {
-        if (_viewPageController.initialPage != targetPage) {
-          _viewPageController.dispose();
-          _viewPageController = PageController(initialPage: targetPage);
-        }
+        _viewPageController.jumpToPage(targetSlot);
       }
-      if (widget.pageController.hasClients &&
-          widget.pageController.page?.round() != targetPage) {
-        widget.pageController.jumpToPage(targetPage);
+      if (mounted) {
+        setState(() {});
       }
     }
   }
 
-  void _goToPreviousPage() {
-    if (_activePage > 0 && !_isPageAnimating) {
-      final target = _activePage - 1;
+  void _onTtsControllerChanged() {
+    if (!mounted || _isSwappingChapter || _isPageAnimating) return;
+    final highlightStart = widget.ttsController.lastHighlightStart;
+    if (highlightStart == null || highlightStart == _lastTtsHandledOffset) return;
+    _lastTtsHandledOffset = highlightStart;
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final annotationRepo = context.read<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
+
+    final size = MediaQuery.sizeOf(context);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+
+    final slices = _getPagedSlices(
+      _currentChapter,
+      availWidth,
+      availHeight,
+      themeRepo.config,
+      annotations,
+    );
+    if (slices.isEmpty) return;
+
+    final hasLeading = _currentChapter > 0;
+    final leadingOffset = hasLeading ? 1 : 0;
+    final targetSliceIdx = _findSliceForOffset(slices, highlightStart);
+    final targetSlot = targetSliceIdx + leadingOffset;
+
+    if (targetSlot != _activeSlot) {
+      _activeSlot = targetSlot;
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+          themeRepo.config.pageFlip;
+
+      if (useRealisticCurl) {
+        if (mounted) setState(() {});
+      } else if (_viewPageController.hasClients) {
+        _isPageAnimating = true;
+        _viewPageController
+            .animateToPage(
+              targetSlot,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) => _isPageAnimating = false)
+            .catchError((_) => _isPageAnimating = false);
+      }
+    }
+  }
+
+  (double, double) _computeAvailableDimensions(Size size, ReaderThemeConfig config) {
+    final horizontalMargin = config.pageMargins ? 32.0 : 0.0;
+    final availWidth = (size.width - horizontalMargin - 32.0).clamp(50.0, size.width);
+    final availHeight = (size.height - 32.0).clamp(50.0, size.height);
+    return (availWidth, availHeight);
+  }
+
+  List<PageSlice> _getPagedSlices(
+    int chapterIndex,
+    double width,
+    double height,
+    ReaderThemeConfig themeConfig,
+    List<Annotation> annotations,
+  ) {
+    final totalChapters = widget.chapterController.chapters?.length ?? 0;
+    if (chapterIndex < 0 || chapterIndex >= totalChapters) {
+      return const [];
+    }
+
+    final html = widget.chapterController.allChapterContents.length > chapterIndex
+        ? widget.chapterController.allChapterContents[chapterIndex]
+        : '';
+    final plainText = widget.chapterController.allChapterPlainTexts.length > chapterIndex
+        ? widget.chapterController.allChapterPlainTexts[chapterIndex]
+        : '';
+    final chapterAnns = annotations.where((a) => a.chapterIndex == chapterIndex).toList();
+
+    TextAlign parseTextAlign(String align) {
+      switch (align) {
+        case 'left':
+          return TextAlign.left;
+        case 'right':
+          return TextAlign.right;
+        case 'center':
+          return TextAlign.center;
+        case 'justify':
+        default:
+          return TextAlign.justify;
+      }
+    }
+
+    return SafeScreenPaginator.paginateChapter(
+      bookId: widget.chapterController.book.id,
+      chapterIndex: chapterIndex,
+      chapterHtml: html,
+      chapterPlainText: plainText,
+      availableWidth: width,
+      availableHeight: height,
+      fontSize: themeConfig.fontSize,
+      lineHeight: themeConfig.lineHeight,
+      paragraphSpacing: themeConfig.paragraphSpacing,
+      fontFamily: themeConfig.fontFamily,
+      paragraphIndent: themeConfig.paragraphIndent,
+      hyphenation: themeConfig.hyphenation,
+      annotations: chapterAnns,
+      textAlign: parseTextAlign(themeConfig.textAlign),
+      fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+      wordSpacing: themeConfig.wordSpacing,
+    );
+  }
+
+  int _findSliceForOffset(List<PageSlice> slices, int offset) {
+    if (slices.isEmpty || offset <= 0) return 0;
+    for (int i = 0; i < slices.length; i++) {
+      if (offset >= slices[i].startCharOffset && offset < slices[i].endCharOffset) {
+        return i;
+      }
+    }
+    if (offset >= slices.last.endCharOffset) {
+      return slices.length - 1;
+    }
+    return 0;
+  }
+
+  void _saveReadingPositionForSlot(int sliceIndex, List<PageSlice> slices) {
+    if (sliceIndex < 0 || sliceIndex >= slices.length) return;
+    final slice = slices[sliceIndex];
+    final totalTextLen = widget.chapterController.allChapterPlainTexts.length > _currentChapter
+        ? widget.chapterController.allChapterPlainTexts[_currentChapter].length
+        : 1;
+    final fraction = totalTextLen > 0
+        ? (slice.startCharOffset / totalTextLen).clamp(0.0, 1.0)
+        : 0.0;
+    widget.chapterController.savePagedReadingPosition(
+      _currentChapter,
+      slice.startCharOffset,
+      fraction,
+    );
+  }
+
+  void _swapToAdjacentChapter({
+    required int targetChapter,
+    required bool landOnLastPage,
+  }) {
+    if (_isSwappingChapter) return;
+    _isSwappingChapter = true;
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final annotationRepo = context.read<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
+
+    final size = MediaQuery.sizeOf(context);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+
+    final targetSlices = _getPagedSlices(
+      targetChapter,
+      availWidth,
+      availHeight,
+      themeRepo.config,
+      annotations,
+    );
+
+    final targetHasLeading = targetChapter > 0;
+    final targetLeadingOffset = targetHasLeading ? 1 : 0;
+    final targetSlot = landOnLastPage
+        ? (targetLeadingOffset + targetSlices.length - 1).clamp(0, targetLeadingOffset + targetSlices.length)
+        : targetLeadingOffset;
+
+    // Safely re-seed page controller without bubbling disposal crashes
+    final oldController = _viewPageController;
+    _viewPageController = PageController(initialPage: targetSlot);
+    _activeSlot = targetSlot;
+    _currentChapter = targetChapter;
+
+    widget.chapterController.loadChapter(targetChapter, userInitiated: false);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      oldController.dispose();
+    });
+
+    final targetSliceIdx = targetSlot - targetLeadingOffset;
+    if (targetSliceIdx >= 0 && targetSliceIdx < targetSlices.length) {
+      _saveReadingPositionForSlot(targetSliceIdx, targetSlices);
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSwappingChapter = false;
+      });
+    }
+  }
+
+  void _goToPreviousPage(int totalSlots) {
+    if (_activeSlot > 0 && !_isPageAnimating) {
+      final target = _activeSlot - 1;
       final themeRepo = context.read<ReaderThemeRepository>();
       final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
-        _handlePageChanged(target);
+        _handleSlotChanged(target);
       } else if (_viewPageController.hasClients) {
         _isPageAnimating = true;
-        _viewPageController.animateToPage(
-          target,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-        ).then((_) {
-          _isPageAnimating = false;
-        }).catchError((_) {
-          _isPageAnimating = false;
-        });
-      } else {
-        _handlePageChanged(target);
+        _viewPageController
+            .animateToPage(
+              target,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) => _isPageAnimating = false)
+            .catchError((_) => _isPageAnimating = false);
       }
     }
   }
 
-  void _goToNextPage() {
-    final totalPages = widget.chapterController.chapters?.length ?? 0;
-    if (_activePage < totalPages - 1 && !_isPageAnimating) {
-      final target = _activePage + 1;
+  void _goToNextPage(int totalSlots) {
+    if (_activeSlot < totalSlots - 1 && !_isPageAnimating) {
+      final target = _activeSlot + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
       final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
           themeRepo.config.pageFlip;
       if (useRealisticCurl) {
-        _handlePageChanged(target);
+        _handleSlotChanged(target);
       } else if (_viewPageController.hasClients) {
         _isPageAnimating = true;
-        _viewPageController.animateToPage(
-          target,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-        ).then((_) {
-          _isPageAnimating = false;
-        }).catchError((_) {
-          _isPageAnimating = false;
-        });
-      } else {
-        _handlePageChanged(target);
+        _viewPageController
+            .animateToPage(
+              target,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) => _isPageAnimating = false)
+            .catchError((_) => _isPageAnimating = false);
       }
     }
   }
 
-  void _handleTapUp(TapUpDetails details, Size size) {
+  void _handleTapUp(TapUpDetails details, Size size, int totalSlots) {
     widget.onTapUp(details);
 
     if (widget.readingMode == ReadingMode.vertical) {
@@ -173,9 +428,9 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       final tapY = details.globalPosition.dy;
       final height = size.height;
       if (tapY < height * marginRatio) {
-        _goToPreviousPage();
+        _goToPreviousPage(totalSlots);
       } else if (tapY > height * (1.0 - marginRatio)) {
-        _goToNextPage();
+        _goToNextPage(totalSlots);
       } else {
         widget.onToggleChrome();
       }
@@ -184,203 +439,219 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       final tapX = details.globalPosition.dx;
       final width = size.width;
       if (tapX < width * marginRatio) {
-        _goToPreviousPage();
+        _goToPreviousPage(totalSlots);
       } else if (tapX > width * (1.0 - marginRatio)) {
-        _goToNextPage();
+        _goToNextPage(totalSlots);
       } else {
         widget.onToggleChrome();
       }
     }
   }
 
-  bool _onScrollNotification(ScrollNotification notification) {
-    if (widget.chapterController.isTransitioningMode ||
-        widget.chapterController.isRestoringPosition) {
-      return false;
-    }
+  void _handleSlotChanged(int newSlot) {
+    if (_isSwappingChapter) return;
+    _activeSlot = newSlot;
 
-    if (notification is ScrollEndNotification) {
-      widget.chapterController.saveReadingPositionForMode(widget.readingMode);
-    }
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final annotationRepo = context.read<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
-    if (widget.readingMode != ReadingMode.vertical) {
-      return false;
-    }
+    final size = MediaQuery.sizeOf(context);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
 
-    if (notification is ScrollStartNotification) {
-      _accumulatedOverscroll = 0.0;
-    } else if (notification is OverscrollNotification) {
-      _accumulatedOverscroll += notification.overscroll;
-    } else if (notification is ScrollUpdateNotification) {
-      final metrics = notification.metrics;
-      final delta = notification.scrollDelta ?? 0.0;
-      if (metrics.pixels <= metrics.minScrollExtent && delta < 0) {
-        _accumulatedOverscroll += delta;
-      } else if (metrics.pixels >= metrics.maxScrollExtent && delta > 0) {
-        _accumulatedOverscroll += delta;
-      }
-    } else if (notification is ScrollEndNotification) {
-      final now = DateTime.now();
-      if (_lastPageTurnTime == null ||
-          now.difference(_lastPageTurnTime!).inMilliseconds > 400) {
-        const threshold = 35.0;
-        final metrics = notification.metrics;
-        final isAtTop = metrics.pixels <= metrics.minScrollExtent + 2.0;
-        final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 2.0;
+    final slices = _getPagedSlices(
+      _currentChapter,
+      availWidth,
+      availHeight,
+      themeRepo.config,
+      annotations,
+    );
 
-        if (_accumulatedOverscroll < -threshold || (isAtTop && _accumulatedOverscroll < -10)) {
-          _lastPageTurnTime = now;
-          _goToPreviousPage();
-        } else if (_accumulatedOverscroll > threshold || (isAtBottom && _accumulatedOverscroll > 10)) {
-          _lastPageTurnTime = now;
-          _goToNextPage();
-        }
-      }
-      _accumulatedOverscroll = 0.0;
+    final totalChapters = widget.chapterController.chapters?.length ?? 0;
+    final hasLeading = _currentChapter > 0;
+    final leadingOffset = hasLeading ? 1 : 0;
+    final trailingSlot = leadingOffset + slices.length;
+
+    if (hasLeading && newSlot == 0) {
+      _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true);
+    } else if (_currentChapter < totalChapters - 1 && newSlot == trailingSlot) {
+      _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false);
+    } else {
+      final sliceIdx = newSlot - leadingOffset;
+      _saveReadingPositionForSlot(sliceIdx, slices);
+      if (mounted) setState(() {});
     }
-    return false;
   }
 
-  void _handlePageChanged(int index) {
-    if (widget.chapterController.isTransitioningMode) return;
-    if (_activePage == index) return;
-    // Save reading progress of the chapter we are navigating away from
-    widget.chapterController.saveReadingPositionForMode(widget.readingMode);
-    _activePage = index;
-    widget.chapterController.loadChapter(index, userInitiated: false);
-    if (!_isPageAnimating &&
-        _viewPageController.hasClients &&
-        _viewPageController.page?.round() != index) {
-      _viewPageController.jumpToPage(index);
-    } else if (!_viewPageController.hasClients &&
-        _viewPageController.initialPage != index) {
-      _viewPageController.dispose();
-      _viewPageController = PageController(initialPage: index);
-    }
-    if (widget.pageController.hasClients &&
-        widget.pageController.page?.round() != index) {
-      widget.pageController.jumpToPage(index);
-    }
+  Widget _buildPageItem(BuildContext context, int chapterIndex, PageSlice? slice) {
+    final html = widget.chapterController.allChapterContents.length > chapterIndex
+        ? widget.chapterController.allChapterContents[chapterIndex]
+        : '';
+
+    return SingleChildScrollView(
+      key: ValueKey('page-slice-$chapterIndex-${slice?.pageIndex ?? -1}'),
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 16.0,
+        bottom: 16.0,
+      ),
+      child: EpubContentViewer(
+        chapterIndex: chapterIndex,
+        htmlContent: html,
+        chapterController: widget.chapterController,
+        ttsController: widget.ttsController,
+        pageSlice: slice,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.chapterController.chapters == null) return const SizedBox.shrink();
+    final totalChapters = widget.chapterController.chapters?.length ?? 0;
+    if (totalChapters == 0) return const SizedBox.shrink();
 
     final themeRepo = context.watch<ReaderThemeRepository>();
+    final annotationRepo = context.watch<AnnotationRepository>();
+    final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
+
+    final size = MediaQuery.sizeOf(context);
+    final (availWidth, availHeight) = _computeAvailableDimensions(size, themeRepo.config);
+
+    final slices = _getPagedSlices(
+      _currentChapter,
+      availWidth,
+      availHeight,
+      themeRepo.config,
+      annotations,
+    );
+
+    final hasLeading = _currentChapter > 0;
+    final leadingOffset = hasLeading ? 1 : 0;
+    final hasTrailing = _currentChapter < totalChapters - 1;
+    final trailingSlot = leadingOffset + slices.length;
+    final totalSlots = slices.length + leadingOffset + (hasTrailing ? 1 : 0);
+
+    // Ensure _activeSlot is clamped within valid bounds
+    if (_activeSlot >= totalSlots) {
+      _activeSlot = (totalSlots - 1).clamp(0, totalSlots);
+    }
+
+    // Schedule background pre-pagination for adjacent sentinels
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_currentChapter + 1 < totalChapters) {
+        _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
+      }
+      if (_currentChapter - 1 >= 0) {
+        _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
+      }
+    });
+
     final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
         themeRepo.config.pageFlip;
 
-    // Total page count is N chapter pages
-    final totalPages = widget.chapterController.chapters!.length;
-
     if (useRealisticCurl) {
       return RealisticPageTurn(
-        pageCount: totalPages,
-        currentPage: _activePage,
+        key: ValueKey('epub-curl-ch-$_currentChapter'),
+        pageCount: totalSlots,
+        currentPage: _activeSlot,
         textureId: themeRepo.config.paperTexture,
         showSpine: themeRepo.config.showBookSpine,
-        onPageChanged: _handlePageChanged,
+        onPageChanged: _handleSlotChanged,
         onToggleChrome: widget.onToggleChrome,
         onTapUp: widget.onTapUp,
-        pageBuilder: (context, index) {
-          final chapterIndex = index;
-          final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
-          final scrollController =
-              widget.chapterController.chapterScrollController(chapterIndex);
-
-          return NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification is ScrollEndNotification) {
-                widget.chapterController.saveReadingPositionForMode(widget.readingMode);
-              }
-              return false;
-            },
-            child: SingleChildScrollView(
-              key: PageStorageKey('epub-chapter-scroll-$chapterIndex'),
-              controller: scrollController,
-              padding: const EdgeInsets.only(
-                left: 16.0,
-                right: 16.0,
-                top: 16.0,
-                bottom: 100.0,
-              ),
-              child: EpubContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
-              ),
-            ),
-          );
+        pageBuilder: (context, slot) {
+          if (hasLeading && slot == 0) {
+            final prevSlices = _getPagedSlices(
+              _currentChapter - 1,
+              availWidth,
+              availHeight,
+              themeRepo.config,
+              annotations,
+            );
+            final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
+            return _buildPageItem(context, _currentChapter - 1, prevSlice);
+          }
+          if (hasTrailing && slot == trailingSlot) {
+            final nextSlices = _getPagedSlices(
+              _currentChapter + 1,
+              availWidth,
+              availHeight,
+              themeRepo.config,
+              annotations,
+            );
+            final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
+            return _buildPageItem(context, _currentChapter + 1, nextSlice);
+          }
+          final sliceIdx = slot - leadingOffset;
+          final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
+          return _buildPageItem(context, _currentChapter, slice);
         },
       );
     }
 
-    return PageView.builder(
-      key: ValueKey('epub-paged-${widget.readingMode.name}'),
-      controller: _getOrUpdatePageController(),
-      scrollDirection: widget.readingMode == ReadingMode.vertical
-          ? Axis.vertical
-          : Axis.horizontal,
-      itemCount: totalPages,
-      onPageChanged: _handlePageChanged,
-      itemBuilder: (context, index) {
-        final chapterIndex = index;
-        final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
-        final scrollController =
-            widget.chapterController.chapterScrollController(chapterIndex);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification) {
+          if (notification.depth != 0 || !_viewPageController.hasClients) return false;
+          final settledSlot = _viewPageController.page?.round();
+          if (settledSlot == null || _isSwappingChapter) return false;
 
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapUp: (details) => _handleTapUp(details, MediaQuery.of(context).size),
-          onHorizontalDragEnd: widget.readingMode == ReadingMode.vertical
-              ? null
-              : (details) {
-                  final velocity = details.primaryVelocity ?? 0.0;
-                  if (velocity < -200) {
-                    _goToNextPage();
-                  } else if (velocity > 200) {
-                    _goToPreviousPage();
-                  }
-                },
-          onVerticalDragEnd: widget.readingMode == ReadingMode.vertical
-              ? (details) {
-                  final velocity = details.primaryVelocity ?? 0.0;
-                  final metrics = scrollController.hasClients ? scrollController.position : null;
-                  final isAtBottom = metrics == null || metrics.pixels >= metrics.maxScrollExtent - 40;
-                  final isAtTop = metrics == null || metrics.pixels <= metrics.minScrollExtent + 40;
-                  if (velocity < -200 && isAtBottom) {
-                    _goToNextPage();
-                  } else if (velocity > 200 && isAtTop) {
-                    _goToPreviousPage();
-                  }
-                }
-              : null,
-          child: NotificationListener<ScrollNotification>(
-            onNotification: _onScrollNotification,
-            child: SingleChildScrollView(
-              key: PageStorageKey('epub-chapter-scroll-$chapterIndex'),
-              controller: scrollController,
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: const EdgeInsets.only(
-                left: 16.0,
-                right: 16.0,
-                top: 16.0,
-                bottom: 100.0,
-              ),
-              child: EpubContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
-              ),
-            ),
-          ),
-        );
+          if (hasLeading && settledSlot == 0) {
+            _swapToAdjacentChapter(targetChapter: _currentChapter - 1, landOnLastPage: true);
+          } else if (hasTrailing && settledSlot == trailingSlot) {
+            _swapToAdjacentChapter(targetChapter: _currentChapter + 1, landOnLastPage: false);
+          } else {
+            final sliceIdx = settledSlot - leadingOffset;
+            if (sliceIdx >= 0 && sliceIdx < slices.length) {
+              _activeSlot = settledSlot;
+              _saveReadingPositionForSlot(sliceIdx, slices);
+            }
+          }
+        }
+        return false;
       },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (details) => _handleTapUp(details, size, totalSlots),
+        child: PageView.builder(
+          key: ValueKey('epub-paged-pv-$_currentChapter'),
+          controller: _viewPageController,
+          scrollDirection: widget.readingMode == ReadingMode.vertical
+              ? Axis.vertical
+              : Axis.horizontal,
+          itemCount: totalSlots,
+          itemBuilder: (context, slot) {
+            if (hasLeading && slot == 0) {
+              final prevSlices = _getPagedSlices(
+                _currentChapter - 1,
+                availWidth,
+                availHeight,
+                themeRepo.config,
+                annotations,
+              );
+              final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
+              return _buildPageItem(context, _currentChapter - 1, prevSlice);
+            }
+            if (hasTrailing && slot == trailingSlot) {
+              final nextSlices = _getPagedSlices(
+                _currentChapter + 1,
+                availWidth,
+                availHeight,
+                themeRepo.config,
+                annotations,
+              );
+              final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
+              return _buildPageItem(context, _currentChapter + 1, nextSlice);
+            }
+            final sliceIdx = slot - leadingOffset;
+            final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
+            return _buildPageItem(context, _currentChapter, slice);
+          },
+        ),
+      ),
     );
   }
 }

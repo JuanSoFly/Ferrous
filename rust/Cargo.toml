@@ -22,8 +22,9 @@ pdfium-render = { version = "0.8.37", features = ["thread_safe", "sync"] }
 # DOCX parsing
 docx-rs = "0.4"
 
-# Image processing (for PDF to PNG conversion)
+# Image processing (for PDF to PNG conversion and robust JPEG decoding)
 image = "0.25.9"
+jpeg-decoder = "0.3"
 
 # Archive extraction (for EPUB/CBZ covers and CBR/RAR archives)
 zip = "2.2"
