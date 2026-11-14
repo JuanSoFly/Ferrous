@@ -12,14 +12,14 @@ RepoType: git
 Repo: https://github.com/JuanSoFly/Ferrous.git
 
 Builds:
-  - versionName: 1.2.1
-    versionCode: 5
-    commit: a6fa582d3a78b3da18df033beea24532b7fac88c
+  - versionName: 1.4.0
+    versionCode: 24
+    commit: dde38d315204f165fe3f52d8cbdd7308747ca054
     subdir: .
     sudo:
       - apt-get update
       - apt-get install -y curl build-essential
-    output: build/app/outputs/flutter-apk/ferrous-v1.2.1-arm64-v8a.apk
+    output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
     srclibs:
       - flutter@3.24.5
       - rustup@1.27.1
@@ -37,5 +37,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.2.1
-CurrentVersionCode: 5
+CurrentVersion: 1.4.0
+CurrentVersionCode: 24
