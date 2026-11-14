@@ -4,11 +4,12 @@ By pairing a fluid Flutter front-end with an asynchronous Rust core via flutter_
 
 Key Features:
 
-• Multi-Format Support: Seamlessly read EPUB, PDF, CBZ/CBR comic archives, and plain text documents.
+• Multi-Format Support: Seamlessly read EPUB, PDF, MOBI/AZW3, CBZ/CBR comic archives, DOCX, and plain text documents.
 • High-Performance Engine: Asynchronous Rust backend provides instant indexing and search with minimal battery and memory overhead.
 • Realistic Page Turn: Apple Books-style interactive page curl animation with customizable gestures and high-refresh-rate display support.
 • Full Typography Control: Adjust font family, size, line height, margins, letter spacing, and first-line paragraph indentation.
 • Theming & Textures: Multiple reading themes including light, sepia, OLED true black, and paper textures (parchment, paper grain).
+• E-Ink Optimization & Layouts: Dedicated Kindle Carta 1300 E-paper mode with halftone scrims, tactile textures, and 5 spatial layout dimensions.
 • Annotations & Highlights: Select text, add colored highlights, and record notes with a dedicated annotations manager.
 • Text-to-Speech (TTS): Built-in voice reading with sentence tracking and customizable speech rate.
 • Storage Access Framework (SAF): Full Android SAF integration to seamlessly read from external storage, SD cards, and custom book folders.

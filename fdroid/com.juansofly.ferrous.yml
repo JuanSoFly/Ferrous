@@ -1,17 +1,12 @@
 Categories:
   - Reading
 License: MIT
+AuthorName: Juan Teodoro De Vera
 SourceCode: https://github.com/JuanSoFly/Ferrous
 IssueTracker: https://github.com/JuanSoFly/Ferrous/issues
 Changelog: https://github.com/JuanSoFly/Ferrous/releases
 
 AutoName: Ferrous
-Summary: High-performance offline document and book reader built with Flutter & Rust
-Description: |-
-  Ferrous is an open-source, offline-first document and book reader for Android.
-  Engineered with Flutter and a native Rust backend via flutter_rust_bridge,
-  Ferrous delivers smooth scrolling and instant parsing for EPUB, PDF, and comic
-  archives without trackers or telemetry.
 
 RepoType: git
 Repo: https://github.com/JuanSoFly/Ferrous.git
@@ -19,7 +14,7 @@ Repo: https://github.com/JuanSoFly/Ferrous.git
 Builds:
   - versionName: 1.2.1
     versionCode: 5
-    commit: v1.2.1
+    commit: a6fa582d3a78b3da18df033beea24532b7fac88c
     subdir: .
     sudo:
       - apt-get update
@@ -33,7 +28,7 @@ Builds:
       - source $$HOME$$/.cargo/env
       - export PATH="$$flutter$$/bin:$$PATH"
       - flutter config --no-analytics
-      - flutter pub get
+      - flutter pub get --enforce-lockfile
       - bash scripts/setup-pdfium-android.sh
     build:
       - export PATH="$$flutter$$/bin:$$HOME$$/.cargo/bin:$$PATH"

@@ -1,0 +1,4 @@
+- SafeScreenPaginator Engine: True screen-fitted PageView for reflowable EPUB and MOBI/AZW.
+- TextOffsetResolver: Resilient tap and TTS sentence highlight alignment with typography metrics.
+- APK & Rust Optimization: Pure-Rust unrar crypto, direct JPEG decoding, and fat LTO.
+- Adaptive Launcher Icons: Updated modern dark theme launcher icon.
