@@ -1,6 +1,6 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
+import 'package:ferrous/core/models/book.dart';
 import '../models/page_corner_colors.dart';
 
 /// Renders a dynamic background for comic reading modes.

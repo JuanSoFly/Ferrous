@@ -1,5 +1,5 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/library_location.dart';
+import 'package:ferrous/core/models/library_location.dart';
 
 class RemoveLocationDecision {
   final bool confirmed;

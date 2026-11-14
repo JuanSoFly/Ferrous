@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/annotation.dart';
-import 'package:reader_app/data/repositories/annotation_repository.dart';
-import 'package:reader_app/features/annotations/annotation_dialog.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/annotation.dart';
+import 'package:ferrous/data/repositories/annotation_repository.dart';
+import 'package:ferrous/features/annotations/annotation_dialog.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 Future<void> showAnnotationDetailSheet(BuildContext context, Annotation annotation) async {
   await showModalBottomSheet(

@@ -1,18 +1,18 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/src/rust/api/pdf.dart';
-import 'package:reader_app/src/rust/api/crop.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/src/rust/api/pdf.dart';
+import 'package:ferrous/src/rust/api/crop.dart';
 import '../controllers/pdf_page_controller.dart';
 import '../controllers/pdf_tts_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
 import '../controllers/reader_mode_controller.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/data/models/tts_highlight_style.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'realistic_page_turn.dart';
-import 'package:reader_app/features/reader/widgets/reader_error_view.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/features/reader/widgets/reader_error_view.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class PdfPageViewer extends StatefulWidget {
   final PdfPageController pageController;

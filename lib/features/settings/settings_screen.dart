@@ -1,14 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/services/update_service.dart';
-import 'package:reader_app/core/widgets/update_dialog.dart';
-import 'package:reader_app/features/settings/appearance_screen.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/features/settings/library_locations/library_locations_screen.dart';
-import 'package:reader_app/features/settings/widgets/diagnostic_log_sheet.dart';
-import 'package:reader_app/features/settings/widgets/feedback_options_sheet.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/services/update_service.dart';
+import 'package:ferrous/core/widgets/update_dialog.dart';
+import 'package:ferrous/features/settings/appearance_screen.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:ferrous/features/settings/library_locations/library_locations_screen.dart';
+import 'package:ferrous/features/settings/widgets/diagnostic_log_sheet.dart';
+import 'package:ferrous/features/settings/widgets/feedback_options_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});

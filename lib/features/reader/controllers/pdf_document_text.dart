@@ -1,5 +1,5 @@
-import 'package:reader_app/core/utils/normalized_text_map.dart';
-import 'package:reader_app/core/utils/sentence_utils.dart';
+﻿import 'package:ferrous/core/utils/normalized_text_map.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
 
 /// Tracks where a PDF page's text lives within the assembled document text.
 class PdfPageOffset {

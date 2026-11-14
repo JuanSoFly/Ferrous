@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/library_location.dart';
-import 'package:reader_app/data/services/saf_service.dart';
-import 'package:reader_app/features/reader/widgets/kindle_popup_menu.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/library_location.dart';
+import 'package:ferrous/data/services/saf_service.dart';
+import 'package:ferrous/features/reader/widgets/kindle_popup_menu.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class LocationCard extends StatelessWidget {
   final LibraryLocation location;

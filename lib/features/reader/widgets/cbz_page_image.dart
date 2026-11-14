@@ -1,6 +1,6 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/errors/exceptions.dart';
+import 'package:ferrous/core/errors/exceptions.dart';
 import '../controllers/cbz_cache_controller.dart';
 
 enum CbzPageState { idle, loading, loaded, error }

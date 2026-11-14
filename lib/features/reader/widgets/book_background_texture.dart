@@ -1,8 +1,8 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/book_textures.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/book_textures.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 /// Renders authentic physical book page background textures, lighting,
 /// book spine gutter shadow, and stacked page edge depth.

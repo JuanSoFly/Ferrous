@@ -1,4 +1,4 @@
-import 'package:reader_app/features/settings/app_themes.dart';
+﻿import 'package:ferrous/features/settings/app_themes.dart';
 
 /// The 5 core spatial & aesthetic dimensions of Ferrous.
 enum AppDimension {

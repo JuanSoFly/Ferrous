@@ -1,13 +1,13 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/services/epub_cover_extractor.dart';
-import 'package:reader_app/data/services/book_file_resolver.dart';
-import 'package:reader_app/src/rust/api/covers.dart' as covers_api;
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/services/epub_cover_extractor.dart';
+import 'package:ferrous/data/services/book_file_resolver.dart';
+import 'package:ferrous/src/rust/api/covers.dart' as covers_api;
 
-import 'package:reader_app/core/utils/performance.dart';
+import 'package:ferrous/core/utils/performance.dart';
 
 class BookRepository extends ChangeNotifier {
   static const String _boxName = 'books';

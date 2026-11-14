@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/data/repositories/reader_theme_repository.dart';
-import 'package:reader_app/data/models/tts_highlight_style.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/models/tts_highlight_style.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 /// Used for TTS text highlighting to show the currently spoken word.
 class HighlightedTextView extends StatefulWidget {

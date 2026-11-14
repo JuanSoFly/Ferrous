@@ -7,7 +7,7 @@
 -keep class androidx.documentfile.** { *; }
 -dontwarn androidx.documentfile.**
 
-# JNI native methods (libpdfium.so and librust_lib_reader_app.so)
+# JNI native methods (libpdfium.so and librust_lib_ferrous.so)
 -keepclasseswithmembernames class * {
     native <methods>;
 }

@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
 
 /// Modal bottom sheet displaying recent in-memory diagnostic events.
 /// Logs are rendered in reverse chronological order (newest first) using

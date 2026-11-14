@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/word_definition.dart';
-import 'package:reader_app/data/repositories/dictionary_repository.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/core/models/word_definition.dart';
+import 'package:ferrous/data/repositories/dictionary_repository.dart';
 
 class DictionaryDialog extends StatefulWidget {
   final String word;

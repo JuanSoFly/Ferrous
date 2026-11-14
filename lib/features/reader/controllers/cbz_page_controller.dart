@@ -1,14 +1,14 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:reader_app/core/models/book.dart';
-import 'package:reader_app/data/repositories/book_repository.dart';
-import 'package:reader_app/data/services/book_file_resolver.dart';
-import 'package:reader_app/src/rust/api/cbz.dart' as cbz_api;
-import 'package:reader_app/core/utils/performance.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/book_file_resolver.dart';
+import 'package:ferrous/src/rust/api/cbz.dart' as cbz_api;
+import 'package:ferrous/core/utils/performance.dart';
 import '../models/page_corner_colors.dart';
 import 'cbz_cache_controller.dart';
-import 'package:reader_app/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
 
 class CbzPageController extends ChangeNotifier {
   final Book book;

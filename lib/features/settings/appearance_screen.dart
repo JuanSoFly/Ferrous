@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
-import 'package:reader_app/features/settings/dimension_controller.dart';
-import 'package:reader_app/features/settings/theme_controller.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/models/app_dimension.dart';
+import 'package:ferrous/features/settings/dimension_controller.dart';
+import 'package:ferrous/features/settings/theme_controller.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 class AppearanceScreen extends StatelessWidget {
   const AppearanceScreen({super.key});

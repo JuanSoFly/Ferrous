@@ -1,4 +1,4 @@
-import 'package:reader_app/core/models/book.dart';
+﻿import 'package:ferrous/core/models/book.dart';
 
 /// Controller for reading mode logic.
 class ReaderModeController {

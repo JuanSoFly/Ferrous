@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/app_constants.dart';
-import 'package:reader_app/core/models/collection.dart';
-import 'package:reader_app/data/repositories/collection_repository.dart';
-import 'package:reader_app/features/collections/collection_detail_screen.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/models/collection.dart';
+import 'package:ferrous/data/repositories/collection_repository.dart';
+import 'package:ferrous/features/collections/collection_detail_screen.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 
 // ==========================================
 // KINDLE MECHANICAL ACTION BUTTON

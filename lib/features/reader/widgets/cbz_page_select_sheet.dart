@@ -1,10 +1,10 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:reader_app/core/constants/e_ink_tokens.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
+import 'package:ferrous/core/constants/e_ink_tokens.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 import '../controllers/cbz_page_controller.dart';
 import '../services/cbz_thumbnail_service.dart';
 

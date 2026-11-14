@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:reader_app/data/services/tts_service.dart';
-import 'package:reader_app/data/models/tts_highlight_style.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/data/models/tts_highlight_style.dart';
 
 class TtsControlsSheet extends StatelessWidget {
   final TtsService ttsService;

@@ -1,16 +1,16 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:reader_app/core/models/app_dimension.dart';
-import 'package:reader_app/core/constants/dimension_tokens.dart';
-import 'package:reader_app/features/settings/app_themes.dart';
-import 'package:reader_app/features/settings/dimension_controller.dart';
-import 'package:reader_app/features/library/library_screen.dart';
-import 'package:reader_app/features/settings/settings_screen.dart';
-import 'package:reader_app/features/annotations/annotations_hub_screen.dart';
-import 'package:reader_app/core/services/update_service.dart';
-import 'package:reader_app/core/widgets/update_dialog.dart';
+import 'package:ferrous/core/models/app_dimension.dart';
+import 'package:ferrous/core/constants/dimension_tokens.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:ferrous/features/settings/dimension_controller.dart';
+import 'package:ferrous/features/library/library_screen.dart';
+import 'package:ferrous/features/settings/settings_screen.dart';
+import 'package:ferrous/features/annotations/annotations_hub_screen.dart';
+import 'package:ferrous/core/services/update_service.dart';
+import 'package:ferrous/core/widgets/update_dialog.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
