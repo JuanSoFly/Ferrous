@@ -22,15 +22,15 @@ pdfium-render = { version = "0.8.37", features = ["thread_safe", "sync"] }
 # DOCX parsing
 docx-rs = "0.4"
 
-# Image processing (for PDF to PNG conversion and robust JPEG decoding)
-image = "0.25.9"
+# Image processing (for PDF to PNG conversion, CBZ WebP support, and robust JPEG decoding)
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp"] }
 jpeg-decoder = "0.3"
 
 # Archive extraction (for EPUB/CBZ covers and CBR/RAR archives)
-zip = "2.2"
+zip = { version = "2.2", default-features = false, features = ["deflate", "time"] }
 
-# Pinned to 0.15.0: unrar-rs 0.15.1-0.16.1 introduced link_anchor.rs which fails to compile
-unrar-rs = "=0.15.0"
+# Pinned to 0.15.0 with pure Rust crypto (excludes aws-lc-sys / BoringSSL C library)
+unrar-rs = { version = "=0.15.0", default-features = false, features = ["crypto-rust"] }
 
 # TTS text highlighting
 scraper = "0.22"
@@ -39,10 +39,10 @@ regex = "1.11"
 roxmltree = "0.21.1"
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 opt-level = "z"
-panic = "unwind"
+panic = "abort"
 strip = true
 
 # Guarantee correct AArch64 loop & NEON SIMD codegen for RAR + JPEG IDCT

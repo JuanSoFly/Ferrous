@@ -79,3 +79,29 @@ dependencies {
     // Required for Kotlin Coroutines in SafHandler
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
 }
+
+// Prune upstream test artifacts and unsupported language JSONs from merged Flutter assets
+tasks.matching { it.name.startsWith("copyFlutterAssets") }.configureEach { task ->
+    task.doLast {
+        task.outputs.files.each { outputDir ->
+            if (outputDir.exists() && outputDir.isDirectory()) {
+                delete fileTree(dir: outputDir,
+                    includes: [
+                        "packages/hyphenatorx/test/**",
+                        "packages/hyphenatorx/assets/**"
+                    ],
+                    excludes: [
+                        "packages/hyphenatorx/assets/language_de_1996.json",
+                        "packages/hyphenatorx/assets/language_en_us.json",
+                        "packages/hyphenatorx/assets/language_es.json",
+                        "packages/hyphenatorx/assets/language_fr.json",
+                        "packages/hyphenatorx/assets/language_it.json",
+                        "packages/hyphenatorx/assets/language_la.json",
+                        "packages/hyphenatorx/assets/language_pt.json",
+                        "packages/hyphenatorx/assets/language_ru.json"
+                    ]
+                )
+            }
+        }
+    }
+}

@@ -154,7 +154,20 @@ jobs:
       # ===== Build APKs =====
       # Note: Cargokit (flutter_rust_bridge) handles Rust compilation automatically
       - name: Build APKs (split per ABI)
-        run: flutter build apk --split-per-abi --release
+        run: |
+          mkdir -p build/app/outputs/symbols
+          flutter build apk --split-per-abi --release \
+            --obfuscate \
+            --split-debug-info=build/app/outputs/symbols \
+            --tree-shake-icons
+
+      # ===== Upload Dart Debug Symbols for Production Crash De-obfuscation =====
+      - name: Upload Dart Debug Symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: dart-symbols-v${{ steps.version.outputs.VERSION }}
+          path: build/app/outputs/symbols/
+          retention-days: 90
 
       - name: Show sccache stats
         run: sccache --show-stats

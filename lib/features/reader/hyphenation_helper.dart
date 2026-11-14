@@ -1,15 +1,7 @@
 ﻿import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:hyphenatorx/hyphenatorx.dart';
-import 'package:hyphenatorx/languages/languageconfig.dart';
 import 'package:hyphenatorx/languages/language_en_us.dart';
-import 'package:hyphenatorx/languages/language_de_1996.dart';
-import 'package:hyphenatorx/languages/language_es.dart';
-import 'package:hyphenatorx/languages/language_fr.dart';
-import 'package:hyphenatorx/languages/language_it.dart';
-import 'package:hyphenatorx/languages/language_pt.dart';
-import 'package:hyphenatorx/languages/language_ru.dart';
-import 'package:hyphenatorx/languages/language_la.dart';
 import 'package:ferrous/core/utils/html_defragmenter.dart';
 
 class HyphenationHelper {
@@ -20,41 +12,59 @@ class HyphenationHelper {
 
   static final Map<String, Hyphenator> _hyphenatorCache = {};
 
-  /// Returns the Hyphenator instance for a primary language code, lazily and synchronously initialized.
+  /// Exact mapping of normalized primary language codes to hyphenatorx asset abbreviations.
+  static const Map<String, String> _langToAbbr = {
+    'de': 'de_1996',
+    'en': 'en_us',
+    'es': 'es',
+    'fr': 'fr',
+    'it': 'it',
+    'la': 'la',
+    'pt': 'pt',
+    'ru': 'ru',
+  };
+
+  /// Returns synchronous hyphenator. If language is not warmed yet, safely returns English
+  /// while preventing unhandled exceptions.
   static Hyphenator getHyphenator([String languageCode = 'en']) {
     final primary = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
-    return _hyphenatorCache.putIfAbsent(primary, () {
-      final lang = _resolveLanguage(primary);
-      return Hyphenator(
-        lang,
+    final cached = _hyphenatorCache[primary];
+    if (cached != null) return cached;
+    return _hyphenatorCache.putIfAbsent(
+      'en',
+      () => Hyphenator(
+        Language_en_us(),
         symbol: softHyphen,
         minWordLength: 7,
         minLetterCount: 3,
-      );
-    });
+      ),
+    );
   }
 
   static Hyphenator get hyphenator => getHyphenator('en');
 
-  static LanguageConfig _resolveLanguage(String primary) {
-    switch (primary) {
-      case 'de':
-        return Language_de_1996();
-      case 'es':
-        return Language_es();
-      case 'fr':
-        return Language_fr();
-      case 'it':
-        return Language_it();
-      case 'pt':
-        return Language_pt();
-      case 'ru':
-        return Language_ru();
-      case 'la':
-        return Language_la();
-      case 'en':
-      default:
-        return Language_en_us();
+  /// Pre-warms language hyphenator from bundled JSON asset without ANY static Dart dictionary codegen.
+  static Future<void> init([String languageCode = 'en']) async {
+    final primary = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
+    if (_hyphenatorCache.containsKey(primary)) return;
+
+    if (primary == 'en') {
+      getHyphenator('en');
+      return;
+    }
+
+    final abbr = _langToAbbr[primary] ?? primary;
+    try {
+      final h = await Hyphenator.loadAsyncByAbbr(
+        abbr,
+        symbol: softHyphen,
+        minWordLength: 7,
+        minLetterCount: 3,
+      );
+      _hyphenatorCache[primary] = h;
+    } catch (_) {
+      // Fallback safely to English rules if language JSON is unavailable
+      _hyphenatorCache[primary] = getHyphenator('en');
     }
   }
 
@@ -111,11 +121,6 @@ class HyphenationHelper {
         return word;
       }
     });
-  }
-
-  /// Initialize default hyphenator. Returns Future for compatibility.
-  static Future<void> init([String languageCode = 'en']) async {
-    getHyphenator(languageCode);
   }
 
   /// Injects `<p-indent></p-indent>` tags into all paragraph elements.

@@ -1,3 +1,18 @@
+## [1.4.0-alpha.1] - 2026-11-15
+
+### APK Size & Binary Optimization
+- **Rust Crate Feature Trimming**: Stripped default features from `image` (retaining only `png`, `jpeg`, and `webp`) and `zip` (retaining `deflate` and `time`), shedding unneeded compression codecs like bzip2 and zstd.
+- **Pure-Rust Unrar Crypto**: Configured `unrar-rs` to use pure Rust crypto (`crypto-rust`), eliminating native C dependencies on BoringSSL (`aws-lc-sys`) and accelerating Android NDK builds.
+- **Fat Link-Time Optimization**: Configured `lto = "fat"` and `panic = "abort"` in Rust release profile for aggressive dead-code elimination and minimal native library binary footprint.
+
+### Hyphenation Engine & Asset Pruning
+- **Dynamic Language Pattern Loading**: Refactored `HyphenationHelper` to asynchronously load language pattern files on demand via `Hyphenator.loadAsyncByAbbr()`, replacing monolithic static Dart language classes and slashing memory overhead.
+- **Gradle Asset Stripping**: Added a Gradle packaging filter in `android/app/build.gradle` to exclude upstream test fixtures and unused language JSON dictionaries from the final APK assets.
+
+### Release Hardening & Debug Symbols
+- **Obfuscation & Tree-Shaking**: Configured production APK builds with `--obfuscate`, `--split-debug-info`, and `--tree-shake-icons`.
+- **Debug Symbol Artifacts**: Added automated CI artifact upload for Dart debug symbols with 90-day retention for production stack trace de-obfuscation.
+
 ## [1.3.4-alpha.2] - 2026-11-15
 
 ### Core Package & Crate Rebranding
