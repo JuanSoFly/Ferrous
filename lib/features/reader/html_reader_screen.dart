@@ -610,7 +610,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final note = (result['note'] as String?)?.trim();
       final color = result['color'] as int? ?? 0xFFFFF176;
 
-      final cleanSelected = selectedText.replaceAll('\u00AD', '');
+      final cleanSelected = selectedText.replaceAll(RegExp(r'[\u00AD\u2010]|&shy;'), '');
       int start = _plainText.indexOf(cleanSelected);
       if (start == -1) start = _plainText.indexOf(selectedText);
       int end = start != -1 ? start + cleanSelected.length : cleanSelected.length;

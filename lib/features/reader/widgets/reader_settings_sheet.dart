@@ -559,7 +559,7 @@ class _LayoutSettingsTab extends StatelessWidget {
           theme: theme,
           isEInk: isEInk,
           title: 'Hyphenation',
-          subtitle: 'Experimental (disabled for rendering stability)',
+          subtitle: 'Break long words across lines with hyphens',
           value: config.hyphenation,
           onChanged: (_) => repo.toggleHyphenation(),
         ),

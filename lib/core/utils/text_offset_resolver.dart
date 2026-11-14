@@ -6,7 +6,7 @@ class TextOffsetResolver {
     unicode: true,
   );
 
-  static final RegExp _invisibleArtifacts = RegExp(r'[\uFFFC\uFFFD\u00AD\u200B]');
+  static final RegExp _invisibleArtifacts = RegExp(r'[\uFFFC\uFFFD\u00AD\u200B\u2010]');
 
   /// Resolves the exact character offset in [chapterText] for a tap at [rawHitOffset]
   /// inside [rawParagraphFragment].
@@ -125,9 +125,9 @@ class TextOffsetResolver {
     return (word: targetWord, offset: safeStart);
   }
 
-  /// Allows optional soft-hyphens (\u00AD) inside raw chapterText words without mutating DOM lengths.
+  /// Allows optional soft-hyphens (\u00AD) and continuation/baked hyphens (\u2010) inside raw chapterText words.
   static String _softHyphenTolerantPattern(String word) {
-    return word.split('').map(RegExp.escape).join(r'\u00AD?');
+    return word.split('').map(RegExp.escape).join(r'[\u00AD\u2010]?');
   }
 
   static int? _matchNGramInWindow({

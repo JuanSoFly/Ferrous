@@ -46,7 +46,7 @@ class DomTextUtils {
   }
 
   /// Extract plain text from DOM with proper block-element spacing.
-  static String extractPlainText(dom.Node? root) {
+  static String extractPlainText(dom.Node? root, {bool preserveSoftHyphens = false}) {
     if (root == null) return '';
     
     final nodes = collectTextNodes(root);
@@ -54,7 +54,16 @@ class DomTextUtils {
 
     final buffer = StringBuffer();
     for (final node in nodes) {
-      buffer.write(node.data);
+      var data = node.data;
+      if (!preserveSoftHyphens) {
+        if (data.contains('\u00AD')) {
+          data = data.replaceAll('\u00AD', '');
+        }
+        if (data.contains('&shy;')) {
+          data = data.replaceAll('&shy;', '');
+        }
+      }
+      buffer.write(data);
     }
     return buffer.toString();
   }

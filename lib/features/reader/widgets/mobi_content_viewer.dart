@@ -56,12 +56,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     required List<Annotation> annotations,
   }) {
     if (widget.pageSlice != null) {
-      // Leaf hyphenation on single page slice (<0.2 ms)
-      return HyphenationHelper.processHtmlAndIndent(
-        rawChunk,
-        applyHyphenation: hyphenation,
-        applyIndent: paragraphIndent,
-      );
+      // Leaf slice was already defragmented, indented, and continuation-hyphenated by SafeScreenPaginator.
+      return widget.pageSlice!.html;
     }
 
     final bookId = widget.chapterController.book.id;
@@ -614,13 +610,6 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
               overrideStart: localStart,
               overrideEnd: localEnd,
             );
-            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
-              sliceHtml = HyphenationHelper.processHtmlAndIndent(
-                sliceHtml,
-                applyHyphenation: themeConfig.hyphenation,
-                applyIndent: themeConfig.paragraphIndent,
-              );
-            }
             WidgetsBinding.instance.addPostFrameCallback((_) {
               widget.ttsController.maybeEnsureHighlightVisible();
             });

@@ -438,6 +438,9 @@ class HtmlDefragmenter {
       if (text.contains('\uFFFD') || text.contains('\u001A') || text.contains('ï¿½')) {
         text = healReplacementCharacters(text, preferDoubleQuotes: useDouble);
       }
+      if (text.contains('\u2010')) {
+        text = text.replaceAll('\u2010', '-');
+      }
       if (text.contains('\u00AD')) {
         text = text.replaceAll('\u00AD', '');
       }

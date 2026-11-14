@@ -1,28 +1,66 @@
 ﻿import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:hyphenatorx/hyphenatorx.dart';
+import 'package:hyphenatorx/languages/languageconfig.dart';
 import 'package:hyphenatorx/languages/language_en_us.dart';
+import 'package:hyphenatorx/languages/language_de_1996.dart';
+import 'package:hyphenatorx/languages/language_es.dart';
+import 'package:hyphenatorx/languages/language_fr.dart';
+import 'package:hyphenatorx/languages/language_it.dart';
+import 'package:hyphenatorx/languages/language_pt.dart';
+import 'package:hyphenatorx/languages/language_ru.dart';
+import 'package:hyphenatorx/languages/language_la.dart';
 import 'package:ferrous/core/utils/html_defragmenter.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
+  static const String continuationHyphen = '\u2010';
   static const String indentTag = 'p-indent';
+  static final RegExp _wordRegex = RegExp(r'\p{L}+', unicode: true);
 
-  static Hyphenator? _hyphenator;
+  static final Map<String, Hyphenator> _hyphenatorCache = {};
 
-  /// Returns the Hyphenator instance, lazily and synchronously initialized.
-  static Hyphenator get hyphenator {
-    return _hyphenator ??= Hyphenator(
-      Language_en_us(),
-      symbol: softHyphen,
-    );
+  /// Returns the Hyphenator instance for a primary language code, lazily and synchronously initialized.
+  static Hyphenator getHyphenator([String languageCode = 'en']) {
+    final primary = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
+    return _hyphenatorCache.putIfAbsent(primary, () {
+      final lang = _resolveLanguage(primary);
+      return Hyphenator(
+        lang,
+        symbol: softHyphen,
+        minWordLength: 7,
+        minLetterCount: 3,
+      );
+    });
   }
 
-  /// Strips \u00AD and &shy; unconditionally so words never break
-  /// across lines without a visible hyphen glyph on Android SkParagraph.
-  static String smartHyphenateText(String text) {
-    if (text.isEmpty) return text;
+  static Hyphenator get hyphenator => getHyphenator('en');
 
+  static LanguageConfig _resolveLanguage(String primary) {
+    switch (primary) {
+      case 'de':
+        return Language_de_1996();
+      case 'es':
+        return Language_es();
+      case 'fr':
+        return Language_fr();
+      case 'it':
+        return Language_it();
+      case 'pt':
+        return Language_pt();
+      case 'ru':
+        return Language_ru();
+      case 'la':
+        return Language_la();
+      case 'en':
+      default:
+        return Language_en_us();
+    }
+  }
+
+  /// Strips \u00AD and &shy; unconditionally without touching \u2010.
+  static String stripSoftHyphens(String text) {
+    if (text.isEmpty) return text;
     var clean = text;
     if (clean.contains('\u00AD')) {
       clean = clean.replaceAll('\u00AD', '');
@@ -30,17 +68,54 @@ class HyphenationHelper {
     if (clean.contains('&shy;')) {
       clean = clean.replaceAll('&shy;', '');
     }
-
     return clean;
   }
 
-  /// Initialize the hyphenator synchronously. Returns a `Future<void>` so existing callers
-  /// can continue to call `await HyphenationHelper.init()` without breaking.
-  static Future<void> init() async {
-    _hyphenator ??= Hyphenator(
-      Language_en_us(),
-      symbol: softHyphen,
-    );
+  /// Applies smart hyphenation to text:
+  /// - Only words of length >= 7 are considered.
+  /// - Non-German: skips words with any uppercase character (proper nouns, CamelCase, acronyms).
+  /// - German: allows leading uppercase (nouns), but requires subsequent letters to be lowercase.
+  /// - Words with numbers or symbols are untouched.
+  /// - Inserts \u00AD soft hyphen using Liang's hyphenation algorithm via hyphenatorx.
+  static String smartHyphenateText(
+    String text, {
+    bool applyHyphenation = false,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
+  }) {
+    if (text.isEmpty) return text;
+
+    final clean = preserveExistingHyphens ? text : stripSoftHyphens(text);
+    if (!applyHyphenation || clean.length < 7) {
+      return clean;
+    }
+
+    final primaryLang = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
+    final h = getHyphenator(primaryLang);
+
+    return clean.replaceAllMapped(_wordRegex, (match) {
+      final word = match[0]!;
+      if (word.length < 7) return word;
+
+      if (primaryLang != 'de') {
+        if (word != word.toLowerCase()) return word;
+      } else {
+        if (word.length > 1 && word.substring(1) != word.substring(1).toLowerCase()) {
+          return word;
+        }
+      }
+
+      try {
+        return h.hyphenateWord(word);
+      } catch (_) {
+        return word;
+      }
+    });
+  }
+
+  /// Initialize default hyphenator. Returns Future for compatibility.
+  static Future<void> init([String languageCode = 'en']) async {
+    getHyphenator(languageCode);
   }
 
   /// Injects `<p-indent></p-indent>` tags into all paragraph elements.
@@ -61,7 +136,7 @@ class HyphenationHelper {
   static void _injectIndentTagsRecursive(dom.Node node) {
     if (node is dom.Element) {
       final tag = node.localName?.toLowerCase();
-      if ({'pre', 'code', 'script', 'style', 'tt'}.contains(tag)) {
+      if ({'pre', 'code', 'script', 'style', 'tt', 'kbd', 'samp', 'var', 'a'}.contains(tag)) {
         return;
       }
       if (_isParagraphElement(node)) {
@@ -76,10 +151,20 @@ class HyphenationHelper {
   }
 
   /// Process HTML for hyphenation only.
-  static String processHtml(String html, {bool applyHyphenation = false}) {
+  static String processHtml(
+    String html, {
+    bool applyHyphenation = false,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
+  }) {
     try {
       final document = html_parser.parse(html);
-      _processNode(document.body, applyHyphenation: applyHyphenation);
+      _processNode(
+        document.body,
+        applyHyphenation: applyHyphenation,
+        languageCode: languageCode,
+        preserveExistingHyphens: preserveExistingHyphens,
+      );
       return document.body?.innerHtml ?? html;
     } catch (_) {
       return html;
@@ -87,18 +172,47 @@ class HyphenationHelper {
   }
 
   /// Entry point for compute() isolate - hyphenation only.
-  static Future<String> processHtmlIsolated(String html, {bool applyHyphenation = false}) async {
-    return processHtml(html, applyHyphenation: applyHyphenation);
+  static Future<String> processHtmlIsolated(
+    String html, {
+    bool applyHyphenation = false,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
+  }) async {
+    return processHtml(
+      html,
+      applyHyphenation: applyHyphenation,
+      languageCode: languageCode,
+      preserveExistingHyphens: preserveExistingHyphens,
+    );
+  }
+
+  /// Single-pass processing on a DOM element (or cloned element):
+  /// - Injects or removes paragraph indentation tags (`<p-indent>`)
+  /// - Hyphenates or cleans text nodes
+  /// - Traverses children while respecting non-prose tag exclusion rules
+  static void processElement(
+    dom.Element element, {
+    bool applyHyphenation = false,
+    bool applyIndent = true,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
+  }) {
+    _processNodeHyphenateAndIndent(
+      element,
+      applyHyphenation: applyHyphenation,
+      applyIndent: applyIndent,
+      languageCode: languageCode,
+      preserveExistingHyphens: preserveExistingHyphens,
+    );
   }
 
   /// Single-pass: applies hyphenation, paragraph indentation, or both.
-  /// [html] - raw HTML content
-  /// [applyHyphenation] - whether to hyphenate text nodes
-  /// [applyIndent] - whether to add paragraph indentation
   static String processHtmlAndIndent(
     String html, {
     bool applyHyphenation = false,
     bool applyIndent = true,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
   }) {
     if (!applyHyphenation &&
         !applyIndent &&
@@ -110,12 +224,19 @@ class HyphenationHelper {
 
     try {
       final document = html_parser.parse(html);
-      HtmlDefragmenter.defragmentDocument(document);
-      _processNodeHyphenateAndIndent(
-        document.body,
-        applyHyphenation: applyHyphenation,
-        applyIndent: applyIndent,
-      );
+      if (!preserveExistingHyphens) {
+        HtmlDefragmenter.defragmentDocument(document);
+      }
+      final body = document.body ?? document.documentElement;
+      if (body != null) {
+        _processNodeHyphenateAndIndent(
+          body,
+          applyHyphenation: applyHyphenation,
+          applyIndent: applyIndent,
+          languageCode: languageCode,
+          preserveExistingHyphens: preserveExistingHyphens,
+        );
+      }
       return document.body?.innerHtml ?? html;
     } catch (_) {
       return html;
@@ -123,39 +244,56 @@ class HyphenationHelper {
   }
 
   /// Entry point for compute() isolate - combined hyphenation + indentation.
-  /// Params: {html: String, hyphenation: bool, paragraphIndent: bool}
   static Future<String> processHtmlAndIndentIsolated(
     Map<String, dynamic> params,
   ) async {
     final html = params['html'] as String;
     final hyphenation = params['hyphenation'] as bool? ?? false;
     final paragraphIndent = params['paragraphIndent'] as bool? ?? false;
+    final languageCode = params['languageCode'] as String? ?? 'en';
+    final preserveExistingHyphens = params['preserveExistingHyphens'] as bool? ?? false;
 
     return processHtmlAndIndent(
       html,
       applyHyphenation: hyphenation,
       applyIndent: paragraphIndent,
+      languageCode: languageCode,
+      preserveExistingHyphens: preserveExistingHyphens,
     );
   }
 
-  /// Traversal for hyphenation only.
-  static void _processNode(dom.Node? node, {bool applyHyphenation = false}) {
+  static void _processNode(
+    dom.Node? node, {
+    bool applyHyphenation = false,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
+  }) {
     if (node == null) return;
 
     if (node is dom.Element &&
-        {'pre', 'code', 'script', 'style', 'tt'}.contains(node.localName?.toLowerCase())) {
+        {'pre', 'code', 'script', 'style', 'tt', 'kbd', 'samp', 'var', 'a'}.contains(node.localName?.toLowerCase())) {
       return;
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        text = smartHyphenateText(text);
+        text = smartHyphenateText(
+          text,
+          applyHyphenation: applyHyphenation,
+          languageCode: languageCode,
+          preserveExistingHyphens: preserveExistingHyphens,
+        );
         node.text = text;
       }
     } else if (node.hasChildNodes()) {
       for (final child in node.nodes) {
-        _processNode(child, applyHyphenation: applyHyphenation);
+        _processNode(
+          child,
+          applyHyphenation: applyHyphenation,
+          languageCode: languageCode,
+          preserveExistingHyphens: preserveExistingHyphens,
+        );
       }
     }
   }
@@ -165,12 +303,14 @@ class HyphenationHelper {
     dom.Node? node, {
     required bool applyHyphenation,
     required bool applyIndent,
+    String languageCode = 'en',
+    bool preserveExistingHyphens = false,
   }) {
     if (node == null) return;
 
     if (node is dom.Element) {
       final tag = node.localName?.toLowerCase();
-      if ({'pre', 'code', 'script', 'style', 'tt'}.contains(tag)) {
+      if ({'pre', 'code', 'script', 'style', 'tt', 'kbd', 'samp', 'var', 'a'}.contains(tag)) {
         return;
       }
 
@@ -186,7 +326,12 @@ class HyphenationHelper {
     if (node.nodeType == dom.Node.TEXT_NODE) {
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
-        text = smartHyphenateText(text);
+        text = smartHyphenateText(
+          text,
+          applyHyphenation: applyHyphenation,
+          languageCode: languageCode,
+          preserveExistingHyphens: preserveExistingHyphens,
+        );
         if (text.contains('  ') || text.contains('\t')) {
           text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
         }
@@ -198,6 +343,8 @@ class HyphenationHelper {
           child,
           applyHyphenation: applyHyphenation,
           applyIndent: applyIndent,
+          languageCode: languageCode,
+          preserveExistingHyphens: preserveExistingHyphens,
         );
       }
     }

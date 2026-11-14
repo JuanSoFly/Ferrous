@@ -54,8 +54,7 @@ class AnnotationHighlightHelper {
 
   static String _normalize(String s) {
     return s
-        .replaceAll('\u00AD', '') // soft hyphen
-        .replaceAll('\u200B', '') // zero-width space
+        .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '')
         .replaceAll('\u00A0', ' ') // non-breaking space
         .replaceAll('’', "'")
         .replaceAll('‘', "'")
@@ -77,7 +76,7 @@ class AnnotationHighlightHelper {
       final ch = String.fromCharCode(rune);
       final codeUnitLen = ch.length;
 
-      if (ch == '\u00AD' || ch == '\u200B') {
+      if (ch == '\u00AD' || ch == '\u200B' || ch == '\u2010') {
         rawOffset += codeUnitLen;
         continue;
       }
@@ -189,7 +188,7 @@ class AnnotationHighlightHelper {
         final ch = String.fromCharCode(rune);
         final codeUnitLen = ch.length;
 
-        if (ch == '\u00AD' || ch == '\u200B') {
+        if (ch == '\u00AD' || ch == '\u200B' || ch == '\u2010') {
           rawOffset += codeUnitLen;
           continue;
         }

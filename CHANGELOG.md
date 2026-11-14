@@ -1,3 +1,45 @@
+## [1.3.4-alpha.2] - 2026-11-15
+
+### Core Package & Crate Rebranding
+- **Unified Branding**: Renamed the root Dart package to `ferrous` and the Rust native bridge library crate to `rust_lib_ferrous`, aligning the internal module identity with the app's official name.
+- **Cross-Platform Bridge Synchronization**: Updated build scripts, Android Gradle configs, CMake files (Linux/Windows), and macOS/iOS CocoaPods podspecs to bind against `rust_lib_ferrous`.
+- **Global Import Migration**: Updated all imports across the entire codebase to reference `package:ferrous/...`.
+
+### Screen-Fitted Paging & Safe Screen Paginator
+- **SafeScreenPaginator Engine**: Introduced `SafeScreenPaginator` to accurately partition reflowable EPUB and MOBI/AZW chapters into screen-fitted `PageSlice` units using paragraph budgeting, DOM hierarchy traversal, and `TextPainter` text layout measurement.
+- **True Screen-Fitted PageView**: Overhauled `EpubPagedViewer` and `MobiPagedViewer` to use pure screen-sized `PageView.builder` widgets for both horizontal page-turn and vertical paged reading modes, replacing monolithic scroll containers.
+- **Bounded Typography & Layout Cache**: Built an LRU page slice cache keyed on viewport dimensions, typography settings (font size, family, line height, paragraph indentation/spacing), hyphenation, and active annotations for instant pagination lookups.
+- **Seamless Chapter Boundary Swapping**: Added adjacent chapter edge slots (leading and trailing chapter previews) allowing continuous swiping across chapter boundaries with automatic chapter transition handling.
+- **Binary Word-Boundary Page Splitting**: Replaced sentence-based paragraph splitting with binary-search over word boundaries for precise text fitting, with sentence-boundary preference heuristics for clean page breaks.
+- **TextScaler & Safe-Area Aware**: Integrated `MediaQuery.textScalerOf` and inner constraints subtracting safe area padding, ensuring system font scaling and edge-to-edge/notched display geometry are respected.
+
+### Typography Parity & Text Offset Resolution
+- **TextOffsetResolver**: Implemented a pure, stateless `TextOffsetResolver` using a multi-tiered resolution pipeline (N-gram context window matching, strict Unicode word boundaries, and fallback window anchoring) to precisely map screen taps on rendered text fragments back to exact character offsets in raw chapter text, resilient against soft hyphens and invisible formatting artifacts.
+- **ReaderTypographyMetrics**: Extracted centralized typography calculation formulas (`ReaderTypographyMetrics`) to guarantee mathematical parity between `SafeScreenPaginator` measurements and `FlutterHtml` rendering for headings, block margins, and indentation widths.
+- **TTS Highlight Precision**: Refactored `EpubTtsController` and `MobiTtsController` to utilize offset resolution and unified typography metrics for reliable sentence highlighting and progress tracking across paged and continuous reader views.
+
+### Hyphenation Simplification & Layout Polish
+- **Soft-Hyphen Strip-Only Mode**: Simplified `HyphenationHelper.smartHyphenateText` to unconditionally strip `\u00AD` and `&shy;` characters, resolving Android SkParagraph rendering artifacts where words broke across lines without visible hyphen glyphs.
+- **Paged Reader Margin Fixes**: Applied `Margins.only(top: 0.0)` to block elements in paged mode to prevent double vertical spacing, and corrected available width calculations for symmetric horizontal margins.
+
+### Rust Direct JPEG Decoding & Archive Reliability
+- **Direct JPEG Decoder Bypass**: Added `jpeg-decoder` in the Rust backend (`rust/src/api/cbz.rs`) to decode JPEG comic pages directly, eliminating `zune-jpeg` decoding errors and reducing allocation overhead.
+- **Broad Color Space Support**: Implemented direct conversion to 32-bit RGBA for `RGB24`, `L8` grayscale, `L16`, and `CMYK32` JPEG streams before transferring pixel buffers over FFI to Flutter.
+- **Zero-Cost Pixel Conversion**: Optimized JPEG decoding loops using const-generic `as_chunks` with pattern destructuring, eliminating slice indexing and bounds checks.
+- **Dependency Clean Up**: Removed unused `mobi` dependency from `rust/Cargo.toml` to streamline Rust compilation.
+
+### Reading Position & State Synchronization
+- **Slice-Granular Position Tracking**: Implemented `savePagedReadingPosition` in `EpubChapterController` and `MobiChapterController` to synchronize book progress to exact sentence spans and character offsets per page slice.
+- **Streamlined Paged Position Restoration**: Optimized mode switching between continuous scroll and paged reading, instantly resolving reading location via slice offsets without post-frame scroll client retries.
+
+### Android Adaptive Launcher Icon
+- **Updated Icon Assets**: Refreshed adaptive launcher icons across all Android display densities (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`) with refined vector foreground assets.
+- **Dark Theme Background**: Updated adaptive icon background color in `colors.xml` to match the reader's dark theme aesthetic.
+
+### CI & Static Analysis Tuning
+- **Streamlined CI Pipeline**: Optimized `.github/workflows/ci.yml` and release workflows to focus strictly on fast, reliable Flutter and Rust lint verification.
+- **Analysis Options Tuning**: Updated `analysis_options.yaml` to exclude generated source files from static analysis, eliminating false positives in CI.
+
 ## [1.3.4-alpha.1] - 2026-11-12
 
 ### DOM Chunking & Reader View Performance
@@ -18,6 +60,7 @@
 - **Pre-Allocated RAR Decompression**: Enhanced `cbz` and `covers` Rust modules to query unpacked entry sizes prior to extraction, pre-allocating buffer memory to prevent iterative reallocation overhead.
 - **Decompression Integrity Checks**: Added size validation and FNV-1a 64-bit diagnostic logging to ensure verified, intact image extraction from CBR archives.
 - **Targeted SIMD Optimization**: Configured release profile with `lto = "thin"` and isolated `opt-level = 3` for `unrar-rs`, `image`, `zune-jpeg`, and `jpeg-decoder` crates to guarantee optimal NEON SIMD codegen on AArch64.
+- **Pinned `unrar-rs` Dependency**: Strictly pinned `unrar-rs = "=0.15.0"` to avoid upstream compilation failures in `link_anchor.rs` introduced in `0.15.1+`.
 
 ## [1.3.3] - 2026-11-11
 

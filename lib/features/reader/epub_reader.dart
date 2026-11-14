@@ -449,7 +449,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
       final color = result['color'] as int? ?? 0xFFFFF176;
 
       final plainText = _chapterController.currentPlainText;
-      final cleanSelected = selectedText.replaceAll('\u00AD', '');
+      final cleanSelected = selectedText.replaceAll(RegExp(r'[\u00AD\u2010]|&shy;'), '');
       int start = plainText.indexOf(cleanSelected);
       if (start == -1) start = plainText.indexOf(selectedText);
       int end = start != -1 ? start + cleanSelected.length : cleanSelected.length;
@@ -523,9 +523,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                     onPressed: () {
                       final raw = _selectedContent?.plainText ?? '';
                       final clean = raw
-                          .replaceAll('\u00AD', '')
-                          .replaceAll('\u200B', '')
-                          .replaceAll('&shy;', '');
+                          .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
                       Clipboard.setData(ClipboardData(text: clean));
                       selectableRegionState.hideToolbar();
                     },
@@ -542,9 +540,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
                     onPressed: () {
                       final raw = _selectedContent?.plainText.trim() ?? '';
                       final clean = raw
-                          .replaceAll('\u00AD', '')
-                          .replaceAll('\u200B', '')
-                          .replaceAll('&shy;', '');
+                          .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
                       selectableRegionState.hideToolbar();
                       if (clean.isNotEmpty) {
                         _showAnnotationDialog(clean);

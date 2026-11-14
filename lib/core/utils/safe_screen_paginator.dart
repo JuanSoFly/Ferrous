@@ -8,6 +8,7 @@ import 'package:ferrous/core/models/annotation.dart';
 import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/core/utils/reader_typography_metrics.dart';
 import 'package:ferrous/features/reader/annotation_highlight_helper.dart';
+import 'package:ferrous/features/reader/hyphenation_helper.dart';
 
 /// Represents a single screen-fitted slice of an EPUB/MOBI chapter.
 class PageSlice {
@@ -59,6 +60,7 @@ class SafeScreenPaginator {
     FontWeight fontWeight = FontWeight.normal,
     double wordSpacing = 0.0,
     TextScaler textScaler = TextScaler.noScaling,
+    String languageCode = 'en',
   }) {
     if (availableWidth <= 0 || availableHeight <= 0) {
       return [
@@ -75,13 +77,14 @@ class SafeScreenPaginator {
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
 
+    final primaryLang = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
     final textScale = textScaler.scale(10.0) / 10.0;
     final cacheKey =
         '$bookId:$chapterIndex:${availableWidth.toInt()}x${availableHeight.toInt()}:'
         '${fontSize.toStringAsFixed(1)}:${lineHeight.toStringAsFixed(2)}:'
         '${paragraphSpacing.toStringAsFixed(1)}:${fontFamily ?? "default"}:'
         '${textAlign.name}:${fontWeight.value}:${wordSpacing.toStringAsFixed(2)}:'
-        '$paragraphIndent:$hyphenation:${textScale.toStringAsFixed(2)}:$annotationSig';
+        '$paragraphIndent:$hyphenation:$primaryLang:${textScale.toStringAsFixed(2)}:$annotationSig';
 
     final cached = _cache[cacheKey];
     if (cached != null && cached.isNotEmpty) {
@@ -142,7 +145,11 @@ class SafeScreenPaginator {
           base = TextStyle(fontFamily: fontFamily, fontSize: fontSize, height: lineHeight, fontWeight: fontWeight);
         }
       }
-      return base.copyWith(letterSpacing: wordSpacing, wordSpacing: null);
+      return base.copyWith(
+        letterSpacing: wordSpacing,
+        wordSpacing: null,
+        locale: Locale(primaryLang),
+      );
     }
 
     final baseStyle = resolveTextStyle(
@@ -157,6 +164,7 @@ class SafeScreenPaginator {
       textDirection: TextDirection.ltr,
       textAlign: textAlign,
       textScaler: textScaler,
+      locale: Locale(primaryLang),
       strutStyle: StrutStyle(
         fontFamily: baseStyle.fontFamily,
         fontSize: fontSize,
@@ -180,7 +188,10 @@ class SafeScreenPaginator {
       bool isPre = false,
       bool isHeading = false,
     }) {
-      final normalized = isPre ? text : text.replaceAll(RegExp(r'[ \t\r\f]+'), ' ').trim();
+      final sanitized = text.replaceAll(RegExp(r'[ \t\r\f]+'), ' ').trim();
+      final normalized = isPre
+          ? text
+          : (hyphenation ? sanitized : HyphenationHelper.stripSoftHyphens(sanitized));
       if (normalized.isEmpty) {
         return (fontSize * fontScale * lineHeight) + extraTopMargin + extraBottomMargin;
       }
@@ -288,8 +299,22 @@ class SafeScreenPaginator {
               tag == 'image' ||
               node.querySelector('img, svg, image') != null;
 
-          final nodeText = _extractMeasurementText(node, isPre: tag == 'pre');
-          final textLen = DomTextUtils.extractPlainText(node).length;
+          final dom.Element targetElement;
+          if (!hasImage && !isHeading) {
+            final cloned = node.clone(true);
+            HyphenationHelper.processElement(
+              cloned,
+              applyHyphenation: hyphenation && tag != 'pre',
+              applyIndent: paragraphIndent && tag != 'pre',
+              languageCode: primaryLang,
+            );
+            targetElement = cloned;
+          } else {
+            targetElement = node;
+          }
+
+          final nodeText = _extractMeasurementText(targetElement, isPre: tag == 'pre');
+          final textLen = DomTextUtils.extractPlainText(targetElement, preserveSoftHyphens: true).length;
 
           final double blockHeight;
           if (hasImage) {
@@ -341,7 +366,7 @@ class SafeScreenPaginator {
 
           // If block fits on current page, append directly
           if (currentHeight + blockHeight <= maxPageHeight) {
-            currentBuffer.write(node.outerHtml);
+            currentBuffer.write(targetElement.outerHtml);
             currentHeight += blockHeight;
             runningCharOffset += textLen;
             continue;
@@ -361,7 +386,7 @@ class SafeScreenPaginator {
             }
 
             var splitParts = _splitBlockAcrossPages(
-              node: node,
+              node: targetElement,
               firstBudget: remainingHeight,
               maxPageHeight: maxPageHeight,
               measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
@@ -377,7 +402,7 @@ class SafeScreenPaginator {
             if (splitParts.isEmpty && currentHeight > 0) {
               flushPage();
               splitParts = _splitBlockAcrossPages(
-                node: node,
+                node: targetElement,
                 firstBudget: maxPageHeight,
                 maxPageHeight: maxPageHeight,
                 measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
@@ -541,8 +566,8 @@ class SafeScreenPaginator {
 
       // Remaining text exceeds currentBudget. Find word boundaries in remainingText
       final wordBoundaries = <int>[];
-      final wsRegex = RegExp(r'\s+');
-      for (final m in wsRegex.allMatches(remainingText)) {
+      final splitRegex = RegExp(r'\s+|\u00AD');
+      for (final m in splitRegex.allMatches(remainingText)) {
         if (m.end > 0 && m.end < remainingText.length) {
           wordBoundaries.add(m.end);
         }
@@ -682,7 +707,24 @@ class SafeScreenPaginator {
         final localStart = (startOffset - nodeStart).clamp(0, nodeLen);
         final localEnd = (endOffset - nodeStart).clamp(localStart, nodeLen);
 
-        final textSlice = text.substring(localStart, localEnd);
+        var textSlice = text.substring(localStart, localEnd);
+
+        // Bi-directional affinity check at soft-hyphen slice points:
+        final brokeAtSoftHyphen = textSlice.endsWith('\u00AD') ||
+            (localEnd < nodeLen && text.startsWith('\u00AD', localEnd));
+        if (brokeAtSoftHyphen) {
+          if (textSlice.endsWith('\u00AD')) {
+            textSlice = '${textSlice.substring(0, textSlice.length - 1)}\u2010';
+          } else {
+            textSlice = '$textSlice\u2010';
+          }
+        }
+        if (localStart > 0 && text.startsWith('\u00AD', localStart - 1) && textSlice.startsWith('\u00AD')) {
+          textSlice = textSlice.substring(1);
+        } else if (localStart == 0 && textSlice.startsWith('\u00AD')) {
+          textSlice = textSlice.substring(1);
+        }
+
         buffer.write(const HtmlEscape().convert(textSlice));
         nodeStart = nodeEnd;
       } else if (child is dom.Element) {
