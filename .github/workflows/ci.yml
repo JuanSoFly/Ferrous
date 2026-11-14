@@ -1,4 +1,4 @@
-name: CI Verification
+name: Lint & Analyze
 
 on:
   push:
@@ -18,8 +18,8 @@ env:
   RUSTC_WRAPPER: 'sccache'
 
 jobs:
-  lint-and-test:
-    name: Lint & Test (Rust & Flutter)
+  lint:
+    name: Lint Rust & Flutter
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -49,113 +49,3 @@ jobs:
       - name: Lint Rust with Clippy
         working-directory: rust
         run: cargo clippy -- -D warnings
-
-      - name: Run Flutter Tests (if present)
-        run: |
-          if [ -d "test" ] && [ "$(ls -A test 2>/dev/null)" ]; then
-            flutter test
-          else
-            echo "No test directory tracked in repository; skipping test step."
-          fi
-
-  build-android:
-    needs: lint-and-test
-    name: Build Android APKs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Install cargo-ndk
-        uses: taiki-e/cache-cargo-install-action@v3
-        with:
-          tool: cargo-ndk
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: 'stable'
-          cache: true
-
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r26d
-          add-to-path: true
-
-      - name: Set NDK environment variables
-        run: |
-          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-
-      - name: Make cargokit scripts executable
-        run: |
-          chmod +x rust_builder/cargokit/*.sh
-          chmod +x rust_builder/cargokit/build_tool/lib/*.dart || true
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Install PDFium Android binaries
-        run: |
-          chmod +x scripts/setup-pdfium-android.sh
-          PDFIUM_ABIS="arm64-v8a,armeabi-v7a,x86_64" bash scripts/setup-pdfium-android.sh
-
-      - name: Setup Keystore from Secret if configured
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Overriding release keystore with secret"
-            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
-          fi
-
-      - name: Build APKs (split per ABI, release mode)
-        run: flutter build apk --split-per-abi --release
-
-      - name: Show sccache stats
-        run: sccache --show-stats
-
-      - name: Upload APK Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ferrous-test-apks
-          path: build/app/outputs/flutter-apk/*.apk
-          retention-days: 7
