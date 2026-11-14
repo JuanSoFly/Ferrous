@@ -1,0 +1,250 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="100%" height="100%" role="img" aria-labelledby="chart-title chart-desc">
+  <title id="chart-title">Ferrous Reader — Release Trajectory (518+ Cumulative Downloads)</title>
+  <desc id="chart-desc">Kindle Carta 1300 E-Ink styled halftone chart showing cumulative GitHub release downloads across versions v1.0.0 (52), v1.1.0 (242), v1.2.x (298), v1.3.x (508), and v1.4.0 Stable (518+).</desc>
+
+  <defs>
+    <!-- Physical Halftone Dot Scrims (Kindle Carta 1300 E-Ink Specification) -->
+    <pattern id="halftone-dense" width="4" height="4" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="0.95" fill="#1A1A18" fill-opacity="0.22" />
+    </pattern>
+
+    <pattern id="halftone-light" width="5" height="5" patternUnits="userSpaceOnUse">
+      <circle cx="2.5" cy="2.5" r="0.8" fill="#1A1A18" fill-opacity="0.14" />
+    </pattern>
+
+    <!-- Carry-over Base Volume (Lighter Halftone) -->
+    <pattern id="halftone-base" width="4.5" height="4.5" patternUnits="userSpaceOnUse">
+      <circle cx="2.25" cy="2.25" r="0.75" fill="#1A1A18" fill-opacity="0.15" />
+    </pattern>
+
+    <!-- Per-Milestone Delta Cap (Denser Halftone) -->
+    <pattern id="halftone-delta" width="3.5" height="3.5" patternUnits="userSpaceOnUse">
+      <circle cx="1.75" cy="1.75" r="1.0" fill="#1A1A18" fill-opacity="0.34" />
+    </pattern>
+
+    <pattern id="halftone-column-active" width="3.5" height="3.5" patternUnits="userSpaceOnUse">
+      <circle cx="1.75" cy="1.75" r="1.1" fill="#1A1A18" fill-opacity="0.44" />
+    </pattern>
+
+    <!-- Fine Laid Paper Wire Ribs (Tactile Linen / Archival Book Paper) -->
+    <pattern id="laid-ribs" width="40" height="5.5" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="5" x2="40" y2="5" stroke="#9E9A90" stroke-width="0.5" stroke-opacity="0.22" />
+    </pattern>
+
+    <!-- Deckle Fiber Micro-Noise (0.04 Opacity Fractal Grain) -->
+    <filter id="carta-grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="4" result="noise" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.102  0 0 0 0 0.102  0 0 0 0 0.094  0 0 0 0.04 0" result="coloredNoise" />
+      <feComposite operator="over" in="coloredNoise" in2="SourceGraphic" />
+    </filter>
+  </defs>
+
+  <style>
+    .eink-bg { fill: #EAE6DF; }
+    .eink-surface-secondary { fill: #E0DCD3; }
+    .carbon-ink { fill: #1A1A18; }
+    .secondary-ink { fill: #3D3C38; }
+    .hairline-ink { stroke: #9E9A90; }
+    .leader-line { stroke: #C2BEB4; }
+    
+    .serif-title { font-family: "Iowan Old Style", "Palatino Linotype", "Georgia", "Times New Roman", serif; font-size: 16px; font-weight: 700; letter-spacing: 0.5px; fill: #1A1A18; }
+    .serif-subtitle { font-family: "Iowan Old Style", "Palatino Linotype", "Georgia", "Times New Roman", serif; font-size: 12px; font-style: italic; fill: #3D3C38; }
+    .category-eyebrow { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; fill: #3D3C38; text-transform: uppercase; }
+    
+    .ledger-num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 700; }
+    .axis-num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #4A4945; }
+    .legend-label { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9px; font-weight: 600; fill: #3D3C38; letter-spacing: 0.5px; }
+    .version-title { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; font-weight: 700; fill: #1A1A18; }
+    .milestone-desc { font-family: "Iowan Old Style", "Georgia", "Times New Roman", serif; font-size: 10.5px; font-style: italic; fill: #3D3C38; }
+    .delta-badge { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; fill: #1A1A18; }
+    .colophon-text { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9px; font-weight: 600; letter-spacing: 1.2px; fill: #4A4945; text-transform: uppercase; }
+  </style>
+
+  <!-- 1. Primary Kindle Carta 1300 Paper Surface + Dark-Mode Safe Outer Bezel -->
+  <rect width="800" height="380" rx="4" fill="#EAE6DF" />
+  <rect x="2" y="2" width="796" height="376" rx="3" class="eink-bg" stroke="#1A1A18" stroke-width="2" filter="url(#carta-grain)" />
+
+  <!-- 2. Tactile Book Laid Ribs Layer -->
+  <rect x="2" y="2" width="796" height="376" rx="3" fill="url(#laid-ribs)" />
+
+  <!-- 3. Inner Architectural Hairline Rule (1px #9E9A90) -->
+  <rect x="8" y="8" width="784" height="364" rx="2" fill="none" stroke="#9E9A90" stroke-width="1" />
+
+  <!-- ==================== HEADER SECTION ==================== -->
+  <g transform="translate(24, 22)">
+    <!-- Eyebrow Tag -->
+    <text x="0" y="11" class="category-eyebrow">Kindle Carta 1300 E-Ink Mode • Halftone Ledger</text>
+    
+    <!-- Title & Subtitle -->
+    <text x="0" y="30" class="serif-title">FERROUS READER — RELEASE TRAJECTORY</text>
+    <text x="0" y="45" class="serif-subtitle">Cumulative package distribution &amp; milestone velocity across GitHub releases</text>
+
+    <!-- Total Downloads Inverted Stamp -->
+    <g transform="translate(500, 6)">
+      <rect x="0" y="0" width="132" height="30" rx="1.5" fill="#1A1A18" />
+      <rect x="2" y="2" width="128" height="26" rx="1" fill="none" stroke="#EAE6DF" stroke-width="0.8" />
+      <text x="66" y="19" text-anchor="middle" class="ledger-num" fill="#EAE6DF">518 DOWNLOADS</text>
+    </g>
+
+    <!-- Active Release Carta Stamp -->
+    <g transform="translate(642, 6)">
+      <rect x="0" y="0" width="114" height="30" rx="1.5" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.5" />
+      <rect x="0" y="0" width="114" height="30" rx="1.5" fill="url(#halftone-light)" />
+      <text x="57" y="19" text-anchor="middle" class="ledger-num" fill="#1A1A18">v1.4.0 STABLE</text>
+    </g>
+  </g>
+
+  <!-- Letterpress Double Divider Rule -->
+  <line x1="20" y1="78" x2="780" y2="78" stroke="#1A1A18" stroke-width="1.5" />
+  <line x1="20" y1="81" x2="780" y2="81" stroke="#9E9A90" stroke-width="0.8" />
+
+  <!-- ==================== INLINE KEY / LEGEND ==================== -->
+  <g transform="translate(68, 94)">
+    <rect x="0" y="-7" width="12" height="8" fill="#D5D0C5" stroke="#1A1A18" stroke-width="0.8" />
+    <rect x="0" y="-7" width="12" height="8" fill="url(#halftone-delta)" />
+    <text x="17" y="0" class="legend-label">RELEASE SURGE [+DELTA]</text>
+
+    <rect x="168" y="-7" width="12" height="8" fill="#E0DCD3" stroke="#1A1A18" stroke-width="0.8" />
+    <rect x="168" y="-7" width="12" height="8" fill="url(#halftone-base)" />
+    <text x="185" y="0" class="legend-label">PRIOR CUMULATIVE BASE</text>
+  </g>
+
+  <!-- ==================== GRAPH PLOT AREA ==================== -->
+  <!-- Y-Axis Grid Lines & Numbers (Scale: 0 to 600, Baseline y=285, Top y=105) -->
+  <g>
+    <!-- 600 -->
+    <line x1="68" y1="105.0" x2="755" y2="105.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
+    <text x="58" y="109.0" text-anchor="end" class="axis-num">600</text>
+
+    <!-- 450 -->
+    <line x1="68" y1="150.0" x2="755" y2="150.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
+    <text x="58" y="154.0" text-anchor="end" class="axis-num">450</text>
+
+    <!-- 300 -->
+    <line x1="68" y1="195.0" x2="755" y2="195.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
+    <text x="58" y="199.0" text-anchor="end" class="axis-num">300</text>
+
+    <!-- 150 -->
+    <line x1="68" y1="240.0" x2="755" y2="240.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
+    <text x="58" y="244.0" text-anchor="end" class="axis-num">150</text>
+  </g>
+
+  <!-- Shaded Halftone Scrim Under Curve (Rendered behind columns for clean contrast) -->
+  <path d="M 145 285
+           L 145 269.4
+           C 215 269.4, 215 212.4, 285 212.4
+           C 355 212.4, 355 195.6, 425 195.6
+           C 495 195.6, 495 132.6, 565 132.6
+           C 635 132.6, 635 129.6, 705 129.6
+           L 705 285 Z"
+        fill="url(#halftone-dense)" />
+
+  <!-- ==================== STACKED HALFTONE COLUMNS ==================== -->
+  <!-- v1.0.0 (Total=52, Delta=+52, y=269.4, h=15.6) -->
+  <g>
+    <rect x="116" y="269.4" width="58" height="15.6" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="116" y="269.4" width="58" height="15.6" fill="url(#halftone-delta)" />
+  </g>
+
+  <!-- v1.1.0 (Total=242, Prior=52 [h=15.6], Delta=+190 [h=57.0], y=212.4) -->
+  <g>
+    <rect x="256" y="212.4" width="58" height="72.6" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="256" y="269.4" width="58" height="15.6" fill="url(#halftone-base)" />
+    <rect x="256" y="212.4" width="58" height="57.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="256" y="212.4" width="58" height="57.0" fill="url(#halftone-delta)" />
+  </g>
+
+  <!-- v1.2.x (Total=298, Prior=242 [h=72.6], Delta=+56 [h=16.8], y=195.6) -->
+  <g>
+    <rect x="396" y="195.6" width="58" height="89.4" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="396" y="212.4" width="58" height="72.6" fill="url(#halftone-base)" />
+    <rect x="396" y="195.6" width="58" height="16.8" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="396" y="195.6" width="58" height="16.8" fill="url(#halftone-delta)" />
+  </g>
+
+  <!-- v1.3.x (Total=508, Prior=298 [h=89.4], Delta=+210 [h=63.0], y=132.6) -->
+  <g>
+    <rect x="536" y="132.6" width="58" height="152.4" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="536" y="195.6" width="58" height="89.4" fill="url(#halftone-base)" />
+    <rect x="536" y="132.6" width="58" height="63.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="536" y="132.6" width="58" height="63.0" fill="url(#halftone-delta)" />
+  </g>
+
+  <!-- v1.4.0 (Active Stable Column: Total=518, y=129.6, h=155.4) -->
+  <g>
+    <rect x="676" y="129.6" width="58" height="155.4" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1.8" />
+    <rect x="676" y="129.6" width="58" height="155.4" fill="url(#halftone-column-active)" />
+    <!-- Top solid carbon cap for latest delta (+10) -->
+    <rect x="676" y="129.6" width="58" height="3.5" fill="#1A1A18" />
+  </g>
+
+  <!-- 0 Baseline (Solid Carbon Rule placed over bar bottoms for crisp alignment) -->
+  <line x1="68" y1="285" x2="755" y2="285" stroke="#1A1A18" stroke-width="1.8" />
+  <text x="58" y="289" text-anchor="end" class="axis-num">0</text>
+
+  <!-- ==================== MAIN TRAJECTORY CURVE ==================== -->
+  <!-- Paper halo behind curve so line reads clearly across bar edges -->
+  <path d="M 145 269.4
+           C 215 269.4, 215 212.4, 285 212.4
+           C 355 212.4, 355 195.6, 425 195.6
+           C 495 195.6, 495 132.6, 565 132.6
+           C 635 132.6, 635 129.6, 705 129.6"
+        fill="none" stroke="#EAE6DF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Solid Carbon Ink Trajectory Rule (Monotone Cubic Bezier) -->
+  <path d="M 145 269.4
+           C 215 269.4, 215 212.4, 285 212.4
+           C 355 212.4, 355 195.6, 425 195.6
+           C 495 195.6, 495 132.6, 565 132.6
+           C 635 132.6, 635 129.6, 705 129.6"
+        fill="none" stroke="#1A1A18" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- ==================== MILESTONE NODES & LABELS ==================== -->
+  <!-- v1.0.0 -->
+  <circle cx="145" cy="269.4" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="145" y="256.4" text-anchor="middle" class="ledger-num" fill="#1A1A18">52</text>
+  <text x="145" y="303" text-anchor="middle" class="version-title">v1.0.0</text>
+  <text x="145" y="316" text-anchor="middle" class="milestone-desc">Launch</text>
+  <text x="145" y="329" text-anchor="middle" class="delta-badge">[+52]</text>
+
+  <!-- v1.1.0 -->
+  <circle cx="285" cy="212.4" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="285" y="199.4" text-anchor="middle" class="ledger-num" fill="#1A1A18">242</text>
+  <text x="285" y="303" text-anchor="middle" class="version-title">v1.1.0</text>
+  <text x="285" y="316" text-anchor="middle" class="milestone-desc">PDFium &amp; TTS</text>
+  <text x="285" y="329" text-anchor="middle" class="delta-badge">[+190]</text>
+
+  <!-- v1.2.x -->
+  <circle cx="425" cy="195.6" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="425" y="182.6" text-anchor="middle" class="ledger-num" fill="#1A1A18">298</text>
+  <text x="425" y="303" text-anchor="middle" class="version-title">v1.2.x</text>
+  <text x="425" y="316" text-anchor="middle" class="milestone-desc">Library &amp; E-Ink</text>
+  <text x="425" y="329" text-anchor="middle" class="delta-badge">[+56]</text>
+
+  <!-- v1.3.x -->
+  <circle cx="565" cy="132.6" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="565" y="119.6" text-anchor="middle" class="ledger-num" fill="#1A1A18">508</text>
+  <text x="565" y="303" text-anchor="middle" class="version-title">v1.3.x</text>
+  <text x="565" y="316" text-anchor="middle" class="milestone-desc">DOM &amp; CBR</text>
+  <text x="565" y="329" text-anchor="middle" class="delta-badge">[+210]</text>
+
+  <!-- v1.4.0 (Active Stable Highlight Marker) -->
+  <circle cx="705" cy="129.6" r="10.5" fill="#EAE6DF" fill-opacity="0.7" stroke="#1A1A18" stroke-width="1.2" stroke-dasharray="2, 2" />
+  <circle cx="705" cy="129.6" r="5.5" fill="#1A1A18" />
+  
+  <!-- Inverted Callout Tag for Current Milestone -->
+  <g transform="translate(675, 91.6)">
+    <rect x="0" y="0" width="60" height="20" rx="1.5" fill="#1A1A18" />
+    <polygon points="26,20 34,20 30,24" fill="#1A1A18" />
+    <text x="30" y="14" text-anchor="middle" class="ledger-num" fill="#EAE6DF">518+</text>
+  </g>
+  <text x="705" y="303" text-anchor="middle" class="version-title">v1.4.0</text>
+  <text x="705" y="316" text-anchor="middle" class="milestone-desc">Safe Paging</text>
+  <text x="705" y="329" text-anchor="middle" class="delta-badge">★ [+10] Stable</text>
+
+  <!-- ==================== FOOTER COLOPHON ==================== -->
+  <line x1="20" y1="346" x2="780" y2="346" stroke="#9E9A90" stroke-width="0.8" />
+  <text x="400" y="364" text-anchor="middle" class="colophon-text">
+    Kindle Carta 1300 E-Paper Specification • Zero-Telemetry Offline Persistence • GitHub.com/JuanSoFly/Ferrous
+  </text>
+</svg>

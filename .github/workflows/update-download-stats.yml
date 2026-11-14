@@ -1,0 +1,43 @@
+name: Update Release Download Graph
+
+on:
+  release:
+    types: [published]
+  schedule:
+    # Run once daily at 00:00 UTC to track ongoing release downloads
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-graph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run download graph updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/update_downloads_graph.py
+
+      - name: Commit and push if updated
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet assets/downloads-graph.svg; then
+            echo "No changes in download metrics."
+          else
+            git add assets/downloads-graph.svg
+            git commit -m "chore(stats): update release download metrics [skip ci]"
+            git push
+          fi
