@@ -7,7 +7,6 @@ use lru::LruCache;
 use crate::timed;
 use zip::ZipArchive;
 use unrar_rs::RarArchive;
-use image::GenericImageView;
 use anyhow::{Result, Context, anyhow};
 
 static CBZ_ENTRIES_CACHE: OnceLock<Mutex<LruCache<String, Arc<Vec<String>>>>> = OnceLock::new();
@@ -285,8 +284,8 @@ fn decode_and_process_image(buffer: &[u8], _max_width: Option<i32>) -> Result<Cb
         let rgba_bytes = match info.pixel_format {
             jpeg_decoder::PixelFormat::RGB24 => {
                 let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
-                for chunk in pixels.chunks_exact(3) {
-                    rgba.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]);
+                for &[r, g, b] in pixels.as_chunks::<3>().0 {
+                    rgba.extend_from_slice(&[r, g, b, 255]);
                 }
                 rgba
             }
@@ -299,19 +298,18 @@ fn decode_and_process_image(buffer: &[u8], _max_width: Option<i32>) -> Result<Cb
             }
             jpeg_decoder::PixelFormat::L16 => {
                 let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
-                for chunk in pixels.chunks_exact(2) {
-                    let l = chunk[0];
+                for &[l, _] in pixels.as_chunks::<2>().0 {
                     rgba.extend_from_slice(&[l, l, l, 255]);
                 }
                 rgba
             }
             jpeg_decoder::PixelFormat::CMYK32 => {
                 let mut rgba = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
-                for chunk in pixels.chunks_exact(4) {
-                    let c = chunk[0] as u32;
-                    let m = chunk[1] as u32;
-                    let y = chunk[2] as u32;
-                    let k = chunk[3] as u32;
+                for &[c, m, y, k] in pixels.as_chunks::<4>().0 {
+                    let c = c as u32;
+                    let m = m as u32;
+                    let y = y as u32;
+                    let k = k as u32;
                     let r = ((255 - c) * (255 - k) / 255) as u8;
                     let g = ((255 - m) * (255 - k) / 255) as u8;
                     let b = ((255 - y) * (255 - k) / 255) as u8;
