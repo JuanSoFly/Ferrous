@@ -14,7 +14,7 @@ class PdfReaderTopBar extends StatelessWidget {
   final PdfTtsController ttsController;
   final ReaderChromeController chromeController;
   final VoidCallback onShowReadingModePicker;
-  final VoidCallback onOpenTextPicker;
+  final VoidCallback onOpenTableOfContents;
 
   const PdfReaderTopBar({
     super.key,
@@ -23,7 +23,7 @@ class PdfReaderTopBar extends StatelessWidget {
     required this.ttsController,
     required this.chromeController,
     required this.onShowReadingModePicker,
-    required this.onOpenTextPicker,
+    required this.onOpenTableOfContents,
   });
 
   @override
@@ -31,6 +31,12 @@ class PdfReaderTopBar extends StatelessWidget {
     final theme = Theme.of(context);
     final currentTheme = context.watch<AppTheme>();
     final isEInk = currentTheme == AppTheme.eInk;
+
+    final chapterTitle = pageController.currentChapter?.title;
+    final pageProgress = '${pageController.pageIndex + 1} / ${pageController.pageCount}';
+    final subtitleText = chapterTitle != null && chapterTitle.trim().isNotEmpty
+        ? '$chapterTitle • $pageProgress'
+        : pageProgress;
 
     return Positioned(
       top: 0,
@@ -63,7 +69,7 @@ class PdfReaderTopBar extends StatelessWidget {
                         },
                       ),
 
-                      // Center: Expanded title & page count subtitle
+                      // Center: Expanded title & chapter/page count subtitle
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 6.0),
@@ -77,18 +83,19 @@ class PdfReaderTopBar extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: pageController.pageCount > 0 ? 14 : 16,
-                                  letterSpacing: -0.2,
-                                  color: isEInk ? const Color(0xFF1A1A18) : null,
+                                   fontWeight: FontWeight.w600,
+                                   fontSize: pageController.pageCount > 0 ? 14 : 16,
+                                   letterSpacing: -0.2,
+                                   color: isEInk ? const Color(0xFF1A1A18) : null,
                                 ),
                               ),
                               if (pageController.pageCount > 0)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2.0),
                                   child: Text(
-                                    '${pageController.pageIndex + 1} / ${pageController.pageCount}',
+                                    subtitleText,
                                     maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.labelSmall?.copyWith(
                                       color: isEInk
                                           ? const Color(0xFF4A4945)
@@ -103,14 +110,14 @@ class PdfReaderTopBar extends StatelessWidget {
                         ),
                       ),
 
-                      // Trailing prominent action: Text view picker
+                      // Trailing prominent action: Table of Contents
                       IconButton(
-                        icon: const Icon(Icons.text_snippet, size: 22),
-                        tooltip: 'Text view',
+                        icon: const Icon(Icons.format_list_bulleted, size: 22),
+                        tooltip: 'Table of Contents',
                         constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                         onPressed: () {
                           HapticFeedback.lightImpact();
-                          onOpenTextPicker();
+                          onOpenTableOfContents();
                         },
                       ),
 
@@ -121,7 +128,7 @@ class PdfReaderTopBar extends StatelessWidget {
                           size: 22,
                           color: isEInk
                               ? const Color(0xFF1A1A18)
-                              : ((ttsController.showTtsControls || chromeController.isLocked || pageController.autoCrop)
+                              : ((ttsController.showTtsControls || chromeController.isLocked)
                                   ? theme.colorScheme.primary
                                   : theme.colorScheme.onSurface),
                         ),
@@ -141,9 +148,6 @@ class PdfReaderTopBar extends StatelessWidget {
                           switch (value) {
                             case 'reading_mode':
                               onShowReadingModePicker();
-                              break;
-                            case 'crop':
-                              pageController.setAutoCrop(!pageController.autoCrop);
                               break;
                             case 'tts':
                               ttsController.toggleTts();
@@ -165,16 +169,6 @@ class PdfReaderTopBar extends StatelessWidget {
                                   child: KindlePopupItem(
                                     icon: Icons.view_carousel,
                                     label: 'Reading Mode',
-                                  ),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'crop',
-                                  padding: EdgeInsets.zero,
-                                  height: 42,
-                                  child: KindlePopupItem(
-                                    icon: pageController.autoCrop ? Icons.crop_free : Icons.crop,
-                                    label: pageController.autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
-                                    isHighlighted: pageController.autoCrop,
                                   ),
                                 ),
                                 const KindlePopupDivider(),
@@ -211,27 +205,6 @@ class PdfReaderTopBar extends StatelessWidget {
                                         'Reading Mode',
                                         style: theme.textTheme.bodyMedium?.copyWith(
                                           color: theme.colorScheme.onSurface,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'crop',
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        pageController.autoCrop ? Icons.crop_free : Icons.crop,
-                                        size: 20,
-                                        color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        pageController.autoCrop ? 'Disable Auto-Crop' : 'Enable Auto-Crop',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: pageController.autoCrop ? theme.colorScheme.primary : theme.colorScheme.onSurface,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),

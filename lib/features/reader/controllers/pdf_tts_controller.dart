@@ -5,10 +5,34 @@ import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/data/repositories/book_repository.dart';
 import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/core/utils/sentence_utils.dart';
-import 'package:ferrous/core/utils/text_normalization.dart';
 import 'pdf_page_controller.dart';
 import 'pdf_document_text.dart';
 
+/// Represents a distinct sentence on a PDF page with precomputed bounding rects.
+class PdfSentence {
+  final int pageIndex;
+  final int sentenceIndex;
+  final int charStart;
+  final int charEnd;
+  final String rawText;
+  final String cleanText;
+  final List<PdfTextRect> rects;
+
+  const PdfSentence({
+    required this.pageIndex,
+    required this.sentenceIndex,
+    required this.charStart,
+    required this.charEnd,
+    required this.rawText,
+    required this.cleanText,
+    required this.rects,
+  });
+}
+
+/// Dedicated, high-performance Sentence-Level TTS Controller for PDF.
+///
+/// Highlights entire sentences line-by-line with gutter-safe multi-column bounding,
+/// eliminates aggressive canvas auto-zooming, and guarantees zero-drift position persistence.
 class PdfTtsController extends ChangeNotifier {
   final Book book;
   final BookRepository repository;
@@ -22,11 +46,10 @@ class PdfTtsController extends ChangeNotifier {
     required this.pageController,
   }) : _ttsService = ttsService {
     _ttsService.setOnFinished(_handleTtsFinished);
-    _ttsService.addListener(_handleTtsProgress);
 
-    _lastTtsSentenceStart = book.lastTtsSentenceStart;
-    _lastTtsSentenceEnd = book.lastTtsSentenceEnd;
-    _lastTtsPage = book.lastTtsPage;
+    // Initialize from book persistence: lastTtsPage and lastTtsSentenceStart (index)
+    _speakingPage = book.lastTtsPage >= 0 ? book.lastTtsPage : pageController.pageIndex;
+    _speakingSentenceIndex = book.lastTtsSentenceStart >= 0 ? book.lastTtsSentenceStart : 0;
   }
 
   bool _disposed = false;
@@ -35,147 +58,412 @@ class PdfTtsController extends ChangeNotifier {
   bool _ttsFollowMode = true;
   bool _tapToStartEnabled = true;
 
-  String? _ttsStartOverrideText;
-
-  // When speaking override text (from tap or text picker), this is the offset
-  // in the normalized document text where the override begins. This allows
-  // _handleTtsProgress to map override-relative word offsets to document-level
-  // positions for correct highlighting.
-  int _overrideNormalizedBaseOffset = 0;
-
-  // Document-level text (replaces per-page text for TTS)
-  PdfDocumentText? _documentText;
-  bool _documentTextLoading = false;
-  int _documentTextRequestId = 0;
-
-  // Highlight state — tracks which page the current word is on
-  int _highlightPageIndex = -1;
+  int _speakingPage = -1;
+  int _speakingSentenceIndex = -1;
+  PdfSentence? _currentSentence;
   List<PdfTextRect> _ttsHighlightRects = const [];
+  final ValueNotifier<List<PdfTextRect>> highlightRectsNotifier =
+      ValueNotifier<List<PdfTextRect>>(const []);
 
-  int? _lastHighlightStart;
-  int? _lastHighlightEnd;
+  // Per-page cached sentences
+  final Map<int, List<PdfSentence>> _pageSentencesCache = {};
+  final Set<int> _loadingPages = {};
+
   DateTime _lastAutoPanAt = DateTime.fromMillisecondsSinceEpoch(0);
-  int _highlightRequestId = 0;
-  int _tapToStartRequestId = 0;
-
-  late int _lastTtsSentenceStart;
-  late int _lastTtsSentenceEnd;
-  late int _lastTtsPage;
-
   TransformationController? pdfTransformController;
+
   TtsService get ttsService => _ttsService;
   bool get showTtsControls => _showTtsControls;
   bool get ttsContinuous => _ttsContinuous;
   bool get ttsFollowMode => _ttsFollowMode;
   bool get tapToStartEnabled => _tapToStartEnabled;
   List<PdfTextRect> get ttsHighlightRects => _ttsHighlightRects;
-  int get highlightPageIndex => _highlightPageIndex;
-  String? get ttsStartOverrideText => _ttsStartOverrideText;
-  PdfDocumentText? get documentText => _documentText;
-  bool get documentTextLoading => _documentTextLoading;
+  int get highlightPageIndex => _speakingPage;
+  PdfSentence? get currentSentence => _currentSentence;
+  String get currentSentenceText => _currentSentence?.cleanText ?? '';
+
+  // Backward-compatible properties
+  PdfDocumentText? get documentText => null;
+  bool get documentTextLoading => false;
+  String? get ttsStartOverrideText => null;
 
   // ---------------------------------------------------------------------------
-  // Document text assembly
+  // Sentence Extraction & Bounding Rect Calculation
   // ---------------------------------------------------------------------------
 
-  /// Build the full document text from all pages. Called once when TTS is
-  /// first activated. Caches the result.
-  Future<void> _buildDocumentText() async {
-    if (_documentText != null) return;
-    if (_disposed) return;
+  /// Segment page text into sentences and compute gutter-safe line bounding rects.
+  Future<List<PdfSentence>> getSentencesForPage(int pageIndex) async {
+    if (_pageSentencesCache.containsKey(pageIndex)) {
+      return _pageSentencesCache[pageIndex]!;
+    }
 
-    final requestId = ++_documentTextRequestId;
-    _documentTextLoading = true;
-    notifyListeners();
+    if (_loadingPages.contains(pageIndex)) {
+      // Avoid parallel duplicate loads
+      while (_loadingPages.contains(pageIndex)) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+      return _pageSentencesCache[pageIndex] ?? const [];
+    }
 
+    _loadingPages.add(pageIndex);
     try {
-      final path = pageController.resolvedFile?.path;
-      if (path == null) return;
+      await pageController.ensureCharacterBoundsLoaded(pageIndex);
+      final text = pageController.pageTextCache[pageIndex] ?? '';
+      final bounds = pageController.pageCharBoundsCache[pageIndex] ?? const [];
 
-      final pageCount = pageController.pageCount;
-      if (pageCount <= 0) return;
-
-      // Extract text from all pages. Use existing cached texts where available,
-      // load the rest.
-      final pageTexts = <int, String>{};
-      for (var i = 0; i < pageCount; i++) {
-        if (_disposed || requestId != _documentTextRequestId) return;
-
-        // Check cache first
-        final cached = pageController.pageTextCache[i];
-        if (cached != null) {
-          pageTexts[i] = cached;
-          continue;
-        }
-
-        // Load from Rust FFI
-        await pageController.loadPageText(i);
-        if (_disposed || requestId != _documentTextRequestId) return;
-        pageTexts[i] = pageController.pageTextCache[i] ?? '';
+      if (text.trim().isEmpty || bounds.isEmpty) {
+        _pageSentencesCache[pageIndex] = const [];
+        return const [];
       }
 
-      if (_disposed || requestId != _documentTextRequestId) return;
+      final spans = splitIntoSentences(text);
+      final sentences = <PdfSentence>[];
 
-      _documentText = buildPdfDocumentText(pageTexts, pageCount);
-      _documentTextLoading = false;
-      notifyListeners();
+      for (var i = 0; i < spans.length; i++) {
+        final span = spans[i];
+        if (span.start >= text.length || span.end <= span.start) continue;
 
-      // Precompute character bounds for the first few pages in the background
-      _preloadCharacterBounds(pageCount);
-    } catch (e) {
-      if (_disposed || requestId != _documentTextRequestId) return;
-      _documentTextLoading = false;
-      notifyListeners();
+        final raw = text.substring(span.start, span.end.clamp(span.start, text.length));
+
+        // Precision Line-Break Hyphen Sanitization:
+        // Preserves capitalized compound words (e.g. New-York, U.S.-based)
+        // while cleanly rejoining broken words across line breaks.
+        final clean = raw
+            .replaceAll('\u00AD', '')
+            .replaceAllMapped(
+              RegExp(r'([a-zA-Z])-\s*\r?\n\s*([a-z])'),
+              (m) => '${m[1]}${m[2]}',
+            )
+            .replaceAll(RegExp(r'\s*\r?\n\s*'), ' ')
+            .trim();
+
+        if (clean.isEmpty) continue;
+
+        final lineRects = _computeSentenceRects(bounds, span.start, span.end);
+
+        sentences.add(PdfSentence(
+          pageIndex: pageIndex,
+          sentenceIndex: sentences.length,
+          charStart: span.start,
+          charEnd: span.end,
+          rawText: raw,
+          cleanText: clean,
+          rects: lineRects,
+        ));
+      }
+
+      _pageSentencesCache[pageIndex] = sentences;
+      return sentences;
+    } catch (_) {
+      return const [];
+    } finally {
+      _loadingPages.remove(pageIndex);
     }
   }
 
-  /// Precompute character bounds for pages near the current position.
-  void _preloadCharacterBounds(int pageCount) {
-    final current = pageController.pageIndex;
-    for (var i = current; i < pageCount && i < current + 3; i++) {
-      unawaited(pageController.ensureCharacterBoundsLoaded(i));
+  /// Groups character glyph bounding boxes into visual line segments.
+  /// Splits bounding rects when glyph horizontal separation exceeds 2.5x character width,
+  /// preventing highlights from spanning across multi-column gutters.
+  List<PdfTextRect> _computeSentenceRects(
+    List<PdfTextRect> charBounds,
+    int start,
+    int end,
+  ) {
+    final validRects = <PdfTextRect>[];
+    final clampedEnd = end.clamp(0, charBounds.length);
+    for (var i = start; i < clampedEnd; i++) {
+      final r = charBounds[i];
+      if (r.left == 0 && r.top == 0 && r.right == 0 && r.bottom == 0) continue;
+      if ((r.right - r.left) <= 0 || (r.bottom - r.top) <= 0) continue;
+      validRects.add(r);
     }
+    if (validRects.isEmpty) return const [];
+
+    final lineRects = <PdfTextRect>[];
+
+    var lineLeft = validRects[0].left;
+    var lineTop = validRects[0].top;
+    var lineRight = validRects[0].right;
+    var lineBottom = validRects[0].bottom;
+
+    for (var i = 1; i < validRects.length; i++) {
+      final r = validRects[i];
+      final lineHeight = lineBottom - lineTop;
+      final sameLine = (r.top - lineTop).abs() < (lineHeight > 0 ? lineHeight * 0.6 : 0.02);
+
+      final avgCharWidth = (lineRight - lineLeft) / i.clamp(1, 50);
+      final gutterThreshold = (avgCharWidth * 2.5).clamp(0.04, 0.15);
+      final isGutterJump = sameLine && (r.left - lineRight > gutterThreshold);
+
+      if (sameLine && !isGutterJump) {
+        if (r.left < lineLeft) lineLeft = r.left;
+        if (r.top < lineTop) lineTop = r.top;
+        if (r.right > lineRight) lineRight = r.right;
+        if (r.bottom > lineBottom) lineBottom = r.bottom;
+      } else {
+        lineRects.add(PdfTextRect(
+          left: lineLeft,
+          top: lineTop,
+          right: lineRight,
+          bottom: lineBottom,
+        ));
+        lineLeft = r.left;
+        lineTop = r.top;
+        lineRight = r.right;
+        lineBottom = r.bottom;
+      }
+    }
+    lineRects.add(PdfTextRect(
+      left: lineLeft,
+      top: lineTop,
+      right: lineRight,
+      bottom: lineBottom,
+    ));
+
+    return lineRects;
   }
 
   // ---------------------------------------------------------------------------
-  // Public API
+  // Hit-Testing for Tap Gestures
   // ---------------------------------------------------------------------------
 
-  Future<void> startSpeakingOverride(String text) async {
+  /// Check whether a normalized (0.0 to 1.0) point on [pageIndex] falls over a sentence.
+  Future<PdfSentence?> hitTestSentence(int pageIndex, Offset normalizedPoint) async {
+    final sentences = await getSentencesForPage(pageIndex);
+    if (sentences.isEmpty) return null;
 
-    _ttsStartOverrideText = text;
-    // Ensure document text is built so we can map override offsets
-    await _buildDocumentText();
-    // Find where this override text appears in the document for highlight mapping
-    _computeOverrideBaseOffset(text);
-    unawaited(_ttsService.speak(text));
+    for (final sentence in sentences) {
+      for (final rect in sentence.rects) {
+        final expanded = Rect.fromLTRB(
+          rect.left - 0.02,
+          rect.top - 0.015,
+          rect.right + 0.02,
+          rect.bottom + 0.015,
+        );
+        if (expanded.contains(normalizedPoint)) {
+          return sentence;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Start speaking immediately from the sentence containing [normalizedPoint].
+  Future<bool> startTtsFromPoint(int pageIndex, Offset normalizedPoint) async {
+    if (_disposed) return false;
+    final sentences = await getSentencesForPage(pageIndex);
+    if (sentences.isEmpty) return false;
+
+    PdfSentence? matched;
+    for (final sentence in sentences) {
+      for (final rect in sentence.rects) {
+        final expanded = Rect.fromLTRB(
+          rect.left - 0.02,
+          rect.top - 0.015,
+          rect.right + 0.02,
+          rect.bottom + 0.015,
+        );
+        if (expanded.contains(normalizedPoint)) {
+          matched = sentence;
+          break;
+        }
+      }
+      if (matched != null) break;
+    }
+
+    if (matched == null) {
+      // Vertical distance fallback for taps slightly between lines
+      double minDistance = double.infinity;
+      for (final sentence in sentences) {
+        if (sentence.rects.isEmpty) continue;
+        final top = sentence.rects.first.top;
+        final bottom = sentence.rects.last.bottom;
+        final dist = (normalizedPoint.dy < top)
+            ? (top - normalizedPoint.dy)
+            : (normalizedPoint.dy > bottom ? normalizedPoint.dy - bottom : 0.0);
+        if (dist < minDistance && dist < 0.08) {
+          minDistance = dist;
+          matched = sentence;
+        }
+      }
+    }
+
+    if (matched != null) {
+      _showTtsControls = true;
+      await _speakSentence(pageIndex, matched.sentenceIndex);
+      return true;
+    }
+
+    return false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Playback Control
+  // ---------------------------------------------------------------------------
+
+  Future<void> play() async {
+    if (_disposed) return;
+    if (_speakingPage < 0 || _speakingPage >= pageController.pageCount) {
+      _speakingPage = pageController.pageIndex;
+      _speakingSentenceIndex = 0;
+    }
+    await _speakSentence(_speakingPage, _speakingSentenceIndex);
+  }
+
+  Future<void> _speakSentence(int pageIndex, int sentenceIndex) async {
+    if (_disposed) return;
+
+    final sentences = await getSentencesForPage(pageIndex);
+    if (sentences.isEmpty) {
+      // Page has no readable text; advance to next page if continuous
+      if (_ttsContinuous && pageIndex + 1 < pageController.pageCount) {
+        return _speakSentence(pageIndex + 1, 0);
+      } else {
+        await stop();
+        return;
+      }
+    }
+
+    final targetIndex = sentenceIndex.clamp(0, sentences.length - 1);
+    final sentence = sentences[targetIndex];
+
+    _speakingPage = pageIndex;
+    _speakingSentenceIndex = targetIndex;
+    _currentSentence = sentence;
+    _ttsHighlightRects = sentence.rects;
+    highlightRectsNotifier.value = sentence.rects;
+
+    saveCurrentTtsSentence();
+    notifyListeners();
+
+    _maybeAutoPanToHighlight(sentence);
+    await _ttsService.speak(sentence.cleanText);
+  }
+
+  void _handleTtsFinished() {
+    if (_disposed) return;
+    if (_ttsService.state == TtsState.paused || _ttsService.state == TtsState.stopped) {
+      return;
+    }
+
+    unawaited(_advanceToNextSentence());
+  }
+
+  Future<void> _advanceToNextSentence() async {
+    if (_disposed) return;
+
+    final sentences = await getSentencesForPage(_speakingPage);
+    if (_speakingSentenceIndex + 1 < sentences.length) {
+      await _speakSentence(_speakingPage, _speakingSentenceIndex + 1);
+    } else if (_ttsContinuous && _speakingPage + 1 < pageController.pageCount) {
+      final nextPage = _speakingPage + 1;
+      if (!pageController.isContinuousMode) {
+        await pageController.renderPage(nextPage, userInitiated: false);
+      }
+      await _speakSentence(nextPage, 0);
+    } else {
+      await stop();
+    }
+  }
+
+  Future<void> previousSentence() async {
+    if (_speakingSentenceIndex > 0) {
+      await _speakSentence(_speakingPage, _speakingSentenceIndex - 1);
+    } else if (_speakingPage > 0) {
+      final prevPage = _speakingPage - 1;
+      final prevSentences = await getSentencesForPage(prevPage);
+      final lastIdx = (prevSentences.length - 1).clamp(0, 999999);
+      if (!pageController.isContinuousMode) {
+        await pageController.renderPage(prevPage, userInitiated: false);
+      }
+      await _speakSentence(prevPage, lastIdx);
+    }
+  }
+
+  Future<void> nextSentence() async {
+    await _advanceToNextSentence();
+  }
+
+  Future<void> pause() async {
+    saveCurrentTtsSentence();
+    await _ttsService.pause();
     notifyListeners();
   }
 
-  /// Compute where [text] begins in the normalized document text so that
-  /// TTS word offsets (relative to [text]) can be mapped to document-level
-  /// positions for highlighting.
-  void _computeOverrideBaseOffset(String text) {
-    final doc = _documentText;
-    if (doc == null || doc.isEmpty) {
-      _overrideNormalizedBaseOffset = 0;
+  Future<void> stop() async {
+    saveCurrentTtsSentence();
+    _ttsHighlightRects = const [];
+    highlightRectsNotifier.value = const [];
+    await _ttsService.stop();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auto-Scroll (Follow Mode) without Canvas Scaling
+  // ---------------------------------------------------------------------------
+
+  void _maybeAutoPanToHighlight(PdfSentence sentence) {
+    if (!_ttsFollowMode || sentence.rects.isEmpty) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastAutoPanAt) < const Duration(milliseconds: 100)) {
       return;
     }
-    final normalized = normalizePlainText(text);
-    if (normalized.isEmpty) {
-      _overrideNormalizedBaseOffset = 0;
-      return;
+    _lastAutoPanAt = now;
+
+    if (pageController.isContinuousMode) {
+      final sc = pageController.scrollController;
+      if (sc.hasClients) {
+        final isWebtoon = pageController.readingMode == ReadingMode.webtoon;
+        final spacing = isWebtoon ? 1.0 : 12.0;
+        final pageOffset = pageController.calculateEstimatedOffsetForPage(sentence.pageIndex, spacing);
+        final sentenceTop = sentence.rects.first.top;
+        final pageHeight = pageController.renderedPageSize.height > 0
+            ? pageController.renderedPageSize.height
+            : (pageController.viewerSize.width * 1.4);
+        final targetScroll = (pageOffset + (sentenceTop * pageHeight)) - (pageController.viewerSize.height * 0.35);
+        sc.animateTo(
+          targetScroll.clamp(0.0, sc.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    } else {
+      if (sentence.pageIndex != pageController.pageIndex) {
+        pageController.renderPage(sentence.pageIndex, userInitiated: false);
+      }
     }
-    var index = doc.normalizedText.indexOf(normalized);
-    if (index < 0 && normalized.length > 10) {
-      final prefixLen = normalized.length > 50 ? 50 : normalized.length;
-      index = doc.normalizedText.indexOf(normalized.substring(0, prefixLen));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Position Persistence
+  // ---------------------------------------------------------------------------
+
+  void saveCurrentTtsSentence() {
+    if (_speakingPage < 0) return;
+
+    unawaited(repository.updateReadingProgress(
+      book.id,
+      currentPage: pageController.pageIndex,
+      totalPages: pageController.pageCount,
+      lastTtsSentenceStart: _speakingSentenceIndex,
+      lastTtsSentenceEnd: _speakingSentenceIndex,
+      lastTtsPage: _speakingPage,
+    ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // TtsControlsSheet Integration
+  // ---------------------------------------------------------------------------
+
+  String resolveTtsText() {
+    if (_currentSentence != null && _currentSentence!.cleanText.isNotEmpty) {
+      return _currentSentence!.cleanText;
     }
-    _overrideNormalizedBaseOffset = index >= 0 ? index : 0;
+    return pageController.currentPageText;
   }
 
   void setTtsContinuous(bool value) {
-
     _ttsContinuous = value;
     notifyListeners();
   }
@@ -190,8 +478,6 @@ class PdfTtsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set TTS controls visibility without stopping playback.
-  /// Use this for hiding UI while TTS continues in background.
   void setTtsControlsVisible(bool visible) {
     if (_showTtsControls == visible) return;
     _showTtsControls = visible;
@@ -204,542 +490,38 @@ class PdfTtsController extends ChangeNotifier {
     notifyListeners();
 
     if (!next) {
-      saveCurrentTtsSentence();
-  
-      _ttsStartOverrideText = null;
-      _overrideNormalizedBaseOffset = 0;
-      _ttsHighlightRects = const [];
-      _highlightPageIndex = -1;
-      unawaited(_ttsService.stop());
-      return;
-    }
-
-    // Jump to saved TTS position if available (only when starting from stopped)
-    if (_ttsService.state == TtsState.stopped &&
-        _lastTtsSentenceStart >= 0 &&
-        pageController.pageCount > 0 &&
-        _lastTtsPage >= 0 &&
-        _lastTtsPage < pageController.pageCount &&
-        _lastTtsPage != pageController.pageIndex) {
-      await pageController.renderPage(_lastTtsPage, userInitiated: false);
-    }
-
-    // Build document-level text for continuous TTS
-    if (_documentText == null) {
-      await _buildDocumentText();
-    }
-
-    // Ensure character bounds for the current page
-    await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);
-  }
-
-  // ---------------------------------------------------------------------------
-  // TTS progress — highlight the current word
-  // ---------------------------------------------------------------------------
-
-  void _handleTtsProgress() {
-    if (_disposed) return;
-    if (_ttsService.state == TtsState.stopped) {
-      if (_ttsHighlightRects.isNotEmpty) {
-        _ttsHighlightRects = const [];
-        _highlightPageIndex = -1;
-        notifyListeners();
-      }
-      return;
-    }
-
-    if (_ttsService.state != TtsState.playing) return;
-
-    // Need document text for offset resolution
-    if (_documentText == null && !_documentTextLoading) {
-      unawaited(_buildDocumentText().then((_) => _handleTtsProgress()));
-      return;
-    }
-    if (_documentText == null) return;
-
-    final wordStart = _ttsService.currentWordStart;
-    final wordEnd = _ttsService.currentWordEnd;
-    if (wordStart == null || wordEnd == null) return;
-
-    // When speaking the full document text, word offsets are document-relative
-    // (base = 0). When speaking override text (tap/text picker), word offsets
-    // are relative to the override, so we add the override's base offset.
-    final base = _ttsStartOverrideText != null ? _overrideNormalizedBaseOffset : 0;
-    final highlightStart = base + wordStart;
-    final highlightEnd = base + wordEnd;
-
-    if (highlightStart == _lastHighlightStart &&
-        highlightEnd == _lastHighlightEnd) {
-      return;
-    }
-
-    _lastHighlightStart = highlightStart;
-    _lastHighlightEnd = highlightEnd;
-
-    unawaited(_updateHighlightForNormalizedRange(highlightStart, highlightEnd));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Highlight computation
-  // ---------------------------------------------------------------------------
-
-  Future<void> _updateHighlightForNormalizedRange(
-      int normStart, int normEnd) async {
-    if (_disposed) return;
-    final doc = _documentText;
-    if (doc == null || doc.normalizedMap.normalizedToRaw.isEmpty) return;
-    if (normStart < 0 || normEnd <= normStart) return;
-    if (normStart >= doc.normalizedMap.normalizedToRaw.length) return;
-
-    final map = doc.normalizedMap;
-    final clampedEnd = normEnd.clamp(0, map.normalizedToRaw.length);
-    final rawStart = map.normalizedToRaw[normStart];
-    final rawEnd = clampedEnd < map.normalizedToRaw.length
-        ? map.normalizedToRaw[clampedEnd]
-        : map.normalizedToRaw[clampedEnd - 1] + 1;
-
-    // Find which page this word is on
-    final targetPage = doc.pageForDocumentOffset(rawStart);
-    if (targetPage < 0) return;
-
-    // Convert to page-local offsets
-    final localStart = doc.localOffset(rawStart, targetPage);
-    final localEnd = doc.localOffset(rawEnd, targetPage);
-    if (localStart < 0 || localEnd < 0) return;
-
-    // Ensure the target page is rendered and its character bounds are loaded
-    if (targetPage != pageController.pageIndex) {
-      // Word is on a different page than the currently rendered one
-      unawaited(_ensurePageReadyForHighlight(targetPage));
-    }
-
-    // Look up character bounds for the target page
-    final cachedBounds = pageController.pageCharBoundsCache[targetPage];
-    if (cachedBounds != null && cachedBounds.isNotEmpty) {
-      _applyHighlightFromBounds(cachedBounds, localStart, localEnd, targetPage);
-      return;
-    }
-
-    // Bounds not cached — load them and retry
-    final requestId = ++_highlightRequestId;
-    await pageController.ensureCharacterBoundsLoaded(targetPage);
-    if (_disposed || requestId != _highlightRequestId) return;
-
-    final bounds = pageController.pageCharBoundsCache[targetPage];
-    if (bounds != null && bounds.isNotEmpty) {
-      _applyHighlightFromBounds(bounds, localStart, localEnd, targetPage);
+      await stop();
     } else {
-      // Fallback: use Rust FFI to get bounds for just this range
-      try {
-        final resolvedPath = pageController.resolvedFile?.path;
-        if (resolvedPath == null) return;
-        final rects = await extractPdfPageTextBounds(
-          path: resolvedPath,
-          pageIndex: targetPage,
-          startIndex: localStart,
-          endIndex: localEnd,
-        );
-        if (_disposed || requestId != _highlightRequestId) return;
-        _ttsHighlightRects = rects;
-        _highlightPageIndex = targetPage;
-        notifyListeners();
-        _maybeAutoPanToHighlight(rects);
-      } catch (_) {
-        if (_disposed || requestId != _highlightRequestId) return;
-        _ttsHighlightRects = const [];
-        notifyListeners();
+      if (_ttsService.state == TtsState.stopped) {
+        await play();
       }
     }
   }
-
-  void _applyHighlightFromBounds(
-      List<PdfTextRect> cachedBounds, int localStart, int localEnd, int pageIndex) {
-    final clampedEnd = localEnd.clamp(0, cachedBounds.length);
-    final clampedStart = localStart.clamp(0, clampedEnd);
-
-    double? left, top, right, bottom;
-    for (var i = clampedStart; i < clampedEnd; i++) {
-      final rect = cachedBounds[i];
-      if (rect.left == 0 &&
-          rect.top == 0 &&
-          rect.right == 0 &&
-          rect.bottom == 0) {
-        continue;
-      }
-
-      if (left == null) {
-        left = rect.left;
-        top = rect.top;
-        right = rect.right;
-        bottom = rect.bottom;
-      } else {
-        if (rect.left < left) left = rect.left;
-        if (rect.top < top!) top = rect.top;
-        if (rect.right > right!) right = rect.right;
-        if (rect.bottom > bottom!) bottom = rect.bottom;
-      }
-    }
-
-    if (left != null) {
-      _ttsHighlightRects = [
-        PdfTextRect(left: left, top: top!, right: right!, bottom: bottom!)
-      ];
-    } else {
-      _ttsHighlightRects = const [];
-    }
-    _highlightPageIndex = pageIndex;
-    notifyListeners();
-    _maybeAutoPanToHighlight(_ttsHighlightRects);
-  }
-
-  /// Ensure a page is rendered and ready for highlight display.
-  /// In paged mode, renders the page. In continuous mode, the page is already
-  /// visible so we just need character bounds.
-  Future<void> _ensurePageReadyForHighlight(int pageIndex) async {
-    if (pageController.isContinuousMode) {
-      // In continuous mode, pages are already laid out — just need bounds
-      unawaited(pageController.ensureCharacterBoundsLoaded(pageIndex));
-    } else {
-      // In paged mode, render the page so it becomes visible
-      await pageController.renderPage(pageIndex, userInitiated: false);
-      unawaited(pageController.ensureCharacterBoundsLoaded(pageIndex));
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // TTS finished — no more page-by-page advancement
-  // ---------------------------------------------------------------------------
-
-  void _handleTtsFinished() {
-    // TTS spoke the entire document text. Nothing to advance.
-    // Just clear the highlight.
-    _ttsHighlightRects = const [];
-    _highlightPageIndex = -1;
-    _lastHighlightStart = null;
-    _lastHighlightEnd = null;
-    notifyListeners();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Tap-to-start
-  // ---------------------------------------------------------------------------
-
-  Future<void> startTtsFromTap(Offset localOffset, Size imageSize) async {
-    if (_disposed) return;
-    if (!_showTtsControls || !_tapToStartEnabled) return;
-    final resolvedPath = pageController.resolvedFile?.path;
-    if (resolvedPath == null) return;
-
-    final xNormVisible = localOffset.dx / imageSize.width;
-    final yNormVisible = localOffset.dy / imageSize.height;
-
-    if (xNormVisible < 0 ||
-        xNormVisible > 1 ||
-        yNormVisible < 0 ||
-        yNormVisible > 1) {
-      return;
-    }
-
-    var xNorm = xNormVisible;
-    var yNorm = yNormVisible;
-
-    final margins = pageController.currentMargins;
-    if (pageController.autoCrop && margins != null) {
-      final visibleWidth = 1.0 - margins.left - margins.right;
-      final visibleHeight = 1.0 - margins.top - margins.bottom;
-      if (visibleWidth > 0) xNorm = margins.left + xNormVisible * visibleWidth;
-      if (visibleHeight > 0) {
-        yNorm = margins.top + yNormVisible * visibleHeight;
-      }
-    }
-
-
-    await _ttsService.stop();
-
-    final requestId = ++_tapToStartRequestId;
-    _ttsStartOverrideText = null;
-    _ttsHighlightRects = const [];
-    _highlightPageIndex = -1;
-    notifyListeners();
-
-    try {
-      // Get text from the tap point
-      final pageText = await extractPdfPageTextFromPoint(
-        path: resolvedPath,
-        pageIndex: pageController.pageIndex,
-        xNorm: xNorm,
-        yNorm: yNorm,
-      );
-
-      if (_disposed || requestId != _tapToStartRequestId) return;
-
-      final trimmed = pageText.trim();
-      if (trimmed.isEmpty) return;
-
-      // Ensure document text is built so we can find the sentence boundary
-      await _buildDocumentText();
-      if (_disposed || requestId != _tapToStartRequestId) return;
-
-      final doc = _documentText;
-      if (doc == null || doc.isEmpty) return;
-
-      // Find where the tapped text appears in the document text, then
-      // snap to the nearest sentence start.
-      final normalizedTap = normalizePlainText(trimmed);
-      var docOffset = doc.normalizedText.indexOf(normalizedTap);
-
-      if (docOffset < 0 && normalizedTap.length > 10) {
-        // Fallback: try a prefix match
-        final prefixLen =
-            normalizedTap.length > 50 ? 50 : normalizedTap.length;
-        docOffset =
-            doc.normalizedText.indexOf(normalizedTap.substring(0, prefixLen));
-      }
-
-      if (docOffset < 0) docOffset = 0;
-
-      // Snap to sentence start
-      final sentenceStart = findSentenceStart(doc.normalizedText, docOffset);
-      final speakText = doc.normalizedText.substring(sentenceStart).trim();
-
-      if (speakText.isEmpty) return;
-
-      _ttsStartOverrideText = speakText;
-      // The TTS word offsets will be relative to speakText, which starts at
-      // sentenceStart in the normalized document text.
-      _overrideNormalizedBaseOffset = sentenceStart;
-      await pageController.ensureCharacterBoundsLoaded(pageController.pageIndex);
-      if (_disposed || requestId != _tapToStartRequestId) return;
-
-      unawaited(_ttsService.speak(speakText));
-      notifyListeners();
-    } catch (e) {
-      if (_disposed || requestId != _tapToStartRequestId) return;
-      _ttsStartOverrideText = null;
-      _ttsHighlightRects = const [];
-      notifyListeners();
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Text resolution
-  // ---------------------------------------------------------------------------
-
-  /// Returns the text to speak. With document-level assembly, this is always
-  /// the full document text (or a sentence-sliced portion from saved position).
-  String resolveTtsText() {
-    final doc = _documentText;
-    if (doc == null || doc.isEmpty) {
-      // Fallback to current page text if document text isn't built yet
-      final pageText = pageController.currentPageText;
-      if (pageText.trim().isEmpty) return '';
-      return pageText;
-    }
-
-    // Resume from saved sentence position
-    if (_lastTtsSentenceStart >= 0 &&
-        _lastTtsSentenceEnd > _lastTtsSentenceStart &&
-        _lastTtsPage >= 0 &&
-        _lastTtsPage < doc.pageCount) {
-      final pageOffset = doc.pageOffsets[_lastTtsPage];
-      // Convert the saved sentence start (which is page-local code-unit offset)
-      // to a document-level offset.
-      final docStart = pageOffset.documentCharStart + _lastTtsSentenceStart;
-      if (docStart < doc.fullText.length) {
-        return doc.fullText.substring(docStart);
-      }
-    }
-
-    // Override from tap or text picker
-    final override = _ttsStartOverrideText;
-    if (override != null && override.trim().isNotEmpty) {
-      return override;
-    }
-
-    return doc.fullText;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Position persistence
-  // ---------------------------------------------------------------------------
-
-  void saveCurrentTtsSentence() {
-    final doc = _documentText;
-    if (doc == null || doc.isEmpty) return;
-
-    final wordStart = _ttsService.currentWordStart;
-    if (wordStart == null) return;
-
-    // wordStart is relative to what's being spoken (document or override text).
-    // Add the override base offset to get the document-level position.
-    final base = _ttsStartOverrideText != null ? _overrideNormalizedBaseOffset : 0;
-    final normOffset = base + wordStart;
-    if (normOffset < 0 || normOffset >= doc.normalizedMap.normalizedToRaw.length) {
-      return;
-    }
-
-    // Convert to raw document offset
-    final rawDocOffset = doc.normalizedMap.normalizedToRaw[normOffset];
-
-    // Find which page this is on
-    final pageIndex = doc.pageForDocumentOffset(rawDocOffset);
-    if (pageIndex < 0) return;
-
-    // Convert to page-local raw offset
-    final localRaw = doc.localOffset(rawDocOffset, pageIndex);
-    if (localRaw < 0) return;
-
-    // Find the sentence in the document's normalized text
-    final codeUnitOffset = doc.normalizedMap.runeToCodeUnit(normOffset);
-    final span = sentenceForOffset(doc.sentences, codeUnitOffset);
-
-    _lastTtsSentenceStart = span?.start ?? localRaw;
-    _lastTtsSentenceEnd = span?.end ?? localRaw;
-    _lastTtsPage = pageIndex;
-
-    unawaited(repository.updateReadingProgress(
-      book.id,
-      currentPage: pageController.pageIndex,
-      totalPages: pageController.pageCount,
-      lastTtsSentenceStart: _lastTtsSentenceStart,
-      lastTtsSentenceEnd: _lastTtsSentenceEnd,
-      lastTtsPage: _lastTtsPage,
-    ));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Auto-pan (follow mode)
-  // ---------------------------------------------------------------------------
-
-  void _maybeAutoPanToHighlight(List<PdfTextRect> rects) {
-    if (!_ttsFollowMode || rects.isEmpty || pdfTransformController == null) {
-      return;
-    }
-    final viewerSize = pageController.viewerSize;
-    final layoutSize = pageController.logicalPageSize.isEmpty
-        ? pageController.renderedPageSize
-        : pageController.logicalPageSize;
-    if (viewerSize.isEmpty || layoutSize.isEmpty) return;
-
-    final now = DateTime.now();
-    if (now.difference(_lastAutoPanAt) < const Duration(milliseconds: 80)) {
-      return;
-    }
-
-    final bounds = _unionHighlightRects(rects);
-    final highlightRect = Rect.fromLTRB(
-      bounds.left * layoutSize.width,
-      bounds.top * layoutSize.height,
-      bounds.right * layoutSize.width,
-      bounds.bottom * layoutSize.height,
-    );
-
-    final wordWidth = highlightRect.width;
-    final desiredWordWidth = viewerSize.width * 0.35;
-    var targetScale = (desiredWordWidth / wordWidth).clamp(1.5, 3.0);
-
-    final center = highlightRect.center;
-    final viewportCenter = Offset(viewerSize.width / 2, viewerSize.height / 2);
-    final translation = Offset(
-      viewportCenter.dx - center.dx * targetScale,
-      viewportCenter.dy - center.dy * targetScale,
-    );
-
-    final pageWidth = layoutSize.width * targetScale;
-    final pageHeight = layoutSize.height * targetScale;
-    final clampedTx = translation.dx.clamp(viewerSize.width - pageWidth, 0.0);
-    final clampedTy = translation.dy.clamp(viewerSize.height - pageHeight, 0.0);
-
-    _lastAutoPanAt = now;
-    pdfTransformController!.value = Matrix4.identity()
-      ..translateByDouble(clampedTx, clampedTy, 0.0, 1.0)
-      ..scaleByDouble(targetScale, targetScale, 1.0, 1.0);
-  }
-
-  PdfTextRect _unionHighlightRects(List<PdfTextRect> rects) {
-    var left = rects.first.left;
-    var right = rects.first.right;
-    var top = rects.first.top;
-    var bottom = rects.first.bottom;
-    for (final rect in rects.skip(1)) {
-      if (rect.left < left) left = rect.left;
-      if (rect.right > right) right = rect.right;
-      if (rect.top < top) top = rect.top;
-      if (rect.bottom > bottom) bottom = rect.bottom;
-    }
-    return PdfTextRect(left: left, top: top, right: right, bottom: bottom);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Viewport prime (for pre-setting TTS text from viewport center)
-  // ---------------------------------------------------------------------------
-
-  Future<void> primeTtsFromViewport() async {
-    if (_disposed) return;
-    if (pageController.viewerSize.isEmpty ||
-        pageController.renderedPageSize.isEmpty ||
-        pdfTransformController == null) {
-      return;
-    }
-    final resolvedPath = pageController.resolvedFile?.path;
-    if (resolvedPath == null) return;
-
-    final inverse = Matrix4.inverted(pdfTransformController!.value);
-    final viewportCenter = Offset(
-      pageController.viewerSize.width / 2,
-      pageController.viewerSize.height / 2,
-    );
-    final scenePoint = MatrixUtils.transformPoint(inverse, viewportCenter);
-
-    var xNorm = scenePoint.dx / pageController.renderedPageSize.width;
-    var yNorm = scenePoint.dy / pageController.renderedPageSize.height;
-
-    final margins = pageController.currentMargins;
-    if (pageController.autoCrop && margins != null) {
-      final visibleWidth = 1.0 - margins.left - margins.right;
-      final visibleHeight = 1.0 - margins.top - margins.bottom;
-      if (visibleWidth > 0) xNorm = margins.left + xNorm * visibleWidth;
-      if (visibleHeight > 0) {
-        yNorm = margins.top + yNorm * visibleHeight;
-      }
-    }
-
-    try {
-      final text = await extractPdfPageTextFromPoint(
-        path: resolvedPath,
-        pageIndex: pageController.pageIndex,
-        xNorm: xNorm,
-        yNorm: yNorm,
-      );
-      if (_disposed) return;
-      final trimmed = text.trim();
-      if (trimmed.isNotEmpty) {
-        _ttsStartOverrideText = trimmed;
-        notifyListeners();
-      }
-    } catch (_) {}
-  }
-
-  // ---------------------------------------------------------------------------
-  // Cleanup
-  // ---------------------------------------------------------------------------
 
   void closeTtsControls() {
-
-    _ttsStartOverrideText = null;
-    _overrideNormalizedBaseOffset = 0;
-    _ttsHighlightRects = const [];
-    _highlightPageIndex = -1;
     _showTtsControls = false;
+    stop();
+  }
+
+  Future<void> startTtsFromTap(Offset localOffset, Size imageSize) async {
+    if (_disposed || imageSize.isEmpty) return;
+    final xNorm = (localOffset.dx / imageSize.width).clamp(0.0, 1.0);
+    final yNorm = (localOffset.dy / imageSize.height).clamp(0.0, 1.0);
+    await startTtsFromPoint(pageController.pageIndex, Offset(xNorm, yNorm));
+  }
+
+  Future<void> startSpeakingOverride(String text) async {
+    _showTtsControls = true;
     notifyListeners();
+    await _ttsService.speak(text);
   }
 
   @override
   void dispose() {
     _disposed = true;
     _ttsService.setOnFinished(null);
-    _ttsService.removeListener(_handleTtsProgress);
     unawaited(_ttsService.stop());
+    highlightRectsNotifier.dispose();
     super.dispose();
   }
 }

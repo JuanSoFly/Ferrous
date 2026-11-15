@@ -9,6 +9,8 @@ import 'package:ferrous/data/repositories/annotation_repository.dart';
 import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:ferrous/features/reader/controllers/epub_chapter_controller.dart';
 import 'package:ferrous/features/reader/controllers/epub_tts_controller.dart';
+import 'package:ferrous/features/reader/controllers/reader_selection_controller.dart';
+import 'package:ferrous/features/reader/widgets/reader_selection_menu_builder.dart';
 import 'epub_content_viewer.dart';
 import 'realistic_page_turn.dart';
 
@@ -21,6 +23,8 @@ class EpubPagedViewer extends StatefulWidget {
   final Function(TapUpDetails) onTapUp;
   final bool Function()? onTryDismissSelection;
   final VoidCallback? onClearSelection;
+  final ReaderSelectionController selectionController;
+  final void Function(String cleanText) onAnnotate;
 
   const EpubPagedViewer({
     super.key,
@@ -32,6 +36,8 @@ class EpubPagedViewer extends StatefulWidget {
     required this.onTapUp,
     this.onTryDismissSelection,
     this.onClearSelection,
+    required this.selectionController,
+    required this.onAnnotate,
   });
 
   @override
@@ -39,6 +45,8 @@ class EpubPagedViewer extends StatefulWidget {
 }
 
 class _EpubPagedViewerState extends State<EpubPagedViewer> {
+  final GlobalKey<RealisticPageTurnState> _realisticPageTurnKey = GlobalKey<RealisticPageTurnState>();
+  bool _hadSelectionOnTapDown = false;
   late int _currentChapter;
   late int _activeSlot;
   late PageController _viewPageController;
@@ -373,6 +381,8 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     BoxConstraints? constraints,
   }) {
     if (_isSwappingChapter) return;
+    widget.selectionController.clearSelection();
+    widget.selectionController.pruneChapter(targetChapter);
     widget.onClearSelection?.call();
     _isSwappingChapter = true;
 
@@ -423,6 +433,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
 
   void _goToPreviousPage(int totalSlots) {
     if (_activeSlot > 0 && !_isPageAnimating) {
+      widget.selectionController.clearSelection();
       widget.onClearSelection?.call();
       final target = _activeSlot - 1;
       final themeRepo = context.read<ReaderThemeRepository>();
@@ -446,6 +457,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
 
   void _goToNextPage(int totalSlots) {
     if (_activeSlot < totalSlots - 1 && !_isPageAnimating) {
+      widget.selectionController.clearSelection();
       widget.onClearSelection?.call();
       final target = _activeSlot + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
@@ -468,11 +480,11 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   }
 
   void _handleTapUp(TapUpDetails details, Size size, int totalSlots) {
-    if (widget.onTryDismissSelection?.call() ?? false) {
-      return;
-    }
-
     widget.onTapUp(details);
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+        themeRepo.config.pageFlip;
 
     if (widget.readingMode == ReadingMode.vertical) {
       const marginRatio = 0.15;
@@ -490,9 +502,17 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       final tapX = details.globalPosition.dx;
       final width = size.width;
       if (tapX < width * marginRatio) {
-        _goToPreviousPage(totalSlots);
+        if (useRealisticCurl) {
+          _realisticPageTurnKey.currentState?.turnPageAnimated(-1);
+        } else {
+          _goToPreviousPage(totalSlots);
+        }
       } else if (tapX > width * (1.0 - marginRatio)) {
-        _goToNextPage(totalSlots);
+        if (useRealisticCurl) {
+          _realisticPageTurnKey.currentState?.turnPageAnimated(1);
+        } else {
+          _goToNextPage(totalSlots);
+        }
       } else {
         widget.onToggleChrome();
       }
@@ -501,6 +521,8 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
 
   void _handleSlotChanged(int newSlot, [BoxConstraints? constraints]) {
     if (_isSwappingChapter) return;
+    widget.selectionController.clearSelection();
+    widget.selectionController.pruneChapter(_currentChapter);
     widget.onClearSelection?.call();
     _activeSlot = newSlot;
 
@@ -535,26 +557,62 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     }
   }
 
-  Widget _buildPageItem(BuildContext context, int chapterIndex, PageSlice? slice) {
+  Widget _buildPageItem(BuildContext context, int chapterIndex, PageSlice? slice, int totalSlots) {
     final html = widget.chapterController.allChapterContents.length > chapterIndex
         ? widget.chapterController.allChapterContents[chapterIndex]
         : '';
+    final sliceIdx = slice?.pageIndex ?? -1;
 
-    return SingleChildScrollView(
-      key: ValueKey('page-slice-$chapterIndex-${slice?.pageIndex ?? -1}'),
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(
-        left: 16.0,
-        right: 16.0,
-        top: 16.0,
-        bottom: 16.0,
-      ),
-      child: EpubContentViewer(
-        chapterIndex: chapterIndex,
-        htmlContent: html,
-        chapterController: widget.chapterController,
-        ttsController: widget.ttsController,
-        pageSlice: slice,
+    return SelectionArea(
+      key: widget.selectionController.keyForPage(chapterIndex, sliceIdx),
+      onSelectionChanged: (content) =>
+          widget.selectionController.updateSelection('$chapterIndex-$sliceIdx', content),
+      contextMenuBuilder: (context, selectableRegionState) =>
+          ReaderSelectionMenuBuilder.build(
+            context: context,
+            selectableRegionState: selectableRegionState,
+            selectedContent: widget.selectionController.selectedContent,
+            onAnnotate: widget.onAnnotate,
+            onSelectionCleared: () =>
+                widget.selectionController.updateSelection('$chapterIndex-$sliceIdx', null),
+          ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (_) {
+          _hadSelectionOnTapDown = widget.selectionController.hasSelection;
+        },
+        onTapCancel: () {
+          _hadSelectionOnTapDown = false;
+        },
+        onTapUp: (details) {
+          final shouldConsume =
+              _hadSelectionOnTapDown || widget.selectionController.tryDismissSelection();
+          _hadSelectionOnTapDown = false;
+          if (shouldConsume) {
+            widget.selectionController.clearSelection();
+            return;
+          }
+          _handleTapUp(details, MediaQuery.sizeOf(context), totalSlots);
+        },
+        child: SizedBox.expand(
+          child: SingleChildScrollView(
+            key: ValueKey('page-slice-$chapterIndex-$sliceIdx'),
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(
+              left: 16.0,
+              right: 16.0,
+              top: 16.0,
+              bottom: 16.0,
+            ),
+            child: EpubContentViewer(
+              chapterIndex: chapterIndex,
+              htmlContent: html,
+              chapterController: widget.chapterController,
+              ttsController: widget.ttsController,
+              pageSlice: slice,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -620,7 +678,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
 
           if (useRealisticCurl) {
             return RealisticPageTurn(
-              key: ValueKey('epub-curl-ch-$_currentChapter'),
+              key: _realisticPageTurnKey,
               pageCount: totalSlots,
               currentPage: _activeSlot,
               textureId: themeRepo.config.paperTexture,
@@ -628,8 +686,8 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
               onPageChanged: (slot) => _handleSlotChanged(slot, constraints),
               onToggleChrome: widget.onToggleChrome,
               onTapUp: widget.onTapUp,
-              onTryDismissSelection: widget.onTryDismissSelection,
-              onClearSelection: widget.onClearSelection,
+              onTryDismissSelection: widget.selectionController.tryDismissSelection,
+              onClearSelection: widget.selectionController.clearSelection,
               pageBuilder: (context, slot) {
                 if (hasLeading && slot == 0) {
                   final prevSlices = _getPagedSlices(
@@ -640,7 +698,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     annotations,
                   );
                   final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
-                  return _buildPageItem(context, _currentChapter - 1, prevSlice);
+                  return _buildPageItem(context, _currentChapter - 1, prevSlice, totalSlots);
                 }
                 if (hasTrailing && slot == trailingSlot) {
                   final nextSlices = _getPagedSlices(
@@ -651,11 +709,11 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     annotations,
                   );
                   final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
-                  return _buildPageItem(context, _currentChapter + 1, nextSlice);
+                  return _buildPageItem(context, _currentChapter + 1, nextSlice, totalSlots);
                 }
                 final sliceIdx = slot - leadingOffset;
                 final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
-                return _buildPageItem(context, _currentChapter, slice);
+                return _buildPageItem(context, _currentChapter, slice, totalSlots);
               },
             );
           }
@@ -663,6 +721,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
           return NotificationListener<ScrollNotification>(
             onNotification: (notification) {
               if (notification is ScrollStartNotification && notification.dragDetails != null) {
+                widget.selectionController.clearSelection();
                 widget.onClearSelection?.call();
               }
               if (notification is ScrollEndNotification) {
@@ -684,44 +743,40 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
               }
               return false;
             },
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTapUp: (details) => _handleTapUp(details, MediaQuery.sizeOf(context), totalSlots),
-              child: PageView.builder(
-                key: ValueKey('epub-paged-pv-$_currentChapter'),
-                controller: _viewPageController,
-                scrollDirection: widget.readingMode == ReadingMode.vertical
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                itemCount: totalSlots,
-                itemBuilder: (context, slot) {
-                  if (hasLeading && slot == 0) {
-                    final prevSlices = _getPagedSlices(
-                      _currentChapter - 1,
-                      availWidth,
-                      availHeight,
-                      themeRepo.config,
-                      annotations,
-                    );
-                    final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
-                    return _buildPageItem(context, _currentChapter - 1, prevSlice);
-                  }
-                  if (hasTrailing && slot == trailingSlot) {
-                    final nextSlices = _getPagedSlices(
-                      _currentChapter + 1,
-                      availWidth,
-                      availHeight,
-                      themeRepo.config,
-                      annotations,
-                    );
-                    final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
-                    return _buildPageItem(context, _currentChapter + 1, nextSlice);
-                  }
-                  final sliceIdx = slot - leadingOffset;
-                  final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
-                  return _buildPageItem(context, _currentChapter, slice);
-                },
-              ),
+            child: PageView.builder(
+              key: ValueKey('epub-paged-pv-$_currentChapter'),
+              controller: _viewPageController,
+              scrollDirection: widget.readingMode == ReadingMode.vertical
+                  ? Axis.vertical
+                  : Axis.horizontal,
+              itemCount: totalSlots,
+              itemBuilder: (context, slot) {
+                if (hasLeading && slot == 0) {
+                  final prevSlices = _getPagedSlices(
+                    _currentChapter - 1,
+                    availWidth,
+                    availHeight,
+                    themeRepo.config,
+                    annotations,
+                  );
+                  final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
+                  return _buildPageItem(context, _currentChapter - 1, prevSlice, totalSlots);
+                }
+                if (hasTrailing && slot == trailingSlot) {
+                  final nextSlices = _getPagedSlices(
+                    _currentChapter + 1,
+                    availWidth,
+                    availHeight,
+                    themeRepo.config,
+                    annotations,
+                  );
+                  final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
+                  return _buildPageItem(context, _currentChapter + 1, nextSlice, totalSlots);
+                }
+                final sliceIdx = slot - leadingOffset;
+                final slice = (sliceIdx >= 0 && sliceIdx < slices.length) ? slices[sliceIdx] : null;
+                return _buildPageItem(context, _currentChapter, slice, totalSlots);
+              },
             ),
           );
         },

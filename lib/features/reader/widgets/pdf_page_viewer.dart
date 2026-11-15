@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/src/rust/api/pdf.dart';
-import 'package:ferrous/src/rust/api/crop.dart';
 import '../controllers/pdf_page_controller.dart';
 import '../controllers/pdf_tts_controller.dart';
 import '../controllers/reader_chrome_controller.dart';
@@ -21,6 +22,7 @@ class PdfPageViewer extends StatefulWidget {
   final ReaderModeController modeController;
   final TransformationController transformController;
   final GlobalKey pageImageKey;
+  final VoidCallback? onLockedTap;
 
   const PdfPageViewer({
     super.key,
@@ -30,6 +32,7 @@ class PdfPageViewer extends StatefulWidget {
     required this.modeController,
     required this.transformController,
     required this.pageImageKey,
+    this.onLockedTap,
   });
 
   @override
@@ -39,8 +42,23 @@ class PdfPageViewer extends StatefulWidget {
 class _PdfPageViewerState extends State<PdfPageViewer> {
   late PageController _viewPageController;
   bool _syncing = false;
-  DateTime? _lastWordTapTime;
-  Offset? _lastWordTapLocal;
+
+  // Active pointer tracking for multi-touch gestures & pinch zoom
+  int _activePointers = 0;
+  Offset? _pointerDownPos;
+  bool _isMultiTouchZooming = false;
+
+  // Double-tap and tap arbitration
+  Timer? _singleTapTimer;
+  Offset? _lastTapGlobalPos;
+  DateTime? _lastTapTime;
+
+  // Page container keys to resolve unified zoom + scroll coordinates via RenderBox.globalToLocal
+  final Map<int, GlobalKey> _pageContainerKeys = {};
+
+  GlobalKey _getPageContainerKey(int index) {
+    return _pageContainerKeys.putIfAbsent(index, () => GlobalKey(debugLabel: 'pdf-page-$index'));
+  }
 
   @override
   void initState() {
@@ -50,6 +68,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     );
     widget.pageController.addListener(_onPageControllerChanged);
     widget.transformController.addListener(_onTransformChanged);
+    widget.ttsController.pdfTransformController = widget.transformController;
   }
 
   @override
@@ -62,11 +81,13 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     if (oldWidget.transformController != widget.transformController) {
       oldWidget.transformController.removeListener(_onTransformChanged);
       widget.transformController.addListener(_onTransformChanged);
+      widget.ttsController.pdfTransformController = widget.transformController;
     }
   }
 
   @override
   void dispose() {
+    _singleTapTimer?.cancel();
     widget.pageController.removeListener(_onPageControllerChanged);
     widget.transformController.removeListener(_onTransformChanged);
     _viewPageController.dispose();
@@ -89,7 +110,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         _viewPageController = PageController(initialPage: target);
       }
     }
-    // Trigger rebuild for loading/image state changes
     setState(() {});
   }
 
@@ -110,6 +130,205 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     return (scale - 1.0).abs() < 0.01;
   }
 
+  // ---------------------------------------------------------------------------
+  // Gesture Arena & Tap Handling
+  // ---------------------------------------------------------------------------
+
+  void _cancelSingleTapTimer() {
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _activePointers++;
+    _pointerDownPos = event.position;
+
+    // If second finger touches down, user is starting a pinch zoom
+    if (_activePointers >= 2) {
+      _cancelSingleTapTimer();
+      if (!_isMultiTouchZooming) {
+        _isMultiTouchZooming = true;
+        setState(() {});
+      }
+    }
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    // If finger moves more than touch slop (18px), user is panning/scrolling
+    if (_pointerDownPos != null &&
+        (event.position - _pointerDownPos!).distance > kTouchSlop) {
+      _cancelSingleTapTimer();
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    _activePointers = (_activePointers - 1).clamp(0, 10);
+    if (_activePointers < 2 && _isMultiTouchZooming) {
+      _isMultiTouchZooming = false;
+      setState(() {});
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _activePointers = 0;
+    _cancelSingleTapTimer();
+    if (_isMultiTouchZooming) {
+      _isMultiTouchZooming = false;
+      setState(() {});
+    }
+  }
+
+  /// Resolves the tapped page index and page-local normalized coordinates (0.0 to 1.0)
+  /// using RenderBox.globalToLocal to automatically invert zoom, pan, and scroll offsets.
+  (int pageIndex, Offset normalizedOffset)? _resolvePageTapCoordinates(Offset globalPos) {
+    final activePage = widget.pageController.pageIndex;
+
+    // Check active page first
+    final activeKey = _pageContainerKeys[activePage];
+    final activeContext = activeKey?.currentContext;
+    if (activeContext != null) {
+      final box = activeContext.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
+        final local = box.globalToLocal(globalPos);
+        final rect = Offset.zero & box.size;
+        if (rect.contains(local)) {
+          final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
+          final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
+          return (activePage, Offset(xNorm, yNorm));
+        }
+      }
+    }
+
+    // In continuous mode, check other mounted pages
+    for (final entry in _pageContainerKeys.entries) {
+      if (entry.key == activePage) continue;
+      final ctx = entry.value.currentContext;
+      if (ctx == null) continue;
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize || box.size.width <= 0 || box.size.height <= 0) continue;
+      final local = box.globalToLocal(globalPos);
+      final rect = Offset.zero & box.size;
+      if (rect.contains(local)) {
+        final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
+        final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
+        return (entry.key, Offset(xNorm, yNorm));
+      }
+    }
+
+    // Fallback: active page with clamp
+    if (activeContext != null) {
+      final box = activeContext.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
+        final local = box.globalToLocal(globalPos);
+        final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
+        final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
+        return (activePage, Offset(xNorm, yNorm));
+      }
+    }
+
+    return null;
+  }
+
+  void _handleTapUp(BuildContext context, TapUpDetails details) async {
+    final chromeController = widget.chromeController;
+    final screenSize = MediaQuery.of(context).size;
+    final now = DateTime.now();
+
+    // Check if this tap constitutes a double-tap
+    final isDoubleTap = _lastTapTime != null &&
+        _lastTapGlobalPos != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 300) &&
+        (details.globalPosition - _lastTapGlobalPos!).distance < 48.0;
+
+    if (isDoubleTap) {
+      _cancelSingleTapTimer();
+      _lastTapTime = null;
+      _lastTapGlobalPos = null;
+
+      // Handle Double-Tap to Speak
+      final resolved = _resolvePageTapCoordinates(details.globalPosition);
+      if (resolved != null) {
+        final (pageIdx, normOffset) = resolved;
+        await widget.ttsController.startTtsFromPoint(pageIdx, normOffset);
+      }
+      return;
+    }
+
+    _lastTapTime = now;
+    _lastTapGlobalPos = details.globalPosition;
+
+    final isCenter = chromeController.isCenterTap(details.globalPosition, screenSize);
+
+    if (isCenter) {
+      // Fast-path rule: if toolbars are already visible, dismiss immediately (0ms)
+      if (chromeController.showChrome && !chromeController.isLocked) {
+        _cancelSingleTapTimer();
+        _handleToggleChrome();
+        return;
+      }
+
+      if (chromeController.isLocked) {
+        widget.onLockedTap?.call();
+        return;
+      }
+
+      // Check if tap lands over a sentence
+      final resolved = _resolvePageTapCoordinates(details.globalPosition);
+      PdfSentence? hitSentence;
+      if (resolved != null) {
+        final (pageIdx, normOffset) = resolved;
+        hitSentence = await widget.ttsController.hitTestSentence(pageIdx, normOffset);
+      }
+
+      if (hitSentence == null) {
+        // Fast-path rule: tap on whitespace or margin with no sentence -> toggle toolbars instantly (0ms)
+        _cancelSingleTapTimer();
+        _handleToggleChrome();
+      } else {
+        // Text-zone fallback: tap landed over text. Wait 250ms for potential double tap.
+        // If no second tap arrives, toggle chrome on!
+        _cancelSingleTapTimer();
+        _singleTapTimer = Timer(const Duration(milliseconds: 250), () {
+          if (!mounted) return;
+          _handleToggleChrome();
+        });
+      }
+      return;
+    }
+
+    if (chromeController.isLocked) {
+      widget.onLockedTap?.call();
+      return;
+    }
+
+    // Outer margin taps for page turning in paged mode
+    if (widget.modeController.isPagedMode) {
+      final tapX = details.globalPosition.dx;
+      if (tapX < screenSize.width * 0.22) {
+        // Previous page
+        if (widget.pageController.pageIndex > 0) {
+          widget.pageController.previousPage();
+        }
+      } else if (tapX > screenSize.width * 0.78) {
+        // Next page
+        if (widget.pageController.pageIndex < widget.pageController.pageCount - 1) {
+          widget.pageController.nextPage();
+        }
+      }
+    }
+  }
+
+  void _handleToggleChrome() {
+    widget.chromeController.toggleChrome();
+    if (!widget.chromeController.showChrome) {
+      widget.ttsController.setTtsControlsVisible(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build Methods
+  // ---------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     final pageController = widget.pageController;
@@ -126,18 +345,22 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       return const Center(child: Text("Initializing..."));
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapUp: (details) => _handleTapUp(context, details),
-      onDoubleTapDown: (details) {},
-      onDoubleTap: _handleDoubleTap,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          widget.pageController.viewerSize =
-              Size(constraints.maxWidth, constraints.maxHeight);
+    return Listener(
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerUp: _handlePointerUp,
+      onPointerCancel: _handlePointerCancel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (details) => _handleTapUp(context, details),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            widget.pageController.viewerSize =
+                Size(constraints.maxWidth, constraints.maxHeight);
 
-          return _buildGallery();
-        },
+            return _buildGallery();
+          },
+        ),
       ),
     );
   }
@@ -169,10 +392,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
     if (useRealisticCurl) {
       return RealisticPageTurn(
+        key: ValueKey('page-curl-${widget.pageController.pageIndex}-${widget.pageController.getPageImage(widget.pageController.pageIndex) != null}'),
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
         showSpine: themeRepo.config.showBookSpine,
+        canSwipe: _canSwipe,
         onPageChanged: _onPageViewChanged,
         onToggleChrome: _handleToggleChrome,
         onTapUp: (details) => _handleTapUp(context, details),
@@ -233,6 +458,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       child: ListView.separated(
         scrollCacheExtent: ScrollCacheExtent.pixels(size.height),
         controller: widget.pageController.scrollController,
+        physics: _isMultiTouchZooming
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
         key: PageStorageKey(
             'pdf-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -264,6 +492,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       child: ListView.separated(
         scrollCacheExtent: ScrollCacheExtent.pixels(size.width),
         controller: widget.pageController.scrollController,
+        physics: _isMultiTouchZooming
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
         key: PageStorageKey(
             'pdf-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
         scrollDirection: Axis.horizontal,
@@ -287,9 +518,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     final pageImage = pageController.getPageImage(index);
 
     if (pageImage == null) {
-      // Page not yet rendered — safely trigger background prefetch and show placeholder.
-      // Using preloadPage() avoids mutating the active page index or loading state,
-      // which would cause re-entrant notifyListeners() during the build phase.
       pageController.preloadPage(index);
 
       double? placeholderHeight;
@@ -333,13 +561,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     }
 
     final isActive = index == pageController.pageIndex;
-    final isHighlightPage = index == ttsController.highlightPageIndex;
-    final margins = pageController.getPageMargins(index);
-
-    Widget imageWidget = Image.memory(pageImage, fit: BoxFit.contain);
-
-    Widget layer;
-    // Use logicalPageSize for stable UI layout
     final layoutSize = pageController.getLogicalPageSize(index).isEmpty
         ? (pageController.logicalPageSize.isEmpty
             ? pageController.renderedPageSize
@@ -348,7 +569,15 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
     final themeRepo = context.watch<ReaderThemeRepository>();
     final highlightStyle = themeRepo.highlightStyle;
+    final currentTheme = context.watch<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
 
+    Widget imageWidget = Image(
+      image: pageController.getPageImageProvider(index),
+      fit: BoxFit.contain,
+    );
+
+    Widget layer;
     if (layoutSize.isEmpty) {
       layer = imageWidget;
     } else {
@@ -358,47 +587,43 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         child: Stack(
           children: [
             Positioned.fill(child: imageWidget),
-            if (isActive || isHighlightPage)
-              ListenableBuilder(
-                listenable: ttsController,
-                builder: (context, _) {
-                  if (!ttsController.showTtsControls ||
-                       ttsController.ttsHighlightRects.isEmpty ||
-                      ttsController.highlightPageIndex != index) {
-                    return const SizedBox.shrink();
-                  }
-                  return Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
+            // Decoupled vector highlight layer inside its own RepaintBoundary:
+            // Advancing sentences repaints only this vector painter at 120 FPS
+            // without rebuilding or re-rasterizing the page bitmap!
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<List<PdfTextRect>>(
+                    valueListenable: ttsController.highlightRectsNotifier,
+                    builder: (context, rects, _) {
+                      if (!ttsController.showTtsControls ||
+                          rects.isEmpty ||
+                          ttsController.highlightPageIndex != index) {
+                        return const SizedBox.shrink();
+                      }
+                      return CustomPaint(
                         painter: PdfHighlightPainter(
-                          rects: ttsController.ttsHighlightRects,
+                          rects: rects,
                           style: highlightStyle,
                           primaryColor: Theme.of(context).colorScheme.primary,
+                          isEInk: isEInk,
                         ),
-                      ),
-                    ),
-                  );
-                },
+                      );
+                    },
+                  ),
+                ),
               ),
+            ),
           ],
         ),
       );
     }
 
-    if (pageController.autoCrop && margins != null) {
-      layer = FittedBox(
-        fit: BoxFit.contain,
-        child: ClipRect(
-          clipper: MarginClipper(margins),
-          child: layer,
-        ),
-      );
-    }
+    final containerKey = _getPageContainerKey(index);
 
-    // Only attach pageImageKey to the active page for TTS tap detection
     if (isActive) {
       return KeyedSubtree(
-        key: ValueKey(index),
+        key: containerKey,
         child: RepaintBoundary(
           key: widget.pageImageKey,
           child: layer,
@@ -407,7 +632,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     }
 
     return KeyedSubtree(
-      key: ValueKey(index),
+      key: containerKey,
       child: RepaintBoundary(child: layer),
     );
   }
@@ -421,88 +646,21 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       isEInk: isEInk,
     );
   }
-
-  void _handleToggleChrome() {
-    widget.chromeController.toggleChrome();
-    if (!widget.chromeController.showChrome) {
-      widget.ttsController.setTtsControlsVisible(false);
-    }
-  }
-
-  void _handleTapUp(BuildContext context, TapUpDetails details) {
-    final chromeController = widget.chromeController;
-    final screenSize = MediaQuery.of(context).size;
-
-    if (chromeController.isCenterTap(details.globalPosition, screenSize)) {
-      _handleToggleChrome();
-      return;
-    }
-
-    if (chromeController.isLocked) return;
-
-    // Start TTS from double tap
-    if (!widget.ttsController.showTtsControls || !widget.ttsController.tapToStartEnabled) {
-      _lastWordTapTime = null;
-      _lastWordTapLocal = null;
-      return;
-    }
-
-    final imageContext = widget.pageImageKey.currentContext;
-    if (imageContext == null) return;
-
-    final imageBox = imageContext.findRenderObject() as RenderBox?;
-    if (imageBox == null) return;
-
-    final local = imageBox.globalToLocal(details.globalPosition);
-
-    final now = DateTime.now();
-    final isDoubleTap = _lastWordTapTime != null &&
-        _lastWordTapLocal != null &&
-        now.difference(_lastWordTapTime!) < const Duration(milliseconds: 650) &&
-        (local - _lastWordTapLocal!).distance < 48;
-
-    if (isDoubleTap) {
-      _lastWordTapTime = null;
-      _lastWordTapLocal = null;
-      widget.ttsController.startTtsFromTap(local, imageBox.size);
-    } else {
-      _lastWordTapTime = now;
-      _lastWordTapLocal = local;
-    }
-  }
-
-  void _handleDoubleTap() {
-    final chromeController = widget.chromeController;
-    if (!chromeController.isLocked) return;
-
-    // Double-tap lock toggle is handled by the parent GestureDetector
-  }
 }
 
-class MarginClipper extends CustomClipper<Rect> {
-  final CropMargins margins;
-  MarginClipper(this.margins);
-  @override
-  Rect getClip(Size size) => Rect.fromLTWH(
-        size.width * margins.left,
-        size.height * margins.top,
-        size.width * (1.0 - margins.left - margins.right),
-        size.height * (1.0 - margins.top - margins.bottom),
-      );
-  @override
-  bool shouldReclip(covariant MarginClipper oldClipper) =>
-      margins != oldClipper.margins;
-}
-
+/// Zero-allocation, high-contrast vector highlighter for PDF.
+/// Fully supports both standard and E-Ink paper styles across softPill, underline, and classicClean.
 class PdfHighlightPainter extends CustomPainter {
   final List<PdfTextRect> rects;
   final TtsHighlightStyle style;
   final Color primaryColor;
+  final bool isEInk;
 
   PdfHighlightPainter({
     required this.rects,
     required this.style,
     required this.primaryColor,
+    this.isEInk = false,
   });
 
   @override
@@ -520,40 +678,78 @@ class PdfHighlightPainter extends CustomPainter {
 
       final inflated = r.inflate(2.0);
 
-      switch (style) {
-        case TtsHighlightStyle.softPill:
-          final fillPaint = Paint()
-            ..color = primaryColor.withValues(alpha: 0.20)
-            ..style = PaintingStyle.fill;
-          final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
-          canvas.drawRRect(rr, fillPaint);
-          break;
+      if (isEInk) {
+        // High-contrast monochrome tokens for E-Ink paper themes
+        switch (style) {
+          case TtsHighlightStyle.softPill:
+            final fillPaint = Paint()
+              ..color = const Color(0xFFD8D8D8)
+              ..style = PaintingStyle.fill;
+            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
+            canvas.drawRRect(rr, fillPaint);
+            break;
 
-        case TtsHighlightStyle.underline:
-          final linePaint = Paint()
-            ..color = primaryColor
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2.5;
-          // Draw a line at the bottom of the word/rect
-          canvas.drawLine(
-            Offset(r.left, r.bottom + 1),
-            Offset(r.right, r.bottom + 1),
-            linePaint,
-          );
-          break;
+          case TtsHighlightStyle.underline:
+            final linePaint = Paint()
+              ..color = const Color(0xFF000000)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5;
+            canvas.drawLine(
+              Offset(r.left, r.bottom + 1.5),
+              Offset(r.right, r.bottom + 1.5),
+              linePaint,
+            );
+            break;
 
-        case TtsHighlightStyle.classicClean:
-          final fillPaint = Paint()
-            ..color = primaryColor.withValues(alpha: 0.12)
-            ..style = PaintingStyle.fill;
-          final borderPaint = Paint()
-            ..color = primaryColor.withValues(alpha: 0.4)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0;
-          final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
-          canvas.drawRRect(rr, fillPaint);
-          canvas.drawRRect(rr, borderPaint);
-          break;
+          case TtsHighlightStyle.classicClean:
+            final fillPaint = Paint()
+              ..color = const Color(0xFFD8D8D8)
+              ..style = PaintingStyle.fill;
+            final borderPaint = Paint()
+              ..color = const Color(0xFF000000)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5;
+            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
+            canvas.drawRRect(rr, fillPaint);
+            canvas.drawRRect(rr, borderPaint);
+            break;
+        }
+      } else {
+        // Full color palette for LCD/OLED themes
+        switch (style) {
+          case TtsHighlightStyle.softPill:
+            final fillPaint = Paint()
+              ..color = primaryColor.withValues(alpha: 0.20)
+              ..style = PaintingStyle.fill;
+            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
+            canvas.drawRRect(rr, fillPaint);
+            break;
+
+          case TtsHighlightStyle.underline:
+            final linePaint = Paint()
+              ..color = primaryColor
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5;
+            canvas.drawLine(
+              Offset(r.left, r.bottom + 1.5),
+              Offset(r.right, r.bottom + 1.5),
+              linePaint,
+            );
+            break;
+
+          case TtsHighlightStyle.classicClean:
+            final fillPaint = Paint()
+              ..color = primaryColor.withValues(alpha: 0.12)
+              ..style = PaintingStyle.fill;
+            final borderPaint = Paint()
+              ..color = primaryColor.withValues(alpha: 0.40)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.0;
+            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
+            canvas.drawRRect(rr, fillPaint);
+            canvas.drawRRect(rr, borderPaint);
+            break;
+        }
       }
     }
   }
@@ -562,5 +758,6 @@ class PdfHighlightPainter extends CustomPainter {
   bool shouldRepaint(covariant PdfHighlightPainter oldDelegate) =>
       oldDelegate.rects != rects ||
       oldDelegate.style != style ||
-      oldDelegate.primaryColor != primaryColor;
+      oldDelegate.primaryColor != primaryColor ||
+      oldDelegate.isEInk != isEInk;
 }

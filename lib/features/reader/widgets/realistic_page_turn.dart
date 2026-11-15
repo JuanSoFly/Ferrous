@@ -27,6 +27,7 @@ class RealisticPageTurn extends StatefulWidget {
   final bool enabled;
   final String textureId;
   final bool showSpine;
+  final bool Function()? canSwipe;
 
   const RealisticPageTurn({
     super.key,
@@ -41,16 +42,17 @@ class RealisticPageTurn extends StatefulWidget {
     this.enabled = true,
     this.textureId = 'natural',
     this.showSpine = true,
+    this.canSwipe,
   });
 
   @override
-  State<RealisticPageTurn> createState() => _RealisticPageTurnState();
+  State<RealisticPageTurn> createState() => RealisticPageTurnState();
 }
 
 /// Backwards compatibility alias
 typedef AppleBooksPageCurl = RealisticPageTurn;
 
-class _RealisticPageTurnState extends State<RealisticPageTurn>
+class RealisticPageTurnState extends State<RealisticPageTurn>
     with SingleTickerProviderStateMixin {
   late int _activePage;
   late AnimationController _curlController;
@@ -108,13 +110,20 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
       })..addStatusListener(_onAnimationStatus);
   }
 
+  void invalidateCache() {
+    _pageCache.clear();
+    _pageKeys.clear();
+    if (mounted) setState(() {});
+  }
+
   @override
   void didUpdateWidget(RealisticPageTurn oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.textureId != oldWidget.textureId ||
         widget.showSpine != oldWidget.showSpine ||
         widget.pageCount != oldWidget.pageCount ||
-        widget.enabled != oldWidget.enabled) {
+        widget.enabled != oldWidget.enabled ||
+        widget.currentPage != oldWidget.currentPage) {
       _pageCache.clear();
       _pageKeys.clear();
     }
@@ -172,7 +181,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
   bool _canTurnBackward() => _activePage > 0;
 
   void _handleHorizontalDragStart(DragStartDetails details) {
-    if (!widget.enabled || _isAnimating) return;
+    if (!widget.enabled || _isAnimating || !(widget.canSwipe?.call() ?? true)) return;
     // Synchronously clear selection while outgoing page render objects are still mounted
     widget.onClearSelection?.call();
     _isDragging = true;
@@ -259,7 +268,7 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     }
   }
 
-  void _turnPageAnimated(int direction) {
+  void turnPageAnimated(int direction) {
     if (_isAnimating || _isDragging) return;
     if (direction == 1 && !_canTurnForward()) return;
     if (direction == -1 && !_canTurnBackward()) return;
@@ -288,29 +297,6 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     _curlController.forward(from: 0.0);
   }
 
-  void _handleTapUp(TapUpDetails details, Size size) {
-    // 1. If text is selected, dismiss highlight and consume tap completely
-    if (widget.onTryDismissSelection?.call() ?? false) {
-      return;
-    }
-
-    widget.onTapUp?.call(details);
-
-    final tapX = details.globalPosition.dx;
-    final width = size.width;
-
-    // Outer margins: 18% left and right turn pages gracefully
-    const marginRatio = 0.18;
-    if (tapX > width * (1.0 - marginRatio)) {
-      _turnPageAnimated(1);
-    } else if (tapX < width * marginRatio) {
-      _turnPageAnimated(-1);
-    } else {
-      // Center 64%: toggle reader chrome
-      widget.onToggleChrome?.call();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.pageCount <= 0) return const SizedBox.shrink();
@@ -326,8 +312,11 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
         Widget content;
 
         if (!isTurning || !widget.enabled) {
-          // Static page view using cached page
-          content = _getPage(context, _activePage);
+          // Static page view using cached page, fully interactive
+          content = IgnorePointer(
+            ignoring: false,
+            child: _getPage(context, _activePage),
+          );
         } else {
           // Active realistic page turn animation
           content = _buildPageCurlLayers(context, size);
@@ -335,7 +324,6 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapUp: (details) => _handleTapUp(details, size),
           onHorizontalDragStart: _handleHorizontalDragStart,
           onHorizontalDragUpdate: (details) =>
               _handleHorizontalDragUpdate(details, width),
@@ -359,9 +347,15 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     final int leftPageIndex = isForward ? _activePage : _activePage - 1;
     final int rightPageIndex = isForward ? _activePage + 1 : _activePage;
 
-    // Retrieve or instantiate the two page subtrees ONCE outside the per-frame animation/drag builder
-    final Widget leftPage = _getPage(context, leftPageIndex);
-    final Widget rightPage = _getPage(context, rightPageIndex);
+    // Background and curling sheets are completely isolated from pointer events
+    final Widget leftPage = IgnorePointer(
+      ignoring: true,
+      child: _getPage(context, leftPageIndex),
+    );
+    final Widget rightPage = IgnorePointer(
+      ignoring: true,
+      child: _getPage(context, rightPageIndex),
+    );
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ValueListenableBuilder<double>(

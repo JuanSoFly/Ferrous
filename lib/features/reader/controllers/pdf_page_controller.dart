@@ -1,16 +1,19 @@
 ﻿import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:ferrous/src/rust/api/pdf.dart' as pdf_api;
 import 'package:ferrous/src/rust/api/pdf.dart' show PdfTextRect;
-import 'package:ferrous/src/rust/api/crop.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/data/repositories/book_repository.dart';
 import 'package:ferrous/data/services/book_file_resolver.dart';
 import 'package:ferrous/core/utils/performance.dart';
 import 'package:ferrous/core/services/diagnostic_logger.dart';
+import '../models/pdf_chapter.dart';
+import '../models/page_corner_colors.dart';
+import '../services/pdf_outline_service.dart';
 
 class PdfPageController extends ChangeNotifier {
   final Book book;
@@ -37,26 +40,51 @@ class PdfPageController extends ChangeNotifier {
   String? _error;
   int _pageIndex = 0;
   int _pageCount = 0;
-  bool _autoCrop = false;
-  final Map<int, CropMargins> _marginsCache = {};
   Size _renderedPageSize = Size.zero;
   Size _logicalPageSize = Size.zero;
   Size _viewerSize = Size.zero;
-  double _devicePixelRatio = 2.0; // Default 2x, can be updated from widget
+  double _devicePixelRatio = 2.0;
   double _currentZoomScale = 1.0;
   bool _disposed = false;
 
   final Map<int, Size> _renderedPageSizes = {};
-  
-  // Maximum safe texture dimension (2048) to guarantee retina sharpness without memory bloat or CPU stalls
+  double _defaultAspectRatio = 0.70;
+
+  // Maximum safe texture dimension (2048) to guarantee retina sharpness without memory bloat
   static const int _maxTextureDimension = 2048;
 
-  // LRU cache for rendered pages (R5)
+  // LRU cache for rendered compressed bytes
   final LinkedHashMap<int, Uint8List> _pageRenderCache = LinkedHashMap();
-  int get maxCachedPages => isContinuousMode ? 10 : 6;
+  int get maxCachedPages => isContinuousMode ? 12 : 8;
   int get prefetchAhead => isContinuousMode ? 2 : 2;
   int get prefetchBehind => isContinuousMode ? 1 : 1;
   final Set<int> _prefetchInFlight = {};
+
+  // Direct ImageProvider tracking for reliable GPU texture eviction
+  final Map<int, ImageProvider> _activeProviders = {};
+
+  // GlobalKeys per page for layout anchoring
+  List<GlobalKey> _pageKeys = [];
+  List<GlobalKey> get pageKeys => _pageKeys;
+
+  // Adaptive background corner & edge colors
+  final Map<int, PageCornerColors> _cornerColorsCache = {};
+  PageCornerColors? get currentCornerColors => _cornerColorsCache[_pageIndex];
+  PageCornerColors? getCornerColorsForPage(int pageIndex) => _cornerColorsCache[pageIndex];
+
+  // Chapters & Table of Contents
+  List<PdfChapter> _chapters = const [];
+  List<PdfChapter> get chapters => _chapters;
+
+  PdfChapter? get currentChapter {
+    if (_chapters.isEmpty) return null;
+    for (int i = _chapters.length - 1; i >= 0; i--) {
+      if (_chapters[i].pageIndex <= _pageIndex) {
+        return _chapters[i];
+      }
+    }
+    return _chapters.first;
+  }
 
   // Text loading state
   final Map<int, String> _pageTextCache = {};
@@ -67,7 +95,7 @@ class PdfPageController extends ChangeNotifier {
   String? _textError;
   int _textRequestId = 0;
 
-  // Concurrency control (F2)
+  // Concurrency control
   static final Semaphore _pdfSemaphore = Semaphore(1);
 
   // Getters
@@ -77,13 +105,11 @@ class PdfPageController extends ChangeNotifier {
   String? get error => _error;
   int get pageIndex => _pageIndex;
   int get pageCount => _pageCount;
-  bool get autoCrop => _autoCrop;
-  CropMargins? get currentMargins => _marginsCache[_pageIndex];
   Size get renderedPageSize => _renderedPageSize;
   Size get logicalPageSize => _logicalPageSize;
   Size get viewerSize => _viewerSize;
   double get currentZoomScale => _currentZoomScale;
-  
+
   String get currentPageText => _currentPageText;
   bool get isTextLoading => _isTextLoading;
   String? get textError => _textError;
@@ -104,7 +130,7 @@ class PdfPageController extends ChangeNotifier {
 
   void _scheduleContinuousProgressSave() {
     if (_progressSaveTimer?.isActive ?? false) return;
-    _progressSaveTimer = Timer(const Duration(milliseconds: 350), () {
+    _progressSaveTimer = Timer(const Duration(milliseconds: 300), () {
       saveContinuousProgress();
     });
   }
@@ -114,70 +140,129 @@ class PdfPageController extends ChangeNotifier {
     saveContinuousProgress();
   }
 
+  void _syncCurrentPageFromScroll() {
+    if (!scrollController.hasClients || _pageCount == 0 || _pageKeys.isEmpty) return;
+
+    RenderBox? viewportBox;
+    try {
+      final scrollCtx = scrollController.position.context.notificationContext;
+      viewportBox = scrollCtx?.findRenderObject() as RenderBox?;
+    } catch (_) {}
+
+    if (viewportBox == null || !viewportBox.hasSize) return;
+
+    final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+    final focusPoint = isHorizontal
+        ? viewportBox.size.width * 0.35
+        : viewportBox.size.height * 0.35;
+
+    int? bestIndex;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < _pageCount; i++) {
+      if (i >= _pageKeys.length) break;
+      final ctx = _pageKeys[i].currentContext;
+      if (ctx == null) continue;
+
+      final renderBox = ctx.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) continue;
+
+      final itemStart = isHorizontal
+          ? renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dx
+          : renderBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+      final itemExtent = isHorizontal ? renderBox.size.width : renderBox.size.height;
+      final itemEnd = itemStart + itemExtent;
+
+      if (itemStart <= focusPoint && itemEnd > focusPoint) {
+        bestIndex = i;
+        break;
+      }
+
+      final dist = (itemStart - focusPoint).abs();
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex != null && bestIndex != _pageIndex) {
+      _pageIndex = bestIndex;
+      notifyListeners();
+    }
+  }
+
   void saveContinuousProgress() {
-    if (!scrollController.hasClients) return;
-    if (_pageCount == 0) return;
-    
+    if (!scrollController.hasClients || _pageCount == 0) return;
+
+    _syncCurrentPageFromScroll();
+
     final offset = scrollController.offset;
-    final viewport = scrollController.position.viewportDimension;
-    final approxIndex = viewport <= 0
-        ? 0
-        : (offset / viewport).round().clamp(0, _pageCount - 1);
-        
     _lastScrollPosition = offset;
-    _pageIndex = approxIndex;
-    
+
     repository.updateReadingProgress(
       book.id,
-      currentPage: approxIndex,
+      currentPage: _pageIndex,
       totalPages: _pageCount,
       scrollPosition: offset,
+      readingMode: _readingMode,
     );
   }
 
+  double calculateEstimatedOffsetForPage(int targetPage, double spacing) {
+    if (targetPage <= 0) return 0.0;
+    final defaultAr = _defaultAspectRatio > 0 ? _defaultAspectRatio : 0.70;
+    final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+
+    double offset = isHorizontal ? 16.0 : 16.0; // padding
+    for (int i = 0; i < targetPage; i++) {
+      final size = _renderedPageSizes[i];
+      final ar = (size != null && size.height > 0)
+          ? (size.width / size.height).clamp(0.2, 5.0)
+          : defaultAr;
+
+      final extent = isHorizontal
+          ? (_viewerSize.height > 0 ? (_viewerSize.height * ar) : 600.0)
+          : (_viewerSize.width > 0 ? (_viewerSize.width / ar) : 600.0);
+
+      offset += extent + spacing;
+    }
+    return offset;
+  }
+
   void restoreContinuousScroll() {
-    if (!scrollController.hasClients) return;
+    if (!scrollController.hasClients || _pageCount == 0) return;
     if (_lastScrollPosition <= 0 && _pageIndex <= 0) return;
 
     isRestoringScroll = true;
-    var attempts = 0;
+    final isWebtoon = _readingMode == ReadingMode.webtoon;
+    final spacing = isWebtoon ? 1.0 : 12.0;
+    final targetOffset = calculateEstimatedOffsetForPage(_pageIndex, spacing);
 
     void tryRestore() {
       if (!scrollController.hasClients) {
         isRestoringScroll = false;
         return;
       }
-
       final position = scrollController.position;
       if (!position.hasContentDimensions) {
-        attempts++;
-        if (attempts < 5) {
-          Future.delayed(const Duration(milliseconds: 50), tryRestore);
-        } else {
-          isRestoringScroll = false;
-        }
+        SchedulerBinding.instance.addPostFrameCallback((_) => tryRestore());
         return;
       }
 
-      final baseOffset = _lastScrollPosition > 0
-          ? _lastScrollPosition
-          : position.viewportDimension * _pageIndex;
-      final clamped = baseOffset.clamp(0.0, position.maxScrollExtent);
-      
+      final clamped = targetOffset.clamp(0.0, position.maxScrollExtent);
       if ((position.pixels - clamped).abs() > 1.0) {
         scrollController.jumpTo(clamped);
       }
-
       isRestoringScroll = false;
     }
 
-    tryRestore();
+    SchedulerBinding.instance.addPostFrameCallback((_) => tryRestore());
   }
 
   void updateReadingMode(ReadingMode mode) {
     if (_readingMode == mode) return;
-    
-    // Save progress before switching
+
+    // Save exact progress before switching
     if (isContinuousMode) {
       saveContinuousProgress();
     } else {
@@ -185,22 +270,28 @@ class PdfPageController extends ChangeNotifier {
         book.id,
         currentPage: _pageIndex,
         totalPages: _pageCount,
+        readingMode: mode,
       );
     }
-    
+
+    final wasContinuous = isContinuousMode;
     _readingMode = mode;
     repository.updateReadingProgress(book.id, readingMode: mode);
-    
-    // If switching to continuous, handle scroll position
+
     if (isContinuousMode) {
-       Future.delayed(const Duration(milliseconds: 50), () {
-          if (!scrollController.hasClients) return;
-          final viewport = scrollController.position.viewportDimension;
-          final targetScroll = _pageIndex * viewport;
-          scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
-       });
+      final isWebtoon = _readingMode == ReadingMode.webtoon;
+      final spacing = isWebtoon ? 1.0 : 12.0;
+      final targetScroll = calculateEstimatedOffsetForPage(_pageIndex, spacing);
+
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!scrollController.hasClients) return;
+        scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
+      });
+    } else if (wasContinuous) {
+      // Switching from continuous to paged: ensure target page is fully rendered immediately
+      renderPage(_pageIndex, userInitiated: true);
     }
-    
+
     notifyListeners();
   }
 
@@ -221,8 +312,11 @@ class PdfPageController extends ChangeNotifier {
     if (renderedSize == null || renderedSize.isEmpty || _viewerSize.isEmpty) {
       return Size.zero;
     }
-    final aspectRatio = renderedSize.width / renderedSize.height;
+    final widthClamped = renderedSize.width.clamp(1.0, double.infinity);
+    final heightClamped = renderedSize.height.clamp(1.0, double.infinity);
+    final aspectRatio = widthClamped / heightClamped;
     final viewerAspect = _viewerSize.width / _viewerSize.height;
+
     if (aspectRatio > viewerAspect) {
       return Size(_viewerSize.width, _viewerSize.width / aspectRatio);
     } else {
@@ -235,10 +329,7 @@ class PdfPageController extends ChangeNotifier {
     final wasEmpty = _viewerSize.isEmpty;
     final sizeChanged = !wasEmpty && !size.isEmpty;
     _viewerSize = size;
-    
-    // When viewer size changes (e.g. rotation), we might need to invalidate cache
-    // and re-render the current page to fit the new dimensions. Defer the notification
-    // or re-render to a post-frame callback to avoid calling setState() during build.
+
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (hasListeners) {
         if ((wasEmpty || sizeChanged) && _resolvedFile != null && !_isLoading) {
@@ -250,35 +341,58 @@ class PdfPageController extends ChangeNotifier {
     });
   }
 
-  /// Returns the rendered page image for [index] if available in cache.
   Uint8List? getPageImage(int index) {
     if (index == _pageIndex) return _currentPageImage;
     return _pageRenderCache[index];
   }
 
-  /// Returns the crop margins for [index] if available in cache.
-  CropMargins? getPageMargins(int index) => _marginsCache[index];
+  ImageProvider getPageImageProvider(int index) {
+    final bytes = getPageImage(index);
+    if (bytes == null) {
+      return MemoryImage(Uint8List(0));
+    }
+    return getOrCreateImageProvider(index, bytes);
+  }
+
+  void nextPage() {
+    if (_pageIndex < _pageCount - 1) {
+      renderPage(_pageIndex + 1, userInitiated: true);
+    }
+  }
+
+  void previousPage() {
+    if (_pageIndex > 0) {
+      renderPage(_pageIndex - 1, userInitiated: true);
+    }
+  }
+
+  ImageProvider getOrCreateImageProvider(int index, Uint8List bytes) {
+    final existing = _activeProviders[index];
+    if (existing != null) return existing;
+
+    final provider = MemoryImage(bytes);
+    _activeProviders[index] = provider;
+    _pruneImageProviders();
+    return provider;
+  }
+
+  void _pruneImageProviders() {
+    // Evict GPU textures outside active reading window [pageIndex - 2, pageIndex + 2]
+    _activeProviders.removeWhere((page, provider) {
+      if ((page - _pageIndex).abs() > 2) {
+        provider.evict();
+        return true;
+      }
+      return false;
+    });
+  }
 
   set devicePixelRatio(double ratio) {
-    _devicePixelRatio = ratio.clamp(2.0, 3.0); // Clamp between 2x and 3x for quality/memory balance
+    _devicePixelRatio = ratio.clamp(2.0, 3.0);
   }
 
-  /// Safely triggers background prefetching for a page without affecting
-  /// the active page index or loading state. Use from widget build methods
-  /// to pre-warm the cache for adjacent pages without causing re-entrant
-  /// state mutations.
   void preloadPage(int index) {
     _prefetchPage(index);
-  }
-
-  void setAutoCrop(bool value) {
-    if (_autoCrop == value) return;
-    _autoCrop = value;
-    if (_autoCrop && !_marginsCache.containsKey(_pageIndex)) {
-      renderPage(_pageIndex);
-    } else {
-      notifyListeners();
-    }
   }
 
   Future<void> loadDocument() async {
@@ -324,30 +438,23 @@ class PdfPageController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
     await measureAsync('pdf_page_render', () async {
-      // Check cache first (R5)
       if (_pageRenderCache.containsKey(index)) {
         _currentPageImage = _pageRenderCache[index];
         _pageIndex = index;
         _isLoading = false;
         _error = null;
+        _pruneImageProviders();
         notifyListeners();
-        
-        // Save progress anyway
+
         repository.updateReadingProgress(
           book.id,
           currentPage: index,
           totalPages: _pageCount,
         );
-        
-        // Trigger prefetch in background
-        _schedulePrefetch(index);
 
-        if (isContinuousMode && scrollController.hasClients && !userInitiated) {
-          final viewport = scrollController.position.viewportDimension;
-          final targetScroll = index * viewport;
-          scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
-        }
+        _schedulePrefetch(index);
         return;
       }
 
@@ -356,87 +463,65 @@ class PdfPageController extends ChangeNotifier {
       _pageIndex = index;
       notifyListeners();
 
-      // Save progress
       repository.updateReadingProgress(
         book.id,
         currentPage: index,
         totalPages: _pageCount,
       );
 
-      if (isContinuousMode && scrollController.hasClients && !userInitiated) {
-        final viewport = scrollController.position.viewportDimension;
-        final targetScroll = index * viewport;
-        scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
-      }
-
       try {
         if (_resolvedFile == null) return;
 
-        // Start margin detection in parallel if auto-crop is on
-        if (_autoCrop && !_marginsCache.containsKey(index)) {
-          _detectPdfWhitespaceSafe(_resolvedFile!.path, index).then((margins) {
-            if (_disposed) return;
-            _marginsCache[index] = margins;
-            if (_pageIndex == index) notifyListeners();
-          }).catchError((e) {
-            debugPrint("Crop error: $e");
-          });
-        }
-
-        // Render at high-density retina resolution (1.25x supersampled) for crystal-clear,
-        // razor-sharp reading without multi-second CPU stalling or 16-megapixel memory spikes.
         const double maxZoomQuality = 1.25;
         final targetWidth = (_viewerSize.width * _devicePixelRatio * maxZoomQuality).round().clamp(800, _maxTextureDimension);
         final targetHeight = (_viewerSize.height * _devicePixelRatio * maxZoomQuality).round().clamp(1000, _maxTextureDimension);
-        final width = targetWidth;
-        final height = targetHeight;
 
         await _pdfSemaphore.acquire();
         if (_disposed) {
           _pdfSemaphore.release();
           return;
         }
+
         try {
           final result = await measureAsync('render_pdf_page', () => pdf_api.renderPdfPage(
             path: _resolvedFile!.path,
             pageIndex: index,
-            width: width,
-            height: height,
-          ), metadata: {'page': index, 'width': width, 'height': height, 'zoom': maxZoomQuality});
+            width: targetWidth,
+            height: targetHeight,
+          ), metadata: {'page': index, 'width': targetWidth, 'height': targetHeight});
 
           if (_disposed) return;
 
-          // Use ACTUAL dimensions from the rendered result, not requested dimensions
           _currentPageImage = result.data;
-          _renderedPageSize = Size(result.width.toDouble(), result.height.toDouble());
-          _renderedPageSizes[index] = Size(result.width.toDouble(), result.height.toDouble());
+          final widthClamped = result.width.toDouble().clamp(1.0, double.infinity);
+          final heightClamped = result.height.toDouble().clamp(1.0, double.infinity);
+          _renderedPageSize = Size(widthClamped, heightClamped);
+          _renderedPageSizes[index] = Size(widthClamped, heightClamped);
+          _defaultAspectRatio = widthClamped / heightClamped;
           _currentZoomScale = maxZoomQuality;
-          
-          // Calculate logical size to fit within viewer while preserving aspect ratio
-          // This is the size the page will occupy in the UI (high-res texture, proper layout)
-          final aspectRatio = result.width / result.height;
+
+          final aspectRatio = widthClamped / heightClamped;
           final viewerAspect = _viewerSize.width / _viewerSize.height;
           if (aspectRatio > viewerAspect) {
-            // Page is wider than viewer - fit to width
             _logicalPageSize = Size(_viewerSize.width, _viewerSize.width / aspectRatio);
           } else {
-            // Page is taller than viewer - fit to height
             _logicalPageSize = Size(_viewerSize.height * aspectRatio, _viewerSize.height);
           }
-          
+
           _isLoading = false;
           _error = null;
-          notifyListeners();
-          
-          // Always cache since we're rendering at constant max quality
+
           _addToCache(index, result.data);
+          _pruneImageProviders();
+          _extractCornerColors(index, result.data);
+
+          notifyListeners();
         } finally {
           _pdfSemaphore.release();
         }
-        
+
         if (_disposed) return;
         _schedulePrefetch(index);
-        
       } catch (e, stack) {
         if (_disposed) return;
         debugPrint('PDF render error: $e');
@@ -453,12 +538,39 @@ class PdfPageController extends ChangeNotifier {
     final resolved = await resolver.resolve(book, forceRefresh: forceRefresh);
     if (_disposed) return;
     _resolvedFile = resolved;
+
     final count = await pdf_api.getPdfPageCount(path: resolved.path);
     if (_disposed) return;
     _pageCount = count;
     _pageIndex = count <= 0 ? 0 : book.currentPage.clamp(0, count - 1);
+    _pageKeys = List.generate(count, (i) => GlobalKey(debugLabel: 'pdf-page-$i'));
+
+    // Extract table of contents bookmarks asynchronously
+    unawaited(PdfOutlineService.extractBookmarks(resolved.path).then((extracted) {
+      if (_disposed) return;
+      _chapters = extracted;
+      notifyListeners();
+    }));
 
     await renderPage(_pageIndex);
+  }
+
+  void _extractCornerColors(int index, Uint8List jpegBytes) {
+    if (_cornerColorsCache.containsKey(index)) return;
+
+    ui.instantiateImageCodec(jpegBytes, targetWidth: 32, targetHeight: 32).then((codec) {
+      return codec.getNextFrame();
+    }).then((frame) {
+      return frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    }).then((byteData) {
+      if (_disposed || byteData == null) return;
+      final rawBytes = byteData.buffer.asUint8List();
+      final colors = PageCornerColors.fromRgbaBytes(rawBytes, 32, 32);
+      _cornerColorsCache[index] = colors;
+      if (index == _pageIndex) {
+        notifyListeners();
+      }
+    }).catchError((_) {});
   }
 
   bool _shouldRetryPdfOpen(Object error) {
@@ -500,21 +612,17 @@ class PdfPageController extends ChangeNotifier {
   }
 
   void _addToCache(int index, Uint8List bytes) {
-    // LinkedHashMap behavior: remove and re-add to put at end (most recent)
     _pageRenderCache.remove(index);
-    
-    // Evict oldest if full
     while (_pageRenderCache.length >= maxCachedPages) {
-      _pageRenderCache.remove(_pageRenderCache.keys.first);
+      final oldest = _pageRenderCache.keys.first;
+      _pageRenderCache.remove(oldest);
     }
-    
     _pageRenderCache[index] = bytes;
   }
 
   void _schedulePrefetch(int currentIndex) {
     if (_viewerSize.isEmpty) return;
-    
-    // Use post frame to avoid interfering with current frame
+
     SchedulerBinding.instance.addPostFrameCallback((_) {
       for (int i = 1; i <= prefetchAhead; i++) {
         _prefetchPage(currentIndex + i);
@@ -529,16 +637,12 @@ class PdfPageController extends ChangeNotifier {
     if (index < 0 || index >= _pageCount) return;
     if (_pageRenderCache.containsKey(index)) return;
     if (_prefetchInFlight.contains(index)) return;
-    if (_resolvedFile == null) return;
-    if (_disposed) return;
+    if (_resolvedFile == null || _disposed) return;
 
     _prefetchInFlight.add(index);
     try {
-      // Use same high-density retina rendering as renderPage() for consistent crystal-clear quality
       final targetWidth = (_viewerSize.width * _devicePixelRatio * 1.25).round().clamp(800, _maxTextureDimension);
       final targetHeight = (_viewerSize.height * _devicePixelRatio * 1.25).round().clamp(1000, _maxTextureDimension);
-      final width = targetWidth;
-      final height = targetHeight;
 
       await _pdfSemaphore.acquire();
       if (_disposed) {
@@ -549,32 +653,33 @@ class PdfPageController extends ChangeNotifier {
         final result = await measureAsync('render_pdf_page_prefetch', () => pdf_api.renderPdfPage(
           path: _resolvedFile!.path,
           pageIndex: index,
-          width: width,
-          height: height,
-        ), metadata: {'page': index, 'width': width, 'height': height});
-        
+          width: targetWidth,
+          height: targetHeight,
+        ), metadata: {'page': index, 'width': targetWidth, 'height': targetHeight});
+
         if (_disposed) return;
 
-        _renderedPageSizes[index] = Size(result.width.toDouble(), result.height.toDouble());
+        final widthClamped = result.width.toDouble().clamp(1.0, double.infinity);
+        final heightClamped = result.height.toDouble().clamp(1.0, double.infinity);
+        _renderedPageSizes[index] = Size(widthClamped, heightClamped);
         _addToCache(index, result.data);
-        debugPrint("PDF: Prefetched page $index");
+        _extractCornerColors(index, result.data);
+
         notifyListeners();
       } finally {
         _pdfSemaphore.release();
       }
     } catch (e) {
       if (_disposed) return;
-      debugPrint("PDF: Prefetch error for page $index: $e");
+      debugPrint('PDF: Prefetch error for page $index: $e');
     } finally {
-      if (_prefetchInFlight.contains(index)) {
-        _prefetchInFlight.remove(index);
-      }
+      _prefetchInFlight.remove(index);
     }
   }
 
   Future<void> loadPageText(int index) async {
-    if (_disposed) return;
-    if (_pageCount <= 0 || index < 0 || index >= _pageCount) return;
+    if (_disposed || _pageCount <= 0 || index < 0 || index >= _pageCount) return;
+
     await measureAsync('pdf_load_text', () async {
       final cached = _pageTextCache[index];
       if (cached != null) {
@@ -608,8 +713,7 @@ class PdfPageController extends ChangeNotifier {
         final text = await future;
         _pageTextInFlight.remove(index);
 
-        if (_disposed) return;
-        if (requestId != _textRequestId) return;
+        if (_disposed || requestId != _textRequestId) return;
 
         _pageTextCache[index] = text;
         _currentPageText = text;
@@ -617,14 +721,12 @@ class PdfPageController extends ChangeNotifier {
         _textError = null;
         notifyListeners();
 
-        // Pre-compute character bounds for TTS (non-blocking)
         if (!_pageCharBoundsCache.containsKey(index)) {
           unawaited(precomputeCharacterBounds(index));
         }
       } catch (e) {
         _pageTextInFlight.remove(index);
-        if (_disposed) return;
-        if (requestId != _textRequestId) return;
+        if (_disposed || requestId != _textRequestId) return;
         _isTextLoading = false;
         _textError = e.toString();
         _currentPageText = '';
@@ -634,10 +736,8 @@ class PdfPageController extends ChangeNotifier {
   }
 
   Future<void> precomputeCharacterBounds(int pageIndex) async {
-    if (_resolvedFile == null) return;
-    if (_pageCharBoundsCache.containsKey(pageIndex)) return;
-    if (_disposed) return;
-    
+    if (_resolvedFile == null || _pageCharBoundsCache.containsKey(pageIndex) || _disposed) return;
+
     await _pdfSemaphore.acquire();
     if (_disposed) {
       _pdfSemaphore.release();
@@ -658,20 +758,9 @@ class PdfPageController extends ChangeNotifier {
     }
   }
 
-  /// Ensures character bounds are loaded for the current page.
-  /// Call this before starting TTS to guarantee highlight data is available.
   Future<void> ensureCharacterBoundsLoaded(int pageIndex) async {
     if (_pageCharBoundsCache.containsKey(pageIndex)) return;
     await precomputeCharacterBounds(pageIndex);
-  }
-
-  Future<CropMargins> _detectPdfWhitespaceSafe(String path, int pageIndex) async {
-    await _pdfSemaphore.acquire();
-    try {
-      return await detectPdfWhitespace(path: path, pageIndex: pageIndex);
-    } finally {
-      _pdfSemaphore.release();
-    }
   }
 
   @override
@@ -691,9 +780,13 @@ class PdfPageController extends ChangeNotifier {
   }
 
   void cleanup() {
+    for (final provider in _activeProviders.values) {
+      provider.evict();
+    }
+    _activeProviders.clear();
     _pageRenderCache.clear();
     _renderedPageSizes.clear();
-    _marginsCache.clear();
+    _cornerColorsCache.clear();
     _pageTextCache.clear();
     _pageCharBoundsCache.clear();
     _pageTextInFlight.clear();

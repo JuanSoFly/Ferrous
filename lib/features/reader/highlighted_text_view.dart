@@ -190,11 +190,34 @@ class _HighlightedTextViewState extends State<HighlightedTextView> {
 
     TextStyle highlightedTextStyle;
     if (isEInk) {
-      highlightedTextStyle = const TextStyle(
-        backgroundColor: Color(0xFFD5D0C5),
-        color: Color(0xFF1A1A18),
-        fontWeight: FontWeight.w600,
-      );
+      switch (highlightStyle) {
+        case TtsHighlightStyle.softPill:
+          highlightedTextStyle = const TextStyle(
+            backgroundColor: Color(0xFFD8D8D8),
+            color: Color(0xFF1A1A18),
+            fontWeight: FontWeight.w600,
+          );
+          break;
+        case TtsHighlightStyle.underline:
+          highlightedTextStyle = const TextStyle(
+            color: Color(0xFF1A1A18),
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.underline,
+            decorationColor: Color(0xFF000000),
+            decorationThickness: 2.5,
+          );
+          break;
+        case TtsHighlightStyle.classicClean:
+          highlightedTextStyle = const TextStyle(
+            backgroundColor: Color(0xFFD8D8D8),
+            color: Color(0xFF1A1A18),
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.underline,
+            decorationColor: Color(0xFF000000),
+            decorationThickness: 1.5,
+          );
+          break;
+      }
     } else {
       switch (highlightStyle) {
         case TtsHighlightStyle.softPill:

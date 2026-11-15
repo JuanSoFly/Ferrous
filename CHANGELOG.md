@@ -1,3 +1,26 @@
+## [1.4.2-alpha.1] - 2026-11-16
+
+### PDF Outline Extraction & Table of Contents
+- **PdfOutlineService Engine**: Implemented `PdfOutlineService` to parse document bookmarks, chapter titles, and destination page indices directly from PDF file bytes with regex matching, offloading files larger than 500KB to a background isolate via `compute`.
+- **Interactive PDF Table of Contents Sheet**: Added `PdfTableOfContentsSheet` draggable modal with hierarchical indentation, active chapter tracking, auto-scrolling to the current chapter, and jump-to-page navigation with dedicated E-Ink styling.
+- **Top Bar Integration**: Replaced the legacy snippet text picker sheet with a prominent Table of Contents action in `PdfReaderTopBar`.
+
+### Dedicated Sentence-Level PDF TTS Controller
+- **Precomputed Sentence Geometry**: Introduced `PdfSentence` data model mapping character ranges, clean normalized text, and precomputed `PdfTextRect` bounding boxes per page.
+- **Line-by-Line Multi-Column Highlighting**: Refactored `PdfTtsController` for gutter-safe sentence highlighting across complex multi-column PDF layouts without canvas jitter.
+- **Zero-Drift Position Tracking**: Eliminated aggressive viewport auto-zooming during speech playback and guaranteed rock-solid reading position persistence across page transitions.
+
+### Unified Text Selection Architecture
+- **ReaderSelectionController**: Introduced a unified `ReaderSelectionController` managing memoized per-page and continuous `SelectionArea` state keys, active selection state tracking, and programmatic selection clearing.
+- **ReaderSelectionMenuBuilder**: Extracted a standardized `ReaderSelectionMenuBuilder` constructing adaptive text selection toolbars with sanitized 'Copy' and 'Annotate' actions across EPUB, MOBI, and HTML readers.
+- **Component Decoupling**: Streamlined selection state across `EpubReaderScreen`, `MobiReaderScreen`, `HtmlReaderScreen`, and viewer widgets, eliminating redundant selection code.
+
+### Gesture, Zooming & Reader Viewport Improvements
+- **Floating Unlock Control**: Added a timed floating unlock button with 3.5s fade-out in `PdfReaderScreen` when tapping a locked screen, preventing accidental navigation.
+- **Multi-Touch Pinch-to-Zoom Tracking**: Enhanced `PdfPageViewer` pointer event tracking for smooth zooming, panning, and interaction stability.
+- **RealisticPageTurn Isolation**: Added `canSwipe` predicate to `RealisticPageTurn` and wrapped active page layers with `IgnorePointer` during curls to isolate pointer events and prevent accidental gesture triggers.
+- **Memory & GPU Cache Eviction**: Added active `ImageProvider` tracking with explicit `.evict()` calls in `PdfPageController` to guarantee immediate GPU texture deallocation upon cache eviction.
+
 ## [1.4.1] - 2026-11-16
 
 ### Text Selection Lifecycle & Gesture Conflict Resolution

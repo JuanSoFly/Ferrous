@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/data/repositories/book_repository.dart';
 import 'package:ferrous/data/services/tts_service.dart';
-import 'package:ferrous/features/reader/pdf_text_picker_sheet.dart';
 import 'package:ferrous/features/reader/reading_mode_sheet.dart';
+import 'package:ferrous/features/reader/widgets/pdf_toc_sheet.dart';
 import 'controllers/pdf_page_controller.dart';
 import 'controllers/pdf_tts_controller.dart';
 import 'controllers/reader_chrome_controller.dart';
 import 'controllers/reader_mode_controller.dart';
 import 'widgets/book_background_texture.dart';
+import 'widgets/cbz_adaptive_background.dart';
 import 'widgets/pdf_page_viewer.dart';
 import 'widgets/pdf_reader_top_bar.dart';
 import 'widgets/pdf_page_controls.dart';
@@ -41,6 +42,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
   
   final TransformationController _pdfTransformController = TransformationController();
   final GlobalKey _pageImageKey = GlobalKey();
+
+  // Floating bottom-right unlock control
+  bool _showFloatingUnlock = false;
+  Timer? _unlockFadeTimer;
 
   @override
   void initState() {
@@ -74,6 +79,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
+    _unlockFadeTimer?.cancel();
     _cleanupTempFile();
     _pageController.dispose();
     _ttsController.dispose();
@@ -121,32 +127,47 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     _modeController.mode = selected;
   }
 
-  void _openTextPicker() {
+  void _openTableOfContents() {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return PdfTextPickerSheet(
-          pageIndex: _pageController.pageIndex,
-          pageCount: _pageController.pageCount <= 0 ? 1 : _pageController.pageCount,
-          loadText: () async {
-            await _pageController.loadPageText(_pageController.pageIndex);
-            return _pageController.currentPageText;
-          },
-          onListenFromHere: (text) async {
-            final trimmed = text.trim();
-            if (trimmed.isEmpty) return;
-            // Show TTS controls if not already visible
-            if (!_ttsController.showTtsControls) {
-              await _ttsController.toggleTts();
-            }
-            await _ttsController.startSpeakingOverride(trimmed);
+        return PdfTableOfContentsSheet(
+          chapters: _pageController.chapters,
+          currentPage: _pageController.pageIndex,
+          pageCount: _pageController.pageCount,
+          onSelectChapter: (pageIndex) {
+            _pageController.renderPage(pageIndex, userInitiated: true);
           },
         );
       },
     );
+  }
+
+  void _handleLockedTap() {
+    _unlockFadeTimer?.cancel();
+    setState(() {
+      _showFloatingUnlock = true;
+    });
+
+    _unlockFadeTimer = Timer(const Duration(milliseconds: 3500), () {
+      if (mounted) {
+        setState(() {
+          _showFloatingUnlock = false;
+        });
+      }
+    });
+  }
+
+  void _unlockReader() {
+    _unlockFadeTimer?.cancel();
+    _chromeController.toggleLockMode();
+    setState(() {
+      _showFloatingUnlock = false;
+    });
   }
 
   @override
@@ -155,19 +176,29 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     return Scaffold(
       body: Stack(
         children: [
-          // Content layer wrapped in physical book background
+          // Content layer wrapped in CbzAdaptiveBackground + physical book background
           Positioned.fill(
-            child: RealBookBackground(
-              textureId: themeRepo.config.paperTexture,
-              showSpine: themeRepo.config.showBookSpine,
-              child: PdfPageViewer(
-                pageController: _pageController,
-                ttsController: _ttsController,
-                chromeController: _chromeController,
-                modeController: _modeController,
-                transformController: _pdfTransformController,
-                pageImageKey: _pageImageKey,
-              ),
+            child: ListenableBuilder(
+              listenable: _pageController,
+              builder: (context, _) {
+                return CbzAdaptiveBackground(
+                  colors: _pageController.currentCornerColors,
+                  readingMode: _pageController.readingMode,
+                  child: RealBookBackground(
+                    textureId: themeRepo.config.paperTexture,
+                    showSpine: themeRepo.config.showBookSpine,
+                    child: PdfPageViewer(
+                      pageController: _pageController,
+                      ttsController: _ttsController,
+                      chromeController: _chromeController,
+                      modeController: _modeController,
+                      transformController: _pdfTransformController,
+                      pageImageKey: _pageImageKey,
+                      onLockedTap: _handleLockedTap,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
 
@@ -188,7 +219,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                       ttsController: _ttsController,
                       chromeController: _chromeController,
                       onShowReadingModePicker: _showReadingModePicker,
-                      onOpenTextPicker: _openTextPicker,
+                      onOpenTableOfContents: _openTableOfContents,
                     ),
                   if (showBottomControls)
                     Positioned(
@@ -202,16 +233,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                         top: false,
                         child: TtsControlsSheet(
                           ttsService: _ttsController.ttsService,
-                          textToSpeak: _ttsController.documentText?.fullText ?? _pageController.currentPageText,
+                          textToSpeak: _ttsController.currentSentenceText,
                           resolveTextToSpeak: _ttsController.resolveTtsText,
-                          onStart: () async {
-                            // resolveTtsText also sets the base offset internally
-                            final text = _ttsController.resolveTtsText();
-                            if (text.trim().isNotEmpty) {
-                              await _ttsController.ttsService.speak(text);
-                            }
-                          },
-                          isTextLoading: _ttsController.documentTextLoading || _pageController.isTextLoading,
+                          onStart: _ttsController.play,
+                          isTextLoading: _pageController.isTextLoading,
                           emptyTextMessage: _pageController.textError ?? 'No readable text on this page.',
                           isContinuous: _ttsController.ttsContinuous,
                           onContinuousChanged: (v) => _ttsController.setTtsContinuous(v),
@@ -219,8 +244,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                           onFollowModeChanged: (v) => _ttsController.setTtsFollowMode(v),
                           isTapToStart: _ttsController.tapToStartEnabled,
                           onTapToStartChanged: (v) => _ttsController.setTapToStartEnabled(v),
-                          onStop: _ttsController.saveCurrentTtsSentence,
-                          onPause: _ttsController.saveCurrentTtsSentence,
+                          onStop: _ttsController.stop,
+                          onPause: _ttsController.pause,
                           onClose: _ttsController.closeTtsControls,
                           highlightStyle: themeRepo.highlightStyle,
                           onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
@@ -231,6 +256,32 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
               );
             },
           ),
+
+          // Floating Unlock Button in bottom-right corner when locked
+          if (_showFloatingUnlock && _chromeController.isLocked)
+            Positioned(
+              right: 24,
+              bottom: 24,
+              child: SafeArea(
+                child: Material(
+                  elevation: 6,
+                  shape: const CircleBorder(),
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _unlockReader,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Icon(
+                        Icons.lock_open,
+                        size: 28,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

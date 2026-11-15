@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:ferrous/features/reader/widgets/html_table_viewer.dart';
@@ -26,6 +24,8 @@ import 'package:ferrous/features/reader/widgets/reader_settings_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/features/reader/controllers/reader_selection_controller.dart';
+import 'package:ferrous/features/reader/widgets/reader_selection_menu_builder.dart';
 import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/features/reader/controllers/html_tts_controller.dart';
 import 'package:ferrous/features/reader/tts_controls_sheet.dart';
@@ -118,28 +118,8 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   // Shared chrome controller for UI visibility and lock mode
   final ReaderChromeController _chromeController = ReaderChromeController();
   Offset? _lastDoubleTapDown;
-  SelectedContent? _selectedContent;
-  final GlobalKey<SelectionAreaState> _selectionAreaKey = GlobalKey<SelectionAreaState>();
-
-  void _clearTextSelection() {
-    try {
-      final state = _selectionAreaKey.currentState;
-      if (state != null && state.mounted) {
-        state.selectableRegion.clearSelection();
-        state.selectableRegion.hideToolbar();
-      }
-    } catch (_) {}
-    _selectedContent = null;
-  }
-
-  bool _tryDismissSelection() {
-    if (_selectedContent != null && _selectedContent!.plainText.trim().isNotEmpty) {
-      _clearTextSelection();
-      return true;
-    }
-    _selectedContent = null;
-    return false;
-  }
+  late final ReaderSelectionController _selectionController;
+  bool _hadSelectionOnTapDown = false;
 
   // Font preloading
   String _lastLoadedFontFamily = '';
@@ -160,6 +140,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     HyphenationHelper.init();
+    _selectionController = ReaderSelectionController();
     _readingMode = widget.book.readingMode;
     _lastScrollPosition = widget.book.scrollPosition;
     _chromeController.addListener(_onChromeChanged);
@@ -184,6 +165,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
   @override
   void dispose() {
+    _selectionController.dispose();
     _themeRepository?.removeListener(_onThemeChanged);
     _cleanupTempFile();
     _scrollController.dispose();
@@ -348,9 +330,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _handleTapUp(TapUpDetails details) {
-    if (_tryDismissSelection()) {
-      return;
-    }
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
       _chromeController.toggleChrome();
@@ -394,7 +373,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   Future<void> _showReadingModePicker() async {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     final selected = await showReadingModeSheet(
       context,
       current: _readingMode,
@@ -409,7 +388,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _showSettingsSheet() {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     AppTheme? currentTheme;
     try {
       currentTheme = context.read<AppTheme?>();
@@ -465,7 +444,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _scrollToFraction(double fraction) {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     if (!_scrollController.hasClients) return;
     final maxExtent = _scrollController.position.maxScrollExtent;
     final target = (fraction * maxExtent).clamp(0.0, maxExtent);
@@ -512,7 +491,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _showTocSheet() {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     if (_tocEntries.isEmpty) return;
 
     showModalBottomSheet(
@@ -796,7 +775,6 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
-                    onTapUp: _handleTapUp,
                     onDoubleTapDown: _handleDoubleTapDown,
                     onDoubleTap: _handleDoubleTap,
                     child: RealBookBackground(
@@ -858,7 +836,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
         if (scrollNotification is ScrollStartNotification && scrollNotification.dragDetails != null) {
-          _clearTextSelection();
+          _selectionController.clearSelection();
         }
         if (scrollNotification is ScrollEndNotification) {
           _saveScrollProgress();
@@ -866,51 +844,34 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
         return true;
       },
       child: SelectionArea(
-        key: _selectionAreaKey,
+        key: _selectionController.keyForContinuous(0),
         onSelectionChanged: (content) {
-          _selectedContent = (content != null && content.plainText.trim().isNotEmpty)
-              ? content
-              : null;
+          _selectionController.updateSelection('continuous-0', content);
         },
-        contextMenuBuilder: (context, selectableRegionState) {
-          final buttonItems = selectableRegionState.contextMenuButtonItems.map((item) {
-            if (item.type == ContextMenuButtonType.copy) {
-              return ContextMenuButtonItem(
-                type: ContextMenuButtonType.copy,
-                onPressed: () {
-                  final raw = _selectedContent?.plainText ?? '';
-                  final clean = HyphenationHelper.sanitizeForCopy(raw);
-                  Clipboard.setData(ClipboardData(text: clean));
-                  selectableRegionState.clearSelection();
-                  selectableRegionState.hideToolbar();
-                  _selectedContent = null;
-                },
-              );
+        contextMenuBuilder: (context, selectableRegionState) => ReaderSelectionMenuBuilder.build(
+          context: context,
+          selectableRegionState: selectableRegionState,
+          selectedContent: _selectionController.selectedContent,
+          onAnnotate: _showAnnotationDialog,
+          onSelectionCleared: () => _selectionController.updateSelection('continuous-0', null),
+        ),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (details) {
+            _hadSelectionOnTapDown = _selectionController.hasSelection;
+          },
+          onTapCancel: () {
+            _hadSelectionOnTapDown = false;
+          },
+          onTapUp: (details) {
+            if (_hadSelectionOnTapDown || _selectionController.tryDismissSelection()) {
+              _hadSelectionOnTapDown = false;
+              return;
             }
-            return item;
-          }).toList();
-
-          return AdaptiveTextSelectionToolbar.buttonItems(
-            anchors: selectableRegionState.contextMenuAnchors,
-            buttonItems: [
-              ContextMenuButtonItem(
-                label: 'Annotate',
-                onPressed: () {
-                  final raw = _selectedContent?.plainText ?? '';
-                  final clean = HyphenationHelper.sanitizeForAnnotation(raw);
-                  selectableRegionState.clearSelection();
-                  selectableRegionState.hideToolbar();
-                  _selectedContent = null;
-                  if (clean.isNotEmpty) {
-                    _showAnnotationDialog(clean);
-                  }
-                },
-              ),
-              ...buttonItems,
-            ],
-          );
-        },
-        child: SingleChildScrollView(
+            _hadSelectionOnTapDown = false;
+            _handleTapUp(details);
+          },
+          child: SingleChildScrollView(
           controller: _scrollController,
           padding: const EdgeInsets.all(16.0),
           child: Consumer<ReaderThemeRepository>(
@@ -1267,6 +1228,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
           },
         ),
       ),
+    ),
     ),
     );
   }

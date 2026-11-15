@@ -1,7 +1,5 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
@@ -19,6 +17,7 @@ import 'package:ferrous/features/reader/controllers/epub_chapter_controller.dart
 import 'package:ferrous/features/reader/controllers/epub_tts_controller.dart';
 import 'package:ferrous/features/reader/controllers/reader_chrome_controller.dart';
 import 'package:ferrous/features/reader/controllers/reader_mode_controller.dart';
+import 'package:ferrous/features/reader/controllers/reader_selection_controller.dart';
 import 'package:ferrous/features/reader/widgets/book_background_texture.dart';
 import 'package:ferrous/features/reader/widgets/epub_continuous_viewer.dart';
 import 'package:ferrous/features/reader/widgets/epub_paged_viewer.dart';
@@ -62,28 +61,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   // Tap-to-start confirmation state
   TapDetectionResult? _pendingTapResult;
-  SelectedContent? _selectedContent;
-  final GlobalKey<SelectionAreaState> _selectionAreaKey = GlobalKey<SelectionAreaState>();
-
-  void _clearTextSelection() {
-    try {
-      final state = _selectionAreaKey.currentState;
-      if (state != null && state.mounted) {
-        state.selectableRegion.clearSelection();
-        state.selectableRegion.hideToolbar();
-      }
-    } catch (_) {}
-    _selectedContent = null;
-  }
-
-  bool _tryDismissSelection() {
-    if (_selectedContent != null && _selectedContent!.plainText.trim().isNotEmpty) {
-      _clearTextSelection();
-      return true;
-    }
-    _selectedContent = null;
-    return false;
-  }
+  late final ReaderSelectionController _selectionController;
 
   @override
   void initState() {
@@ -91,6 +69,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
     WidgetsBinding.instance.addObserver(this);
     HyphenationHelper.init();
 
+    _selectionController = ReaderSelectionController();
     _readingMode = widget.book.readingMode;
     _modeController = ReaderModeController(_readingMode);
     
@@ -133,6 +112,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    _selectionController.dispose();
     _themeRepository?.removeListener(_onThemeChanged);
     _chapterController.removeListener(_onChapterControllerChanged);
     _chapterController.dispose();
@@ -256,7 +236,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   Future<void> _showReadingModePicker() async {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     final selected = await showReadingModeSheet(
       context,
       current: _readingMode,
@@ -302,7 +282,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _showSettingsSheet() {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     AppTheme? currentTheme;
     try {
       currentTheme = context.read<AppTheme?>();
@@ -319,7 +299,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _goToChapter(int index) {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     if (_chapterController.chapters == null) return;
     if (index < 0 || index >= _chapterController.chapters!.length) return;
 
@@ -336,7 +316,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _showChapterList() {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     final chapters = _chapterController.chapters;
     if (chapters == null) return;
 
@@ -432,7 +412,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
   }
 
   void _showSearchDialog() {
-    _clearTextSelection();
+    _selectionController.clearSelection();
     final searchController = TextEditingController();
     showDialog(
       context: context,
@@ -537,84 +517,39 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
           behavior: HitTestBehavior.translucent,
           onDoubleTapDown: _handleDoubleTapDown,
           onDoubleTap: _handleDoubleTap,
-          child: SelectionArea(
-            key: _selectionAreaKey,
-            onSelectionChanged: (content) {
-              _selectedContent = (content != null && content.plainText.trim().isNotEmpty)
-                  ? content
-                  : null;
-            },
-            contextMenuBuilder: (context, selectableRegionState) {
-              final buttonItems = selectableRegionState.contextMenuButtonItems.map((item) {
-                if (item.type == ContextMenuButtonType.copy) {
-                  return ContextMenuButtonItem(
-                    type: ContextMenuButtonType.copy,
-                    onPressed: () {
-                      final raw = _selectedContent?.plainText ?? '';
-                      final clean = HyphenationHelper.sanitizeForCopy(raw);
-                      Clipboard.setData(ClipboardData(text: clean));
-                      selectableRegionState.clearSelection();
-                      selectableRegionState.hideToolbar();
-                      _selectedContent = null;
-                    },
-                  );
-                }
-                return item;
-              }).toList();
-
-              return AdaptiveTextSelectionToolbar.buttonItems(
-                anchors: selectableRegionState.contextMenuAnchors,
-                buttonItems: [
-                  ContextMenuButtonItem(
-                    label: 'Annotate',
-                    onPressed: () {
-                      final raw = _selectedContent?.plainText ?? '';
-                      final clean = HyphenationHelper.sanitizeForAnnotation(raw);
-                      selectableRegionState.clearSelection();
-                      selectableRegionState.hideToolbar();
-                      _selectedContent = null;
-                      if (clean.isNotEmpty) {
-                        _showAnnotationDialog(clean);
-                      }
-                    },
-                  ),
-                  ...buttonItems,
-                ],
-              );
-            },
-            child: Stack(
-              children: [
-                // Reader Viewers wrapped in physical book background (NOT rebuilt on chrome/tts/chapter ticks!)
-                Positioned.fill(
-                  child: RealBookBackground(
-                    textureId: themeRepo.config.paperTexture,
-                    showSpine: themeRepo.config.showBookSpine,
-                    child: _modeController.isPagedMode
-                        ? EpubPagedViewer(
-                            chapterController: _chapterController,
-                            ttsController: _ttsController,
-                            pageController: _pageController,
-                            readingMode: _readingMode,
-                            onToggleChrome: _toggleAllUi,
-                            onTapUp: _handleTapUpForTts,
-                            onTryDismissSelection: _tryDismissSelection,
-                            onClearSelection: _clearTextSelection,
-                          )
-                        : EpubContinuousViewer(
-                            chapterController: _chapterController,
-                            ttsController: _ttsController,
-                            modeController: _modeController,
-                            onToggleChrome: _toggleAllUi,
-                            onTapUp: _handleTapUpForTts,
-                            onTryDismissSelection: _tryDismissSelection,
-                            onClearSelection: _clearTextSelection,
-                          ),
-                  ),
+          child: Stack(
+            children: [
+              // Reader Viewers wrapped in physical book background (NOT rebuilt on chrome/tts/chapter ticks!)
+              Positioned.fill(
+                child: RealBookBackground(
+                  textureId: themeRepo.config.paperTexture,
+                  showSpine: themeRepo.config.showBookSpine,
+                  child: _modeController.isPagedMode
+                      ? EpubPagedViewer(
+                          chapterController: _chapterController,
+                          ttsController: _ttsController,
+                          pageController: _pageController,
+                          readingMode: _readingMode,
+                          onToggleChrome: _toggleAllUi,
+                          onTapUp: _handleTapUpForTts,
+                          selectionController: _selectionController,
+                          onAnnotate: _showAnnotationDialog,
+                        )
+                      : EpubContinuousViewer(
+                          chapterController: _chapterController,
+                          ttsController: _ttsController,
+                          modeController: _modeController,
+                          onToggleChrome: _toggleAllUi,
+                          onTapUp: _handleTapUpForTts,
+                          selectionController: _selectionController,
+                          onAnnotate: _showAnnotationDialog,
+                        ),
                 ),
+              ),
 
-                // Chrome and HUD layers - only rebuild when chrome, TTS controls, or chapter changes
-                SelectionContainer.disabled(
-                  child: ListenableBuilder(
+              // Chrome and HUD layers - only rebuild when chrome, TTS controls, or chapter changes
+              SelectionContainer.disabled(
+                child: ListenableBuilder(
                   listenable: Listenable.merge([
                     _chapterController,
                     _ttsController,
@@ -699,7 +634,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> with WidgetsBinding
               ),
             ],
           ),
-        ),
         ),
       ),
     );

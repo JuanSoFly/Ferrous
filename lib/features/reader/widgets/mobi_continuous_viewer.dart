@@ -6,6 +6,8 @@ import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:ferrous/features/reader/controllers/mobi_chapter_controller.dart';
 import 'package:ferrous/features/reader/controllers/mobi_tts_controller.dart';
 import 'package:ferrous/features/reader/controllers/reader_mode_controller.dart';
+import 'package:ferrous/features/reader/controllers/reader_selection_controller.dart';
+import 'package:ferrous/features/reader/widgets/reader_selection_menu_builder.dart';
 import 'mobi_content_viewer.dart';
 
 class MobiContinuousViewer extends StatefulWidget {
@@ -19,6 +21,8 @@ class MobiContinuousViewer extends StatefulWidget {
   final Function(TapUpDetails) onTapUp;
   final bool Function()? onTryDismissSelection;
   final VoidCallback? onClearSelection;
+  final ReaderSelectionController selectionController;
+  final void Function(String cleanText) onAnnotate;
 
   const MobiContinuousViewer({
     super.key,
@@ -32,6 +36,8 @@ class MobiContinuousViewer extends StatefulWidget {
     required this.onTapUp,
     this.onTryDismissSelection,
     this.onClearSelection,
+    required this.selectionController,
+    required this.onAnnotate,
   });
 
   @override
@@ -41,6 +47,7 @@ class MobiContinuousViewer extends StatefulWidget {
 class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
   ReaderThemeConfig? _lastThemeConfig;
   Size? _lastScreenSize;
+  bool _hadSelectionOnTapDown = false;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +76,7 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification is ScrollStartNotification && notification.dragDetails != null) {
+          widget.selectionController.clearSelection();
           widget.onClearSelection?.call();
         }
         if (widget.chapterController.isTransitioningMode ||
@@ -85,42 +93,69 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
         }
         return false;
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTapUp: (details) {
-          if (widget.onTryDismissSelection?.call() ?? false) {
-            return;
-          }
-          widget.onTapUp(details);
-          widget.onToggleChrome();
+      child: SelectionArea(
+        key: widget.selectionController.keyForContinuous(widget.chapterController.currentChapterIndex),
+        contextMenuBuilder: (context, selectableRegionState) => ReaderSelectionMenuBuilder.build(
+          context: context,
+          selectableRegionState: selectableRegionState,
+          selectedContent: widget.selectionController.selectedContent,
+          onAnnotate: widget.onAnnotate,
+          onSelectionCleared: () => widget.selectionController.updateSelection(
+            'continuous-${widget.chapterController.currentChapterIndex}',
+            null,
+          ),
+        ),
+        onSelectionChanged: (content) {
+          widget.selectionController.updateSelection(
+            'continuous-${widget.chapterController.currentChapterIndex}',
+            content,
+          );
         },
-        child: ListView.builder(
-          key: ValueKey('mobi-continuous-${widget.chapterController.scrollEpoch}'),
-          controller: widget.chapterController.scrollController,
-          scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
-          addRepaintBoundaries: false,
-          itemCount: totalCount,
-          itemBuilder: (context, index) {
-            final chapterIndex = index;
-            final isLast = chapterIndex == widget.chapterController.chapters!.length - 1;
-            final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
-
-            return Padding(
-              key: widget.chapterController.chapterKeys[chapterIndex],
-              padding: EdgeInsets.only(
-                left: 16.0,
-                right: 16.0,
-                top: chapterIndex == 0 ? widget.topPadding : widget.chapterSpacing,
-                bottom: isLast ? widget.bottomPadding : 0.0,
-              ),
-              child: MobiContentViewer(
-                chapterIndex: chapterIndex,
-                htmlContent: htmlContent,
-                chapterController: widget.chapterController,
-                ttsController: widget.ttsController,
-              ),
-            );
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (details) {
+            _hadSelectionOnTapDown = widget.selectionController.hasSelection;
           },
+          onTapCancel: () {
+            _hadSelectionOnTapDown = false;
+          },
+          onTapUp: (details) {
+            if (_hadSelectionOnTapDown || widget.selectionController.tryDismissSelection()) {
+              _hadSelectionOnTapDown = false;
+              return;
+            }
+            _hadSelectionOnTapDown = false;
+            widget.onTapUp(details);
+            widget.onToggleChrome();
+          },
+          child: ListView.builder(
+            key: ValueKey('mobi-continuous-${widget.chapterController.scrollEpoch}'),
+            controller: widget.chapterController.scrollController,
+            scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
+            addRepaintBoundaries: false,
+            itemCount: totalCount,
+            itemBuilder: (context, index) {
+              final chapterIndex = index;
+              final isLast = chapterIndex == widget.chapterController.chapters!.length - 1;
+              final htmlContent = widget.chapterController.allChapterContents[chapterIndex];
+
+              return Padding(
+                key: widget.chapterController.chapterKeys[chapterIndex],
+                padding: EdgeInsets.only(
+                  left: 16.0,
+                  right: 16.0,
+                  top: chapterIndex == 0 ? widget.topPadding : widget.chapterSpacing,
+                  bottom: isLast ? widget.bottomPadding : 0.0,
+                ),
+                child: MobiContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: htmlContent,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
