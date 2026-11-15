@@ -17,6 +17,8 @@ class MobiContinuousViewer extends StatefulWidget {
   final double bottomPadding;
   final VoidCallback onToggleChrome;
   final Function(TapUpDetails) onTapUp;
+  final bool Function()? onTryDismissSelection;
+  final VoidCallback? onClearSelection;
 
   const MobiContinuousViewer({
     super.key,
@@ -28,6 +30,8 @@ class MobiContinuousViewer extends StatefulWidget {
     this.bottomPadding = 100.0,
     required this.onToggleChrome,
     required this.onTapUp,
+    this.onTryDismissSelection,
+    this.onClearSelection,
   });
 
   @override
@@ -64,6 +68,9 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
+        if (notification is ScrollStartNotification && notification.dragDetails != null) {
+          widget.onClearSelection?.call();
+        }
         if (widget.chapterController.isTransitioningMode ||
             widget.chapterController.isRestoringPosition ||
             widget.chapterController.isProgrammaticScroll) {
@@ -79,8 +86,14 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
         return false;
       },
       child: GestureDetector(
-        onTap: widget.onToggleChrome,
-        onTapUp: widget.onTapUp,
+        behavior: HitTestBehavior.translucent,
+        onTapUp: (details) {
+          if (widget.onTryDismissSelection?.call() ?? false) {
+            return;
+          }
+          widget.onTapUp(details);
+          widget.onToggleChrome();
+        },
         child: ListView.builder(
           key: ValueKey('mobi-continuous-${widget.chapterController.scrollEpoch}'),
           controller: widget.chapterController.scrollController,

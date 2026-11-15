@@ -62,6 +62,27 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
 
   TapDetectionResult? _pendingTapResult;
   SelectedContent? _selectedContent;
+  final GlobalKey<SelectionAreaState> _selectionAreaKey = GlobalKey<SelectionAreaState>();
+
+  void _clearTextSelection() {
+    try {
+      final state = _selectionAreaKey.currentState;
+      if (state != null && state.mounted) {
+        state.selectableRegion.clearSelection();
+        state.selectableRegion.hideToolbar();
+      }
+    } catch (_) {}
+    _selectedContent = null;
+  }
+
+  bool _tryDismissSelection() {
+    if (_selectedContent != null && _selectedContent!.plainText.trim().isNotEmpty) {
+      _clearTextSelection();
+      return true;
+    }
+    _selectedContent = null;
+    return false;
+  }
 
   @override
   void initState() {
@@ -230,6 +251,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   Future<void> _showReadingModePicker() async {
+    _clearTextSelection();
     final selected = await showReadingModeSheet(
       context,
       current: _readingMode,
@@ -275,6 +297,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _showSettingsSheet() {
+    _clearTextSelection();
     AppTheme? currentTheme;
     try {
       currentTheme = context.read<AppTheme?>();
@@ -291,6 +314,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _goToChapter(int index) {
+    _clearTextSelection();
     if (_chapterController.chapters == null) return;
     if (index < 0 || index >= _chapterController.chapters!.length) return;
 
@@ -307,6 +331,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _showChapterList() {
+    _clearTextSelection();
     final chapters = _chapterController.chapters;
     if (chapters == null) return;
 
@@ -400,6 +425,7 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
   }
 
   void _showSearchDialog() {
+    _clearTextSelection();
     final searchController = TextEditingController();
     showDialog(
       context: context,
@@ -505,8 +531,11 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
           onDoubleTapDown: _handleDoubleTapDown,
           onDoubleTap: _handleDoubleTap,
           child: SelectionArea(
+            key: _selectionAreaKey,
             onSelectionChanged: (content) {
-              _selectedContent = content;
+              _selectedContent = (content != null && content.plainText.trim().isNotEmpty)
+                  ? content
+                  : null;
             },
             contextMenuBuilder: (context, selectableRegionState) {
               final buttonItems = selectableRegionState.contextMenuButtonItems.map((item) {
@@ -515,10 +544,11 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                     type: ContextMenuButtonType.copy,
                     onPressed: () {
                       final raw = _selectedContent?.plainText ?? '';
-                      final clean = raw
-                          .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
+                      final clean = HyphenationHelper.sanitizeForCopy(raw);
                       Clipboard.setData(ClipboardData(text: clean));
+                      selectableRegionState.clearSelection();
                       selectableRegionState.hideToolbar();
+                      _selectedContent = null;
                     },
                   );
                 }
@@ -531,10 +561,11 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                   ContextMenuButtonItem(
                     label: 'Annotate',
                     onPressed: () {
-                      final raw = _selectedContent?.plainText.trim() ?? '';
-                      final clean = raw
-                          .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
+                      final raw = _selectedContent?.plainText ?? '';
+                      final clean = HyphenationHelper.sanitizeForAnnotation(raw);
+                      selectableRegionState.clearSelection();
                       selectableRegionState.hideToolbar();
+                      _selectedContent = null;
                       if (clean.isNotEmpty) {
                         _showAnnotationDialog(clean);
                       }
@@ -559,6 +590,8 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                             readingMode: _readingMode,
                             onToggleChrome: _toggleAllUi,
                             onTapUp: _handleTapUpForTts,
+                            onTryDismissSelection: _tryDismissSelection,
+                            onClearSelection: _clearTextSelection,
                           )
                         : MobiContinuousViewer(
                             chapterController: _chapterController,
@@ -566,12 +599,15 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                             modeController: _modeController,
                             onToggleChrome: _toggleAllUi,
                             onTapUp: _handleTapUpForTts,
+                            onTryDismissSelection: _tryDismissSelection,
+                            onClearSelection: _clearTextSelection,
                           ),
                   ),
                 ),
 
                 // Chrome and HUD layers - only rebuild when chrome, TTS controls, or chapter changes
-                ListenableBuilder(
+                SelectionContainer.disabled(
+                  child: ListenableBuilder(
                   listenable: Listenable.merge([
                     _chapterController,
                     _ttsController,
@@ -651,9 +687,10 @@ class _MobiReaderScreenState extends State<MobiReaderScreen> with WidgetsBinding
                     );
                   },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
         ),
       ),
     );

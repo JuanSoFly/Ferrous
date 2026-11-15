@@ -81,6 +81,28 @@ class HyphenationHelper {
     return clean;
   }
 
+  /// Sanitizes raw selected text for Clipboard Copy:
+  /// 1. Strips invisible layout artifacts (\u00AD, \u200B, &shy;).
+  /// 2. Strips trailing continuation break hyphens (\u2010(?=\s|$)) injected by SafeScreenPaginator.
+  /// 3. Normalizes mid-text compound-word hyphens (\u2010) to standard ASCII '-'.
+  static String sanitizeForCopy(String raw) {
+    if (raw.isEmpty) return raw;
+    return raw
+        .replaceAll(RegExp(r'[\u00AD\u200B]|&shy;'), '')
+        .replaceAll(RegExp(r'\u2010(?=\s|$)'), '')
+        .replaceAll('\u2010', '-');
+  }
+
+  /// Sanitizes raw selected text for persistent Annotations:
+  /// Strips all soft/continuation break artifacts ([\u00AD\u200B\u2010]|&shy;) to maintain
+  /// 100% parity with AnnotationHighlightHelper DOM normalization across page-slice splits.
+  static String sanitizeForAnnotation(String raw) {
+    if (raw.isEmpty) return raw;
+    return raw
+        .trim()
+        .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
+  }
+
   /// Applies smart hyphenation to text:
   /// - Only words of length >= 7 are considered.
   /// - Non-German: skips words with any uppercase character (proper nouns, CamelCase, acronyms).

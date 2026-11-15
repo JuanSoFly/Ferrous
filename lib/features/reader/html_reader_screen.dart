@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
@@ -118,6 +119,27 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   final ReaderChromeController _chromeController = ReaderChromeController();
   Offset? _lastDoubleTapDown;
   SelectedContent? _selectedContent;
+  final GlobalKey<SelectionAreaState> _selectionAreaKey = GlobalKey<SelectionAreaState>();
+
+  void _clearTextSelection() {
+    try {
+      final state = _selectionAreaKey.currentState;
+      if (state != null && state.mounted) {
+        state.selectableRegion.clearSelection();
+        state.selectableRegion.hideToolbar();
+      }
+    } catch (_) {}
+    _selectedContent = null;
+  }
+
+  bool _tryDismissSelection() {
+    if (_selectedContent != null && _selectedContent!.plainText.trim().isNotEmpty) {
+      _clearTextSelection();
+      return true;
+    }
+    _selectedContent = null;
+    return false;
+  }
 
   // Font preloading
   String _lastLoadedFontFamily = '';
@@ -326,6 +348,9 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _handleTapUp(TapUpDetails details) {
+    if (_tryDismissSelection()) {
+      return;
+    }
     final screenSize = MediaQuery.of(context).size;
     if (_chromeController.isCenterTap(details.globalPosition, screenSize)) {
       _chromeController.toggleChrome();
@@ -369,6 +394,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   Future<void> _showReadingModePicker() async {
+    _clearTextSelection();
     final selected = await showReadingModeSheet(
       context,
       current: _readingMode,
@@ -383,6 +409,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _showSettingsSheet() {
+    _clearTextSelection();
     AppTheme? currentTheme;
     try {
       currentTheme = context.read<AppTheme?>();
@@ -438,6 +465,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _scrollToFraction(double fraction) {
+    _clearTextSelection();
     if (!_scrollController.hasClients) return;
     final maxExtent = _scrollController.position.maxScrollExtent;
     final target = (fraction * maxExtent).clamp(0.0, maxExtent);
@@ -484,6 +512,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
   }
 
   void _showTocSheet() {
+    _clearTextSelection();
     if (_tocEntries.isEmpty) return;
 
     showModalBottomSheet(
@@ -777,28 +806,30 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     ),
                   ),
                 ),
-                if (showChrome) _buildTopBar(),
+                if (showChrome) SelectionContainer.disabled(child: _buildTopBar()),
                 if (showTtsControls)
                   Positioned(
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    child: TtsControlsSheet(
-                      ttsService: _ttsController.ttsService,
-                      textToSpeak: '',
-                      resolveTextToSpeak: () => _ttsController.resolveTtsText(),
-                      onStart: () async {
-                        await _ttsController.startPlayback();
-                      },
-                      isContinuous: _ttsController.ttsContinuous,
-                      isFollowMode: _ttsController.ttsFollowMode,
-                      isTapToStart: _ttsController.tapToStartEnabled,
-                      onContinuousChanged: _ttsController.setTtsContinuous,
-                      onFollowModeChanged: _ttsController.setTtsFollowMode,
-                      onTapToStartChanged: _ttsController.setTapToStartEnabled,
-                      onClose: _ttsController.closeTtsControls,
-                      highlightStyle: themeRepo.highlightStyle,
-                      onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                    child: SelectionContainer.disabled(
+                      child: TtsControlsSheet(
+                        ttsService: _ttsController.ttsService,
+                        textToSpeak: '',
+                        resolveTextToSpeak: () => _ttsController.resolveTtsText(),
+                        onStart: () async {
+                          await _ttsController.startPlayback();
+                        },
+                        isContinuous: _ttsController.ttsContinuous,
+                        isFollowMode: _ttsController.ttsFollowMode,
+                        isTapToStart: _ttsController.tapToStartEnabled,
+                        onContinuousChanged: _ttsController.setTtsContinuous,
+                        onFollowModeChanged: _ttsController.setTtsFollowMode,
+                        onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                        onClose: _ttsController.closeTtsControls,
+                        highlightStyle: themeRepo.highlightStyle,
+                        onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                      ),
                     ),
                   ),
               ],
@@ -826,30 +857,56 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollNotification) {
+        if (scrollNotification is ScrollStartNotification && scrollNotification.dragDetails != null) {
+          _clearTextSelection();
+        }
         if (scrollNotification is ScrollEndNotification) {
           _saveScrollProgress();
         }
         return true;
       },
       child: SelectionArea(
+        key: _selectionAreaKey,
         onSelectionChanged: (content) {
-          _selectedContent = content;
+          _selectedContent = (content != null && content.plainText.trim().isNotEmpty)
+              ? content
+              : null;
         },
         contextMenuBuilder: (context, selectableRegionState) {
+          final buttonItems = selectableRegionState.contextMenuButtonItems.map((item) {
+            if (item.type == ContextMenuButtonType.copy) {
+              return ContextMenuButtonItem(
+                type: ContextMenuButtonType.copy,
+                onPressed: () {
+                  final raw = _selectedContent?.plainText ?? '';
+                  final clean = HyphenationHelper.sanitizeForCopy(raw);
+                  Clipboard.setData(ClipboardData(text: clean));
+                  selectableRegionState.clearSelection();
+                  selectableRegionState.hideToolbar();
+                  _selectedContent = null;
+                },
+              );
+            }
+            return item;
+          }).toList();
+
           return AdaptiveTextSelectionToolbar.buttonItems(
             anchors: selectableRegionState.contextMenuAnchors,
             buttonItems: [
               ContextMenuButtonItem(
                 label: 'Annotate',
                 onPressed: () {
-                  final text = _selectedContent?.plainText.trim() ?? '';
+                  final raw = _selectedContent?.plainText ?? '';
+                  final clean = HyphenationHelper.sanitizeForAnnotation(raw);
+                  selectableRegionState.clearSelection();
                   selectableRegionState.hideToolbar();
-                  if (text.isNotEmpty) {
-                    _showAnnotationDialog(text);
+                  _selectedContent = null;
+                  if (clean.isNotEmpty) {
+                    _showAnnotationDialog(clean);
                   }
                 },
               ),
-              ...selectableRegionState.contextMenuButtonItems,
+              ...buttonItems,
             ],
           );
         },

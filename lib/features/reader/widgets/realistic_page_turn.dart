@@ -22,6 +22,8 @@ class RealisticPageTurn extends StatefulWidget {
   final ValueChanged<int> onPageChanged;
   final VoidCallback? onToggleChrome;
   final void Function(TapUpDetails)? onTapUp;
+  final bool Function()? onTryDismissSelection;
+  final VoidCallback? onClearSelection;
   final bool enabled;
   final String textureId;
   final bool showSpine;
@@ -34,6 +36,8 @@ class RealisticPageTurn extends StatefulWidget {
     required this.onPageChanged,
     this.onToggleChrome,
     this.onTapUp,
+    this.onTryDismissSelection,
+    this.onClearSelection,
     this.enabled = true,
     this.textureId = 'natural',
     this.showSpine = true,
@@ -169,6 +173,8 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
 
   void _handleHorizontalDragStart(DragStartDetails details) {
     if (!widget.enabled || _isAnimating) return;
+    // Synchronously clear selection while outgoing page render objects are still mounted
+    widget.onClearSelection?.call();
     _isDragging = true;
     _dragProgress = 0.0;
     _progressNotifier.value = 0.0;
@@ -258,6 +264,9 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
     if (direction == 1 && !_canTurnForward()) return;
     if (direction == -1 && !_canTurnBackward()) return;
 
+    // Synchronously clear selection before starting page turn animation
+    widget.onClearSelection?.call();
+
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     if (reduceMotion || !widget.enabled) {
       final newIndex = direction == 1 ? _activePage + 1 : _activePage - 1;
@@ -280,6 +289,11 @@ class _RealisticPageTurnState extends State<RealisticPageTurn>
   }
 
   void _handleTapUp(TapUpDetails details, Size size) {
+    // 1. If text is selected, dismiss highlight and consume tap completely
+    if (widget.onTryDismissSelection?.call() ?? false) {
+      return;
+    }
+
     widget.onTapUp?.call(details);
 
     final tapX = details.globalPosition.dx;

@@ -19,6 +19,8 @@ class MobiPagedViewer extends StatefulWidget {
   final ReadingMode readingMode;
   final VoidCallback onToggleChrome;
   final Function(TapUpDetails) onTapUp;
+  final bool Function()? onTryDismissSelection;
+  final VoidCallback? onClearSelection;
 
   const MobiPagedViewer({
     super.key,
@@ -28,6 +30,8 @@ class MobiPagedViewer extends StatefulWidget {
     required this.readingMode,
     required this.onToggleChrome,
     required this.onTapUp,
+    this.onTryDismissSelection,
+    this.onClearSelection,
   });
 
   @override
@@ -369,6 +373,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
     BoxConstraints? constraints,
   }) {
     if (_isSwappingChapter) return;
+    widget.onClearSelection?.call();
     _isSwappingChapter = true;
 
     final themeRepo = context.read<ReaderThemeRepository>();
@@ -418,6 +423,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
   void _goToPreviousPage(int totalSlots) {
     if (_activeSlot > 0 && !_isPageAnimating) {
+      widget.onClearSelection?.call();
       final target = _activeSlot - 1;
       final themeRepo = context.read<ReaderThemeRepository>();
       final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
@@ -440,6 +446,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
   void _goToNextPage(int totalSlots) {
     if (_activeSlot < totalSlots - 1 && !_isPageAnimating) {
+      widget.onClearSelection?.call();
       final target = _activeSlot + 1;
       final themeRepo = context.read<ReaderThemeRepository>();
       final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
@@ -461,6 +468,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
   }
 
   void _handleTapUp(TapUpDetails details, Size size, int totalSlots) {
+    if (widget.onTryDismissSelection?.call() ?? false) {
+      return;
+    }
+
     widget.onTapUp(details);
 
     if (widget.readingMode == ReadingMode.vertical) {
@@ -490,6 +501,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
   void _handleSlotChanged(int newSlot, [BoxConstraints? constraints]) {
     if (_isSwappingChapter) return;
+    widget.onClearSelection?.call();
     _activeSlot = newSlot;
 
     final themeRepo = context.read<ReaderThemeRepository>();
@@ -616,6 +628,8 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
               onPageChanged: (slot) => _handleSlotChanged(slot, constraints),
               onToggleChrome: widget.onToggleChrome,
               onTapUp: widget.onTapUp,
+              onTryDismissSelection: widget.onTryDismissSelection,
+              onClearSelection: widget.onClearSelection,
               pageBuilder: (context, slot) {
                 if (hasLeading && slot == 0) {
                   final prevSlices = _getPagedSlices(
@@ -648,6 +662,9 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
           return NotificationListener<ScrollNotification>(
             onNotification: (notification) {
+              if (notification is ScrollStartNotification && notification.dragDetails != null) {
+                widget.onClearSelection?.call();
+              }
               if (notification is ScrollEndNotification) {
                 if (notification.depth != 0 || !_viewPageController.hasClients) return false;
                 final settledSlot = _viewPageController.page?.round();
