@@ -1,4 +1,4 @@
-## [1.4.1-alpha.2] - 2026-11-16
+## [1.4.1] - 2026-11-16
 
 ### Text Selection Lifecycle & Gesture Conflict Resolution
 - **Tap-to-Dismiss Selection**: Added `onTryDismissSelection` handlers across `EpubPagedViewer`, `MobiPagedViewer`, `RealisticPageTurn`, and continuous scroll viewers so tapping anywhere on the screen dismisses active text highlights and hides the contextual toolbar without accidentally flipping pages or toggling reader chrome.
@@ -6,8 +6,6 @@
 - **Reader Sheet & Navigation Selection Dismissal**: Added `_clearTextSelection()` across `EpubReaderScreen`, `MobiReaderScreen`, and `HtmlReaderScreen` to cleanly hide selections and floating toolbars when opening the reading mode picker, settings sheet, search dialog, or chapter list drawer.
 - **Sanitized Copy & Annotation Export**: Introduced `HyphenationHelper.sanitizeForCopy()` and `sanitizeForAnnotation()` to cleanly strip soft hyphens (`\u00AD`), zero-width spaces (`\u200B`), non-breaking hyphens (`\u2010`), and `&shy;` entities before copying to clipboard or saving annotations.
 - **Immediate Context Menu Dismissal**: Ensured text selections and toolbar menus are immediately cleared upon executing Copy, Annotate, Define, or Read Aloud actions.
-
-## [1.4.1-alpha.1] - 2026-11-16
 
 ### XHTML/XML Self-Closing Tag Normalization & Paginator Polish
 - **XmlHtmlNormalizer Utility**: Added `XmlHtmlNormalizer` to safely convert self-closing XHTML/XML tags (e.g. `<a id="..."/>`, `<div/>`) into canonical HTML5 paired tags before parsing with `package:html`, preventing DOM tree corruption and runaway element nesting in EPUB chapters.
