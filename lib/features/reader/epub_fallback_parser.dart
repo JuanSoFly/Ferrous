@@ -6,6 +6,7 @@ import 'package:epubx/epubx.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:xml/xml.dart' as xml;
+import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 
 class EpubTocAnchor {
   final String title;
@@ -166,7 +167,7 @@ class EpubFallbackParser {
       final file = _findFile(filesByLowerPath, resolvedPath);
       if (file == null) continue;
 
-      final html = _decodeText(file);
+      final html = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(_decodeText(file));
       final trimmedHtml = html.trim();
       if (trimmedHtml.isEmpty) continue;
 

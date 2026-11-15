@@ -2,6 +2,7 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:ferrous/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 
 class DomChunkResult {
   final List<String> chunks;
@@ -21,14 +22,15 @@ class DomChunker {
   static const int maxSingleNodeHtmlLength = 8000;
 
   static DomChunkResult split(String fullHtml) {
-    if (fullHtml.length < 15000) {
+    final normalized = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(fullHtml);
+    if (normalized.length < 15000) {
       return DomChunkResult(
-        chunks: [fullHtml],
+        chunks: [normalized],
         chunkStartOffsets: [0],
       );
     }
 
-    final document = html_parser.parse(fullHtml);
+    final document = html_parser.parse(normalized);
     final body = document.body;
     if (body == null) {
       return DomChunkResult(

@@ -9,6 +9,7 @@ import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/core/utils/reader_typography_metrics.dart';
 import 'package:ferrous/features/reader/annotation_highlight_helper.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 
 /// Represents a single screen-fitted slice of an EPUB/MOBI chapter.
 class PageSlice {
@@ -32,6 +33,12 @@ class PageSlice {
 class SafeScreenPaginator {
   // Bounded LRU cache of paginated slices
   static final Map<String, List<PageSlice>> _cache = {};
+
+  static const Set<String> _blockTags = {
+    'p', 'div', 'section', 'article', 'main', 'aside', 'header', 'footer',
+    'blockquote', 'figure', 'figcaption', 'pre', 'ul', 'ol', 'li', 'dl',
+    'dt', 'dd', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
+  };
 
   static void clearCache() {
     _cache.clear();
@@ -96,7 +103,8 @@ class SafeScreenPaginator {
         ? AnnotationHighlightHelper.applyHighlights(chapterHtml, annotations)
         : chapterHtml;
 
-    final document = html_parser.parse(processedHtml);
+    final normalizedHtml = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(processedHtml);
+    final document = html_parser.parse(normalizedHtml);
     final body = document.body;
     if (body == null) {
       final fallback = [
@@ -232,7 +240,12 @@ class SafeScreenPaginator {
     int runningCharOffset = 0;
     int pageStartCharOffset = 0;
 
-    void flushPage() {
+    bool hasSubstantiveContent(dom.Element container) {
+      if (container.text.trim().isNotEmpty) return true;
+      return container.querySelector('img, svg, image, canvas, video, hr, table') != null;
+    }
+
+    void flushPage({bool isEndOfChapter = false}) {
       if (currentHeight == 0 && runningCharOffset == pageStartCharOffset && currentBuffer.isEmpty) {
         return;
       }
@@ -242,8 +255,39 @@ class SafeScreenPaginator {
         closeBuffer.write('</${el.localName ?? 'div'}>');
       }
 
+      final wellFormedFragmentHtml = '${currentBuffer.toString()}$closeBuffer';
+      final testContainer = dom.Element.html('<div>$wellFormedFragmentHtml</div>');
+
+      if (!hasSubstantiveContent(testContainer)) {
+        if (!isEndOfChapter) {
+          // Mid-chapter: keep reopened ancestor wrappers and leading anchors in currentBuffer,
+          // but zero out height so the incoming block gets the full page height budget.
+          currentHeight = 0.0;
+          return;
+        }
+
+        // End-of-chapter: only splice into pages.last if there is an anchor target to preserve
+        if (pages.isNotEmpty && testContainer.querySelector('[id], [name]') != null) {
+          final lastSlice = pages.last;
+          final updatedHtml = lastSlice.html.replaceFirst(
+            '</body>',
+            '$wellFormedFragmentHtml</body>',
+          );
+          pages[pages.length - 1] = PageSlice(
+            html: updatedHtml,
+            startCharOffset: lastSlice.startCharOffset,
+            endCharOffset: runningCharOffset,
+            pageIndex: lastSlice.pageIndex,
+          );
+        }
+        currentBuffer.clear();
+        currentHeight = 0.0;
+        pageStartCharOffset = runningCharOffset;
+        return;
+      }
+
       final sliceHtml =
-          '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>${currentBuffer.toString()}$closeBuffer</body></html>';
+          '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>$wellFormedFragmentHtml</body></html>';
       pageHeights.add(currentHeight);
       pages.add(
         PageSlice(
@@ -271,9 +315,11 @@ class SafeScreenPaginator {
         if (node is dom.Element) {
           final tag = node.localName?.toLowerCase() ?? '';
 
-          // Structural container elements with multiple children
-          if ((tag == 'div' || tag == 'section' || tag == 'article' || tag == 'main') &&
-              node.children.length > 1) {
+          // Structural container elements
+          final hasBlockChildren = tag != 'table' &&
+              node.children.any((c) => _blockTags.contains(c.localName?.toLowerCase()));
+
+          if (hasBlockChildren) {
             final id = (node.attributes['id'] ?? '').trim();
             if (id.isNotEmpty) {
               final escapedId = const HtmlEscape(HtmlEscapeMode.attribute).convert(id);
@@ -444,7 +490,7 @@ class SafeScreenPaginator {
     }
 
     processNodes(body.nodes);
-    flushPage();
+    flushPage(isEndOfChapter: true);
 
     // Prevent 1-page short chapters from splitting into a tiny page-2 tail
     if (pages.length == 2 && pageHeights.length == 2) {

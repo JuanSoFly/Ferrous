@@ -17,6 +17,7 @@ import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/core/utils/html_defragmenter.dart';
 import 'package:ferrous/core/services/diagnostic_logger.dart';
 import 'package:ferrous/core/utils/dom_chunker.dart';
+import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 import 'reader_mode_controller.dart';
 
 class EpubChapterInfo {
@@ -360,7 +361,8 @@ class EpubChapterController extends ChangeNotifier {
     for (var i = 0; i < finalChapters.length; i++) {
       final rawChapter = finalChapters[i];
       var title = rawChapter.Title?.trim();
-      final content = rawChapter.HtmlContent ?? '';
+      final rawContent = rawChapter.HtmlContent ?? '';
+      final content = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(rawContent);
       
       final doc = html_parser.parse(content);
       HtmlDefragmenter.defragmentDocument(doc);

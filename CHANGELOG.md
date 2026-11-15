@@ -1,3 +1,12 @@
+## [1.4.1-alpha.1] - 2026-11-16
+
+### XHTML/XML Self-Closing Tag Normalization & Paginator Polish
+- **XmlHtmlNormalizer Utility**: Added `XmlHtmlNormalizer` to safely convert self-closing XHTML/XML tags (e.g. `<a id="..."/>`, `<div/>`) into canonical HTML5 paired tags before parsing with `package:html`, preventing DOM tree corruption and runaway element nesting in EPUB chapters.
+- **Empty Page Slice Elimination**: Added `hasSubstantiveContent` checks in `SafeScreenPaginator.flushPage()` to prevent generating blank or phantom pages caused by empty structural containers or isolated anchor targets.
+- **End-of-Chapter Anchor Preservation**: Spliced non-visual anchor elements at chapter boundaries directly into preceding page slices rather than emitting trailing empty pages, preserving internal link and bookmark targets.
+- **Enhanced Structural Element Traversal**: Refactored container node inspection in `SafeScreenPaginator` to dynamically detect block-level children across all standard HTML block tags (`_blockTags`) rather than relying on a restricted tag whitelist.
+- **Global XML Parsing Alignment**: Integrated `XmlHtmlNormalizer` across `DomChunker`, `EpubChapterController`, and `EpubFallbackParser` to ensure consistent DOM handling across all EPUB loading pipelines.
+
 ## [1.4.0] - 2026-11-15
 
 ### Screen-Fitted Paging & Safe Screen Paginator
