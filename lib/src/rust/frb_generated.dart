@@ -156,7 +156,8 @@ abstract class RustLibApi extends BaseApi {
       {required String path,
       required int pageIndex,
       required int width,
-      required int height});
+      required int height,
+      required int expectedEpoch});
 
   Future<List<PdfPageDimension>> crateApiPdfGetPdfPageDimensions(
       {required String path});
@@ -170,6 +171,8 @@ abstract class RustLibApi extends BaseApi {
   Future<void> crateApiPdfSetRenderEpoch({required int epoch});
 
   Future<int> crateApiPdfGetRenderEpoch();
+
+  Future<int> crateApiPdfIncrementRenderEpoch();
 
   Future<List<BookMetadata>> crateApiLibraryScanLibrary(
       {required String rootPath});
@@ -768,7 +771,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       {required String path,
       required int pageIndex,
       required int width,
-      required int height}) {
+      required int height,
+      required int expectedEpoch}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
@@ -776,6 +780,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_32(pageIndex, serializer);
         sse_encode_u_32(width, serializer);
         sse_encode_u_32(height, serializer);
+        sse_encode_u_32(expectedEpoch, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
             funcId: 23, port: port_);
       },
@@ -784,14 +789,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         decodeErrorData: sse_decode_AnyhowException,
       ),
       constMeta: kCrateApiPdfRenderPdfPageConstMeta,
-      argValues: [path, pageIndex, width, height],
+      argValues: [path, pageIndex, width, height, expectedEpoch],
       apiImpl: this,
     ));
   }
 
   TaskConstMeta get kCrateApiPdfRenderPdfPageConstMeta => const TaskConstMeta(
         debugName: "render_pdf_page",
-        argNames: ["path", "pageIndex", "width", "height"],
+        argNames: ["path", "pageIndex", "width", "height", "expectedEpoch"],
       );
 
   @override
@@ -919,6 +924,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiPdfGetRenderEpochConstMeta =>
       const TaskConstMeta(
         debugName: "get_render_epoch",
+        argNames: [],
+      );
+
+  @override
+  Future<int> crateApiPdfIncrementRenderEpoch() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 32, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_u_32,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPdfIncrementRenderEpochConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfIncrementRenderEpochConstMeta =>
+      const TaskConstMeta(
+        debugName: "increment_render_epoch",
         argNames: [],
       );
 
@@ -1146,16 +1175,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PdfPageRenderResult dco_decode_pdf_page_render_result(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return PdfPageRenderResult(
       data: dco_decode_list_prim_u_8_strict(arr[0]),
       width: dco_decode_u_32(arr[1]),
       height: dco_decode_u_32(arr[2]),
-      topLeftRgb: dco_decode_u_32(arr[3]),
-      topRightRgb: dco_decode_u_32(arr[4]),
-      bottomLeftRgb: dco_decode_u_32(arr[5]),
-      bottomRightRgb: dco_decode_u_32(arr[6]),
+      pageWidthPt: dco_decode_f_32(arr[3]),
+      pageHeightPt: dco_decode_f_32(arr[4]),
+      aspectRatio: dco_decode_f_32(arr[5]),
+      topLeftRgb: dco_decode_u_32(arr[6]),
+      topRightRgb: dco_decode_u_32(arr[7]),
+      bottomLeftRgb: dco_decode_u_32(arr[8]),
+      bottomRightRgb: dco_decode_u_32(arr[9]),
     );
   }
 
@@ -1479,6 +1511,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_data = sse_decode_list_prim_u_8_strict(deserializer);
     var var_width = sse_decode_u_32(deserializer);
     var var_height = sse_decode_u_32(deserializer);
+    var var_pageWidthPt = sse_decode_f_32(deserializer);
+    var var_pageHeightPt = sse_decode_f_32(deserializer);
+    var var_aspectRatio = sse_decode_f_32(deserializer);
     var var_topLeftRgb = sse_decode_u_32(deserializer);
     var var_topRightRgb = sse_decode_u_32(deserializer);
     var var_bottomLeftRgb = sse_decode_u_32(deserializer);
@@ -1487,6 +1522,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       data: var_data,
       width: var_width,
       height: var_height,
+      pageWidthPt: var_pageWidthPt,
+      pageHeightPt: var_pageHeightPt,
+      aspectRatio: var_aspectRatio,
       topLeftRgb: var_topLeftRgb,
       topRightRgb: var_topRightRgb,
       bottomLeftRgb: var_bottomLeftRgb,
@@ -1803,6 +1841,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_prim_u_8_strict(self.data, serializer);
     sse_encode_u_32(self.width, serializer);
     sse_encode_u_32(self.height, serializer);
+    sse_encode_f_32(self.pageWidthPt, serializer);
+    sse_encode_f_32(self.pageHeightPt, serializer);
+    sse_encode_f_32(self.aspectRatio, serializer);
     sse_encode_u_32(self.topLeftRgb, serializer);
     sse_encode_u_32(self.topRightRgb, serializer);
     sse_encode_u_32(self.bottomLeftRgb, serializer);

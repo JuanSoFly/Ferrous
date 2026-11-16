@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'realistic_page_turn.dart';
+import 'pdf_page_view_item.dart';
 import 'package:ferrous/features/reader/widgets/reader_error_view.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 
@@ -259,15 +260,22 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     final isCenter = chromeController.isCenterTap(details.globalPosition, screenSize);
 
     if (isCenter) {
-      // Fast-path rule: if toolbars are already visible, dismiss immediately (0ms)
-      if (chromeController.showChrome && !chromeController.isLocked) {
+      if (chromeController.isLocked) {
+        widget.onLockedTap?.call();
+        return;
+      }
+
+      // Fast-path rule 1: if toolbars are already visible, dismiss immediately (0ms)
+      if (chromeController.showChrome) {
         _cancelSingleTapTimer();
         _handleToggleChrome();
         return;
       }
 
-      if (chromeController.isLocked) {
-        widget.onLockedTap?.call();
+      // Fast-path rule 2: if TTS is NOT playing / controls not visible, toggle toolbars immediately (0ms)
+      if (!widget.ttsController.showTtsControls && !widget.ttsController.isPlaying) {
+        _cancelSingleTapTimer();
+        _handleToggleChrome();
         return;
       }
 
@@ -332,19 +340,19 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   Widget build(BuildContext context) {
     final pageController = widget.pageController;
 
+    Widget body;
     if (pageController.error != null) {
-      return _buildErrorState(pageController.error!);
-    }
+      body = _buildErrorState(pageController.error!);
+    } else {
+      body = LayoutBuilder(
+        builder: (context, constraints) {
+          widget.pageController.updateViewportSize(
+            Size(constraints.maxWidth, constraints.maxHeight),
+          );
 
-    final hasCurrentPage = pageController.getPageUiImage(pageController.pageIndex) != null ||
-        pageController.currentPageImage != null;
-
-    if (pageController.isLoading && !hasCurrentPage) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (!hasCurrentPage) {
-      return const Center(child: Text("Initializing..."));
+          return _buildGallery();
+        },
+      );
     }
 
     return Listener(
@@ -355,15 +363,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTapUp: (details) => _handleTapUp(context, details),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            widget.pageController.updateViewportSize(
-              Size(constraints.maxWidth, constraints.maxHeight),
-            );
-
-            return _buildGallery();
-          },
-        ),
+        child: body,
       ),
     );
   }
@@ -516,140 +516,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   }
 
   Widget _buildPageLayer(BuildContext context, int index) {
-    final pageController = widget.pageController;
-    final ttsController = widget.ttsController;
-    final pageUiImage = pageController.getPageUiImage(index);
-    final pageImage = pageController.getPageImage(index);
-
-    if (pageUiImage == null && pageImage == null) {
-      pageController.preloadPage(index);
-
-      double? placeholderHeight;
-      double? placeholderWidth;
-
-      if (!pageController.viewerSize.isEmpty) {
-        if (widget.modeController.isHorizontal) {
-          placeholderHeight = pageController.viewerSize.height;
-          placeholderWidth = pageController.viewerSize.width * 0.75;
-        } else {
-          placeholderWidth = pageController.viewerSize.width;
-          placeholderHeight = pageController.viewerSize.width * 1.41;
-          if (placeholderHeight > pageController.viewerSize.height) {
-            placeholderHeight = pageController.viewerSize.height;
-          }
-        }
-      } else {
-        placeholderHeight = 400.0;
-      }
-
-      return Container(
-        width: placeholderWidth,
-        height: placeholderHeight,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.0,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    final isActive = index == pageController.pageIndex;
-    final layoutSize = pageController.getLogicalPageSize(index).isEmpty
-        ? (pageController.logicalPageSize.isEmpty
-            ? pageController.renderedPageSize
-            : pageController.logicalPageSize)
-        : pageController.getLogicalPageSize(index);
-
-    Widget imageWidget;
-    if (pageUiImage != null) {
-      imageWidget = RawImage(
-        image: pageUiImage,
-        fit: BoxFit.contain,
-      );
-    } else {
-      imageWidget = Image(
-        image: pageController.getPageImageProvider(index),
-        fit: BoxFit.contain,
-      );
-    }
-
-    Widget layer;
-    if (layoutSize.isEmpty) {
-      layer = imageWidget;
-    } else {
-      layer = SizedBox(
-        width: layoutSize.width,
-        height: layoutSize.height,
-        child: Stack(
-          children: [
-            Positioned.fill(child: imageWidget),
-            // Decoupled vector highlight layer inside its own RepaintBoundary:
-            // Advancing sentences repaints only this vector painter at 120 FPS
-            // without rebuilding or re-rasterizing the page bitmap!
-            Positioned.fill(
-              child: IgnorePointer(
-                child: RepaintBoundary(
-                  child: Consumer2<ReaderThemeRepository, AppTheme?>(
-                    builder: (context, themeRepo, currentTheme, _) {
-                      final isEInk = currentTheme == AppTheme.eInk;
-                      final highlightStyle = themeRepo.highlightStyle;
-
-                      return ValueListenableBuilder<List<PdfTextRect>>(
-                        valueListenable: ttsController.highlightRectsNotifier,
-                        builder: (context, rects, _) {
-                          if (!ttsController.showTtsControls ||
-                              rects.isEmpty ||
-                              ttsController.highlightPageIndex != index) {
-                            return const SizedBox.shrink();
-                          }
-                          return CustomPaint(
-                            painter: PdfHighlightPainter(
-                              rects: rects,
-                              style: highlightStyle,
-                              primaryColor: Theme.of(context).colorScheme.primary,
-                              isEInk: isEInk,
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final containerKey = (index >= 0 && index < widget.pageController.pageKeys.length)
-        ? widget.pageController.pageKeys[index]
-        : null;
-
-    if (isActive) {
-      return KeyedSubtree(
-        key: containerKey,
-        child: RepaintBoundary(
-          key: widget.pageImageKey,
-          child: layer,
-        ),
-      );
-    }
-
-    return KeyedSubtree(
-      key: containerKey,
-      child: RepaintBoundary(child: layer),
+    return PdfPageViewItem(
+      pageIndex: index,
+      pageController: widget.pageController,
+      ttsController: widget.ttsController,
+      isHorizontal: widget.modeController.isHorizontal,
+      pageImageKey: widget.pageImageKey,
     );
   }
 
@@ -671,18 +543,69 @@ class PdfHighlightPainter extends CustomPainter {
   final TtsHighlightStyle style;
   final Color primaryColor;
   final bool isEInk;
+  final bool isDarkMode;
 
   PdfHighlightPainter({
     required this.rects,
     required this.style,
     required this.primaryColor,
     this.isEInk = false,
+    this.isDarkMode = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (rects.isEmpty || size.isEmpty) return;
 
+    // 1. Handle Underline style separately (stroke bottom line with no fill)
+    if (style == TtsHighlightStyle.underline) {
+      final linePaint = Paint()
+        ..color = isEInk
+            ? const Color(0xFF000000)
+            : (isDarkMode ? primaryColor.withValues(alpha: 0.85) : primaryColor)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+
+      for (final rect in rects) {
+        final r = Rect.fromLTRB(
+          (rect.left * size.width).clamp(0.0, size.width),
+          (rect.top * size.height).clamp(0.0, size.height),
+          (rect.right * size.width).clamp(0.0, size.width),
+          (rect.bottom * size.height).clamp(0.0, size.height),
+        );
+        if (r.width <= 0 || r.height <= 0) continue;
+        canvas.drawLine(
+          Offset(r.left, r.bottom + 1.5),
+          Offset(r.right, r.bottom + 1.5),
+          linePaint,
+        );
+      }
+      return;
+    }
+
+    // 2. Select compositing blend mode and alpha based on display type
+    final Paint fillPaint = Paint()..style = PaintingStyle.fill;
+
+    if (isEInk) {
+      // E-Ink: Darken mode with 15% opacity dark gray tint (never hides text glyphs)
+      fillPaint
+        ..blendMode = BlendMode.darken
+        ..color = const Color(0xFF202020).withValues(alpha: 0.15);
+    } else if (isDarkMode) {
+      // Dark Mode: Screen mode with luminous primary accent (lifts text against dark background)
+      fillPaint
+        ..blendMode = BlendMode.screen
+        ..color = primaryColor.withValues(alpha: 0.35);
+    } else {
+      // Normal LCD/OLED: Multiply mode blends yellow/primary tint directly into paper pixels
+      fillPaint
+        ..blendMode = BlendMode.multiply
+        ..color = primaryColor.withValues(alpha: 0.28);
+    }
+
+    // 3. Construct a unified silhouette path using PathOperation.union
+    // to prevent double-multiplying overlapping line rects and eliminate internal border seams
+    Path? combinedPath;
     for (final rect in rects) {
       final r = Rect.fromLTRB(
         (rect.left * size.width).clamp(0.0, size.width),
@@ -693,80 +616,35 @@ class PdfHighlightPainter extends CustomPainter {
       if (r.width <= 0 || r.height <= 0) continue;
 
       final inflated = r.inflate(2.0);
+      final rr = RRect.fromRectAndRadius(
+        inflated,
+        Radius.circular(style == TtsHighlightStyle.softPill ? 4.0 : 2.0),
+      );
 
-      if (isEInk) {
-        // High-contrast monochrome tokens for E-Ink paper themes
-        switch (style) {
-          case TtsHighlightStyle.softPill:
-            final fillPaint = Paint()
-              ..color = const Color(0xFFD8D8D8)
-              ..style = PaintingStyle.fill;
-            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
-            canvas.drawRRect(rr, fillPaint);
-            break;
-
-          case TtsHighlightStyle.underline:
-            final linePaint = Paint()
-              ..color = const Color(0xFF000000)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.5;
-            canvas.drawLine(
-              Offset(r.left, r.bottom + 1.5),
-              Offset(r.right, r.bottom + 1.5),
-              linePaint,
-            );
-            break;
-
-          case TtsHighlightStyle.classicClean:
-            final fillPaint = Paint()
-              ..color = const Color(0xFFD8D8D8)
-              ..style = PaintingStyle.fill;
-            final borderPaint = Paint()
-              ..color = const Color(0xFF000000)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5;
-            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(3));
-            canvas.drawRRect(rr, fillPaint);
-            canvas.drawRRect(rr, borderPaint);
-            break;
-        }
+      final linePath = Path()..addRRect(rr);
+      if (combinedPath == null) {
+        combinedPath = linePath;
       } else {
-        // Full color palette for LCD/OLED themes
-        switch (style) {
-          case TtsHighlightStyle.softPill:
-            final fillPaint = Paint()
-              ..color = primaryColor.withValues(alpha: 0.20)
-              ..style = PaintingStyle.fill;
-            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
-            canvas.drawRRect(rr, fillPaint);
-            break;
-
-          case TtsHighlightStyle.underline:
-            final linePaint = Paint()
-              ..color = primaryColor
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.5;
-            canvas.drawLine(
-              Offset(r.left, r.bottom + 1.5),
-              Offset(r.right, r.bottom + 1.5),
-              linePaint,
-            );
-            break;
-
-          case TtsHighlightStyle.classicClean:
-            final fillPaint = Paint()
-              ..color = primaryColor.withValues(alpha: 0.12)
-              ..style = PaintingStyle.fill;
-            final borderPaint = Paint()
-              ..color = primaryColor.withValues(alpha: 0.40)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.0;
-            final rr = RRect.fromRectAndRadius(inflated, const Radius.circular(4));
-            canvas.drawRRect(rr, fillPaint);
-            canvas.drawRRect(rr, borderPaint);
-            break;
-        }
+        combinedPath = Path.combine(PathOperation.union, combinedPath, linePath);
       }
+    }
+
+    if (combinedPath == null) return;
+
+    // 4. Fill the union silhouette
+    canvas.drawPath(combinedPath, fillPaint);
+
+    // 5. If classicClean, stroke ONLY the exterior perimeter of the union silhouette
+    if (style == TtsHighlightStyle.classicClean) {
+      final borderPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isEInk ? 1.5 : 1.0
+        ..color = isEInk
+            ? const Color(0xFF000000)
+            : (isDarkMode
+                ? primaryColor.withValues(alpha: 0.70)
+                : primaryColor.withValues(alpha: 0.55));
+      canvas.drawPath(combinedPath, borderPaint);
     }
   }
 
@@ -775,5 +653,6 @@ class PdfHighlightPainter extends CustomPainter {
       oldDelegate.rects != rects ||
       oldDelegate.style != style ||
       oldDelegate.primaryColor != primaryColor ||
-      oldDelegate.isEInk != isEInk;
+      oldDelegate.isEInk != isEInk ||
+      oldDelegate.isDarkMode != isDarkMode;
 }

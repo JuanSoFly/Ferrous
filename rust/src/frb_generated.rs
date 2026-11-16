@@ -883,6 +883,7 @@ fn wire__crate__api__pdf__render_pdf_page_impl(
             let api_page_index = <u32>::sse_decode(&mut deserializer);
             let api_width = <u32>::sse_decode(&mut deserializer);
             let api_height = <u32>::sse_decode(&mut deserializer);
+            let api_expected_epoch = <u32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
@@ -892,6 +893,7 @@ fn wire__crate__api__pdf__render_pdf_page_impl(
                             api_page_index,
                             api_width,
                             api_height,
+                            api_expected_epoch,
                         )?;
                         Ok(output_ok)
                     })(),
@@ -1125,6 +1127,30 @@ fn wire__crate__api__pdf__get_render_epoch_impl(
                 transform_result_sse::<_, ()>(
                     (move || {
                         let output_ok = crate::api::pdf::get_render_epoch();
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__pdf__increment_render_epoch_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "increment_render_epoch",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_sse::<_, ()>(
+                    (move || {
+                        let output_ok = crate::api::pdf::increment_render_epoch();
                         Ok(output_ok)
                     })(),
                 )
@@ -1379,6 +1405,9 @@ impl SseDecode for crate::api::pdf::PdfPageRenderResult {
         let mut var_data = <Vec<u8>>::sse_decode(deserializer);
         let mut var_width = <u32>::sse_decode(deserializer);
         let mut var_height = <u32>::sse_decode(deserializer);
+        let mut var_page_width_pt = <f32>::sse_decode(deserializer);
+        let mut var_page_height_pt = <f32>::sse_decode(deserializer);
+        let mut var_aspect_ratio = <f32>::sse_decode(deserializer);
         let mut var_top_left_rgb = <u32>::sse_decode(deserializer);
         let mut var_top_right_rgb = <u32>::sse_decode(deserializer);
         let mut var_bottom_left_rgb = <u32>::sse_decode(deserializer);
@@ -1387,6 +1416,9 @@ impl SseDecode for crate::api::pdf::PdfPageRenderResult {
             data: var_data,
             width: var_width,
             height: var_height,
+            page_width_pt: var_page_width_pt,
+            page_height_pt: var_page_height_pt,
+            aspect_ratio: var_aspect_ratio,
             top_left_rgb: var_top_left_rgb,
             top_right_rgb: var_top_right_rgb,
             bottom_left_rgb: var_bottom_left_rgb,
@@ -1629,6 +1661,7 @@ fn pde_ffi_dispatcher_primary_impl(
         29 => wire__crate__api__pdf__extract_sanitized_page_text_impl(port, ptr, rust_vec_len, data_len),
         30 => wire__crate__api__pdf__set_render_epoch_impl(port, ptr, rust_vec_len, data_len),
         31 => wire__crate__api__pdf__get_render_epoch_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__pdf__increment_render_epoch_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1733,6 +1766,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::pdf::PdfPageRenderResult {
             self.data.into_into_dart().into_dart(),
             self.width.into_into_dart().into_dart(),
             self.height.into_into_dart().into_dart(),
+            self.page_width_pt.into_into_dart().into_dart(),
+            self.page_height_pt.into_into_dart().into_dart(),
+            self.aspect_ratio.into_into_dart().into_dart(),
             self.top_left_rgb.into_into_dart().into_dart(),
             self.top_right_rgb.into_into_dart().into_dart(),
             self.bottom_left_rgb.into_into_dart().into_dart(),
@@ -2070,6 +2106,9 @@ impl SseEncode for crate::api::pdf::PdfPageRenderResult {
         <Vec<u8>>::sse_encode(self.data, serializer);
         <u32>::sse_encode(self.width, serializer);
         <u32>::sse_encode(self.height, serializer);
+        <f32>::sse_encode(self.page_width_pt, serializer);
+        <f32>::sse_encode(self.page_height_pt, serializer);
+        <f32>::sse_encode(self.aspect_ratio, serializer);
         <u32>::sse_encode(self.top_left_rgb, serializer);
         <u32>::sse_encode(self.top_right_rgb, serializer);
         <u32>::sse_encode(self.bottom_left_rgb, serializer);

@@ -43,6 +43,9 @@ pub struct PdfPageRenderResult {
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
+    pub page_width_pt: f32,
+    pub page_height_pt: f32,
+    pub aspect_ratio: f32,
     pub top_left_rgb: u32,
     pub top_right_rgb: u32,
     pub bottom_left_rgb: u32,
@@ -63,6 +66,10 @@ pub fn set_render_epoch(epoch: u32) {
 
 pub fn get_render_epoch() -> u32 {
     GLOBAL_RENDER_EPOCH.load(Ordering::Acquire) as u32
+}
+
+pub fn increment_render_epoch() -> u32 {
+    GLOBAL_RENDER_EPOCH.fetch_add(1, Ordering::AcqRel) as u32 + 1
 }
 
 pub fn init_pdfium(path: String) -> Result<()> {
@@ -338,11 +345,29 @@ pub fn render_pdf_page(
     page_index: u32,
     width: u32,
     height: u32,
+    expected_epoch: u32,
 ) -> Result<PdfPageRenderResult> {
     timed!("render_pdf_page", {
         with_document(&path, |document| {
+            // STEP 1: Immediately upon acquiring lock, check if superseded!
+            let current_epoch = GLOBAL_RENDER_EPOCH.load(Ordering::Acquire);
+            if expected_epoch != 0 && current_epoch != expected_epoch as u64 {
+                return Err(anyhow!(
+                    "RENDER_CANCELLED::EPOCH_MISMATCH: Page {page_index} epoch {expected_epoch} superseded by {current_epoch}"
+                ));
+            }
+
             let page = document.pages().get(page_index as u16)?;
-            
+            let page_rect = page.page_size();
+            let page_w = page_rect.width().value;
+            let page_h = page_rect.height().value;
+            let ar = if page_h > 0.0 { (page_w / page_h).clamp(0.2, 5.0) } else { 0.70 };
+
+            // STEP 2: Check epoch before heavy rasterization
+            if expected_epoch != 0 && GLOBAL_RENDER_EPOCH.load(Ordering::Acquire) != expected_epoch as u64 {
+                return Err(anyhow!("RENDER_CANCELLED::EPOCH_MISMATCH_PRE_RASTER"));
+            }
+
             let bitmap = page.render_with_config(
                 &PdfRenderConfig::new()
                     .set_target_width(width as i32)
@@ -364,6 +389,9 @@ pub fn render_pdf_page(
                 data: raw_bytes,
                 width: actual_width,
                 height: actual_height,
+                page_width_pt: page_w,
+                page_height_pt: page_h,
+                aspect_ratio: ar,
                 top_left_rgb: tl,
                 top_right_rgb: tr,
                 bottom_left_rgb: bl,

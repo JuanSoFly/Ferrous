@@ -26,13 +26,19 @@ Future<List<PdfOutlineItem>> getPdfOutline({required String path}) =>
     RustLib.instance.api.crateApiPdfGetPdfOutline(path: path);
 
 /// Render a specific page of a PDF to raw RGBA bytes with actual dimensions and corner colors.
-Future<PdfPageRenderResult> renderPdfPage(
-        {required String path,
-        required int pageIndex,
-        required int width,
-        required int height}) =>
+Future<PdfPageRenderResult> renderPdfPage({
+  required String path,
+  required int pageIndex,
+  required int width,
+  required int height,
+  int expectedEpoch = 0,
+}) =>
     RustLib.instance.api.crateApiPdfRenderPdfPage(
-        path: path, pageIndex: pageIndex, width: width, height: height);
+        path: path,
+        pageIndex: pageIndex,
+        width: width,
+        height: height,
+        expectedEpoch: expectedEpoch);
 
 /// Extract sanitized page text with guarded de-hyphenation and UTF-16 code unit offset mapping.
 Future<SanitizedPdfText> extractSanitizedPageText(
@@ -47,6 +53,10 @@ Future<void> setRenderEpoch({required int epoch}) =>
 /// Get current global render epoch.
 Future<int> getRenderEpoch() =>
     RustLib.instance.api.crateApiPdfGetRenderEpoch();
+
+/// Increment global render epoch to supersede stale renders.
+Future<int> incrementRenderEpoch() =>
+    RustLib.instance.api.crateApiPdfIncrementRenderEpoch();
 
 /// Extract the text of a specific page of a PDF file.
 Future<String> extractPdfPageText(
@@ -157,6 +167,9 @@ class PdfPageRenderResult {
   final Uint8List data;
   final int width;
   final int height;
+  final double pageWidthPt;
+  final double pageHeightPt;
+  final double aspectRatio;
   final int topLeftRgb;
   final int topRightRgb;
   final int bottomLeftRgb;
@@ -166,6 +179,9 @@ class PdfPageRenderResult {
     required this.data,
     required this.width,
     required this.height,
+    required this.pageWidthPt,
+    required this.pageHeightPt,
+    required this.aspectRatio,
     required this.topLeftRgb,
     required this.topRightRgb,
     required this.bottomLeftRgb,
@@ -177,6 +193,9 @@ class PdfPageRenderResult {
       data.hashCode ^
       width.hashCode ^
       height.hashCode ^
+      pageWidthPt.hashCode ^
+      pageHeightPt.hashCode ^
+      aspectRatio.hashCode ^
       topLeftRgb.hashCode ^
       topRightRgb.hashCode ^
       bottomLeftRgb.hashCode ^
@@ -190,6 +209,9 @@ class PdfPageRenderResult {
           data == other.data &&
           width == other.width &&
           height == other.height &&
+          pageWidthPt == other.pageWidthPt &&
+          pageHeightPt == other.pageHeightPt &&
+          aspectRatio == other.aspectRatio &&
           topLeftRgb == other.topLeftRgb &&
           topRightRgb == other.topRightRgb &&
           bottomLeftRgb == other.bottomLeftRgb &&

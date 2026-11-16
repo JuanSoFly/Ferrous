@@ -6,8 +6,11 @@
 
 ### Direct GPU Texture Pipeline & Zero-Copy PDF Rendering
 - **Raw RGBA GPU Textures**: Updated PDF page renderer to output raw RGBA bytebuffers and corner color profiles directly from PDFium under a strict execution lock and global render epoch guard.
-- **PdfGpuImageCache**: Added LRU resident GPU `ui.Image` cache with post-frame deferred disposal in `PdfPageController`, eliminating JPEG/PNG encoding overhead.
-- **RawImage Rendering**: Updated `PdfPageViewer` to render GPU textures via `RawImage` and stabilized `RealisticPageTurn` keying to prevent render tree detachment.
+- **Epoch-Guarded Render Cancellation**: Added `expected_epoch` to `render_pdf_page` in Rust with atomic `increment_render_epoch`, instantly aborting obsolete background renders during rapid page navigation.
+- **Page Geometry & Aspect Ratio Propagation**: Expanded `PdfPageRenderResult` with point dimensions and aspect ratios (`aspect_ratio`, `page_width_pt`, `page_height_pt`), enabling layout sizing without reading delays.
+- **PdfGpuImageCache**: Added LRU resident GPU `ui.Image` cache with post-frame deferred disposal in `PdfPageController`, eliminating JPEG/PNG encoding overhead and flickering on cache hits.
+- **Modular PdfPageViewItem**: Extracted `PdfPageViewItem` in `PdfPageViewer` with aspect-ratio-locked placeholder geometry and corner-color placeholders, preventing viewport shifts and render tree detachment.
+- **Viewport Jitter Debouncing**: Added threshold checks in `updateViewportSize` to ignore minor layout resize events (<10%) and clamped device pixel ratio to prevent redundant re-renders.
 
 ### Real-Time Word & Sentence PDF TTS Synchronization
 - **Sanitized Text Extraction with Offset Mapping**: Implemented `extract_sanitized_page_text` in Rust with guarded de-hyphenation and UTF-16 code unit mapping (`clean_to_pdf_map`).

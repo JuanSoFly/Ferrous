@@ -110,6 +110,7 @@ class PdfTtsController extends ChangeNotifier {
   TransformationController? pdfTransformController;
 
   TtsService get ttsService => _ttsService;
+  bool get isPlaying => _ttsService.state == TtsState.playing;
   bool get showTtsControls => _showTtsControls;
   bool get ttsContinuous => _ttsContinuous;
   bool get ttsFollowMode => _ttsFollowMode;

@@ -36,12 +36,15 @@ class CbzAdaptiveBackground extends StatelessWidget {
     final effectiveFallback = fallbackColor ?? theme.scaffoldBackgroundColor;
 
     if (isEInk) {
+      final eInkBg = (colors != null && (colors!.isMangaWhitePaper || colors!.topColor == const Color(0xFFFFFFFF)))
+          ? const Color(0xFFFFFFFF)
+          : effectiveFallback;
       return Stack(
         fit: StackFit.expand,
         children: [
           RepaintBoundary(
             child: DecoratedBox(
-              decoration: BoxDecoration(color: effectiveFallback),
+              decoration: BoxDecoration(color: eInkBg),
               child: const SizedBox.expand(),
             ),
           ),

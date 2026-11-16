@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/data/repositories/book_repository.dart';
@@ -52,9 +51,14 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final dpr = view.devicePixelRatio.clamp(2.0, 3.0);
+    final initialSize = view.physicalSize / dpr;
+
     _pageController = PdfPageController(
       book: widget.book,
       repository: widget.repository,
+      initialViewportSize: initialSize,
     );
 
     _ttsService = TtsService();
@@ -79,7 +83,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
   @override
   void dispose() {
     _unlockFadeTimer?.cancel();
-    _cleanupTempFile();
     _pageController.dispose();
     _ttsController.dispose();
     _ttsService.dispose();
@@ -104,14 +107,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
       }
       _ttsController.saveCurrentTtsSentence();
     }
-  }
-
-  void _cleanupTempFile() {
-    final resolved = _pageController.resolvedFile;
-    if (resolved == null || !resolved.isTemp) return;
-    try {
-      unawaited(File(resolved.path).delete());
-    } catch (_) {}
   }
 
   Future<void> _showReadingModePicker() async {
