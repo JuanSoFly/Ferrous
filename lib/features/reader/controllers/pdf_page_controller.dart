@@ -159,11 +159,12 @@ class PdfPageController extends ChangeNotifier {
 
   // GPU texture cache & render generation tracking
   late final PdfGpuImageCache _gpuImageCache = PdfGpuImageCache(
-    maxResident: isContinuousMode ? 16 : 8,
+    maxResident: isContinuousMode ? 8 : 4,
   );
   ui.Image? getPageUiImage(int index) => _gpuImageCache.get(index);
   int _renderEpoch = 0;
   int get renderEpoch => _renderEpoch;
+  final Map<int, List<Completer<void>>> _pageRenderCompleters = {};
 
   final Map<int, pdf_api.SanitizedPdfText> _sanitizedTextCache = {};
   Map<int, pdf_api.SanitizedPdfText> get sanitizedTextCache => _sanitizedTextCache;
@@ -271,10 +272,13 @@ class PdfPageController extends ChangeNotifier {
     final offset = scrollController.offset;
     _lastScrollPosition = offset;
 
+    final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
+    if (effectiveTotalPages <= 0) return;
+
     repository.updateReadingProgress(
       book.id,
       currentPage: _pageIndex,
-      totalPages: _pageCount,
+      totalPages: effectiveTotalPages,
       scrollPosition: offset,
       readingMode: _readingMode,
     );
@@ -364,21 +368,23 @@ class PdfPageController extends ChangeNotifier {
   void updateReadingMode(ReadingMode mode) {
     if (_readingMode == mode) return;
 
+    final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
+
     // Save exact progress before switching
     if (isContinuousMode) {
       saveContinuousProgress();
-    } else {
+    } else if (effectiveTotalPages > 0) {
       repository.updateReadingProgress(
         book.id,
         currentPage: _pageIndex,
-        totalPages: _pageCount,
+        totalPages: effectiveTotalPages,
         readingMode: mode,
       );
     }
 
     final wasContinuous = isContinuousMode;
     _readingMode = mode;
-    _gpuImageCache.maxResident = isContinuousMode ? 16 : 8;
+    _gpuImageCache.maxResident = isContinuousMode ? 8 : 4;
     repository.updateReadingProgress(book.id, readingMode: mode);
 
     if (isContinuousMode) {
@@ -460,12 +466,15 @@ class PdfPageController extends ChangeNotifier {
   void _saveProgressOnDispose() {
     if (isContinuousMode) {
       saveContinuousProgress();
-    } else if (_pageCount > 0) {
-      repository.updateReadingProgress(
-        book.id,
-        currentPage: _pageIndex,
-        totalPages: _pageCount,
-      );
+    } else {
+      final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
+      if (effectiveTotalPages > 0) {
+        repository.updateReadingProgress(
+          book.id,
+          currentPage: _pageIndex,
+          totalPages: effectiveTotalPages,
+        );
+      }
     }
   }
 
@@ -653,7 +662,7 @@ class PdfPageController extends ChangeNotifier {
               _gpuImageCache.put(nextIndex, uiImage);
 
               if (nextIndex == _pageIndex) {
-                _currentPageImage = result.data;
+                _currentPageImage = null;
                 final widthClamped = result.width.toDouble().clamp(1.0, double.infinity);
                 final heightClamped = result.height.toDouble().clamp(1.0, double.infinity);
                 _renderedPageSize = Size(widthClamped, heightClamped);
@@ -696,6 +705,12 @@ class PdfPageController extends ChangeNotifier {
           }
         } finally {
           _currentlyRenderingIndex = null;
+          final completers = _pageRenderCompleters.remove(nextIndex);
+          if (completers != null) {
+            for (final c in completers) {
+              if (!c.isCompleted) c.complete();
+            }
+          }
           if (!_disposed) {
             if (nextIndex == _pageIndex) {
               _isLoading = false;
@@ -735,17 +750,20 @@ class PdfPageController extends ChangeNotifier {
     }
 
     _pageIndex = index;
+    final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
 
     if (hasPageImage(index)) {
       _isLoading = false;
       _error = null;
       notifyListeners();
 
-      repository.updateReadingProgress(
-        book.id,
-        currentPage: index,
-        totalPages: _pageCount,
-      );
+      if (effectiveTotalPages > 0) {
+        repository.updateReadingProgress(
+          book.id,
+          currentPage: index,
+          totalPages: effectiveTotalPages,
+        );
+      }
 
       unawaited(loadPageText(index));
       _schedulePrefetch(index);
@@ -756,17 +774,19 @@ class PdfPageController extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    repository.updateReadingProgress(
-      book.id,
-      currentPage: index,
-      totalPages: _pageCount,
-    );
+    if (effectiveTotalPages > 0) {
+      repository.updateReadingProgress(
+        book.id,
+        currentPage: index,
+        totalPages: effectiveTotalPages,
+      );
+    }
 
+    final completer = Completer<void>();
+    _pageRenderCompleters.putIfAbsent(index, () => []).add(completer);
     requestPageRender(index, isActivePage: true);
 
-    while (!_disposed && _pageIndex == index && !hasPageImage(index) && _error == null) {
-      await Future.delayed(const Duration(milliseconds: 16));
-    }
+    await completer.future.timeout(const Duration(seconds: 10), onTimeout: () {});
   }
 
   Future<void> _loadDocumentInternal({bool forceRefresh = false}) async {
@@ -780,24 +800,31 @@ class PdfPageController extends ChangeNotifier {
 
     final count = await pdf_api.getPdfPageCount(path: resolved.path);
     if (_disposed) return;
+    if (count <= 0) {
+      throw StateError('PDF returned $count pages (PDF_OPEN_ERROR::EMPTY)');
+    }
     _pageCount = count;
-    _pageIndex = count <= 0 ? 0 : book.currentPage.clamp(0, count - 1);
+    _pageIndex = book.currentPage.clamp(0, count - 1);
     _pageKeys = List.generate(count, (i) => GlobalKey(debugLabel: 'pdf-page-$i'));
+    notifyListeners();
 
     // Render Saved Page IMMEDIATELY! (Intrinsic dimensions returned in PdfPageRenderResult)
     await renderPage(_pageIndex);
 
-    // Extract table of contents bookmarks asynchronously
-    unawaited(PdfOutlineService.extractBookmarks(resolved.path).then((extracted) {
+    // Extract table of contents bookmarks asynchronously after the first frame
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       if (_disposed) return;
-      _chapters = extracted;
-    }).catchError((e) {
-      debugPrint('Failed to extract bookmarks: $e');
-    }).whenComplete(() {
-      if (_disposed) return;
-      _isLoadingChapters = false;
-      notifyListeners();
-    }));
+      unawaited(PdfOutlineService.extractBookmarks(resolved.path).then((extracted) {
+        if (_disposed) return;
+        _chapters = extracted;
+      }).catchError((e) {
+        debugPrint('Failed to extract bookmarks: $e');
+      }).whenComplete(() {
+        if (_disposed) return;
+        _isLoadingChapters = false;
+        notifyListeners();
+      }));
+    });
 
     if (isContinuousMode) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -912,10 +939,6 @@ class PdfPageController extends ChangeNotifier {
           _textError = null;
           notifyListeners();
         }
-
-        if (!_pageCharBoundsCache.containsKey(index)) {
-          unawaited(precomputeCharacterBounds(index));
-        }
       } catch (e) {
         if (_disposed || requestId != _textRequestId) return;
         _isTextLoading = false;
@@ -952,6 +975,12 @@ class PdfPageController extends ChangeNotifier {
     _disposed = true;
     _progressSaveTimer?.cancel();
     _saveProgressOnDispose();
+    for (final list in _pageRenderCompleters.values) {
+      for (final c in list) {
+        if (!c.isCompleted) c.complete();
+      }
+    }
+    _pageRenderCompleters.clear();
     scrollController.dispose();
     cleanup();
     super.dispose();
@@ -964,6 +993,7 @@ class PdfPageController extends ChangeNotifier {
   }
 
   void cleanup() {
+    _currentPageImage = null;
     _gpuImageCache.clear();
     _renderedPageSizes.clear();
     _cornerColorsCache.clear();

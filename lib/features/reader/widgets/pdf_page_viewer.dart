@@ -343,6 +343,19 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
     Widget body;
     if (pageController.error != null) {
       body = _buildErrorState(pageController.error!);
+    } else if (pageController.isLoading && pageController.pageCount == 0) {
+      body = Center(
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
+            ),
+          ),
+        ),
+      );
     } else {
       body = LayoutBuilder(
         builder: (context, constraints) {

@@ -13,6 +13,21 @@
 - **Dynamic GPU Cache Sizing**: Expanded resident `PdfGpuImageCache` capacity to 16 pages for continuous scroll modes and 8 pages for paged modes, with post-frame deferred disposal preventing frame drops.
 - **Layout Aspect Ratio Locking**: Wrapped horizontal page items in `PdfPageViewer` with exact aspect-ratio constraints derived from Rust-extracted PDF point dimensions, eliminating viewport shifts during scroll gestures.
 
+### Per-Document PDF Concurrency & PDFium Safety
+- **Granular Per-Document Execution Locks**: Replaced the global PDFium execution lock in Rust with per-document serialization (`DocumentEntry`), allowing multi-document operations and global concurrency without thread blocking.
+- **Pathological Outline Traversal Bounds**: Added `MAX_SIBLINGS_PER_LEVEL` (500) and `MAX_TOTAL_OUTLINE_ITEMS` (2000) caps to native PDFium bookmark parsing to prevent infinite loops and memory spikes.
+- **Zero-Copy Raw Byte Rendering**: Switched bitmap byte retrieval to raw bytes for optimal texture upload performance.
+
+### SAF Caching Atomicity & File Integrity
+- **Atomic File Streaming**: Implemented temporary file staging (`.tmp_<timestamp>`) in `SafHandler` for Android SAF caching, verifying non-zero stream writes before atomic renaming to prevent concurrent readers from accessing partial or 0-byte cache files.
+
+### Reading Progress Guards & Controller Optimizations
+- **Progress Corruption Protection**: Guarded `BookRepository` and `PdfPageController` against resetting `totalPages` to 0, clamping `currentPage` within valid page ranges.
+- **Event-Driven Page Render Completers**: Replaced polling intervals with `Completer<void>` render listeners for deterministic, zero-latency page transitions.
+- **Tuned GPU Texture Caching**: Adjusted resident GPU cache limits to 8 (continuous) and 4 (paged) to prevent memory pressure on constrained devices.
+- **Lazy PDF TTS Sentence Extraction**: Deferred TTS sentence loading to trigger strictly when audio playback or controls are active.
+- **Robust Realistic Page Turn Clamping**: Added zero-page guards in `RealisticPageTurn` to eliminate negative bounds crashes on empty documents.
+
 ## [1.4.2-alpha.3] - 2026-11-16
 
 ### Native PDFium Outline & Bookmarks Engine

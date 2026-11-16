@@ -84,7 +84,8 @@ class PdfTtsController extends ChangeNotifier {
   void _onPageControllerUpdated() {
     if (_disposed) return;
     final current = pageController.pageIndex;
-    if (current >= 0 && current < pageController.pageCount) {
+    // Strictly lazy: only pre-load sentences when TTS controls are visible or active audio playback is running
+    if ((_showTtsControls || isPlaying) && current >= 0 && current < pageController.pageCount) {
       unawaited(getSentencesForPage(current));
     }
   }
@@ -532,12 +533,24 @@ class PdfTtsController extends ChangeNotifier {
   void setTtsControlsVisible(bool visible) {
     if (_showTtsControls == visible) return;
     _showTtsControls = visible;
+    if (visible) {
+      final current = pageController.pageIndex;
+      if (current >= 0 && current < pageController.pageCount) {
+        unawaited(getSentencesForPage(current));
+      }
+    }
     notifyListeners();
   }
 
   Future<void> toggleTts() async {
     final next = !_showTtsControls;
     _showTtsControls = next;
+    if (next) {
+      final current = pageController.pageIndex;
+      if (current >= 0 && current < pageController.pageCount) {
+        unawaited(getSentencesForPage(current));
+      }
+    }
     notifyListeners();
 
     if (!next) {

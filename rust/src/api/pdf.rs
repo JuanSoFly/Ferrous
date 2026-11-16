@@ -54,11 +54,6 @@ pub struct PdfPageRenderResult {
 
 static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
 static PDFIUM_PATH: OnceLock<String> = OnceLock::new();
-static PDFIUM_EXECUTION_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-fn get_execution_lock() -> &'static Mutex<()> {
-    PDFIUM_EXECUTION_LOCK.get_or_init(|| Mutex::new(()))
-}
 
 pub fn set_render_epoch(epoch: u32) {
     GLOBAL_RENDER_EPOCH.store(epoch as u64, Ordering::Release);
@@ -153,31 +148,31 @@ pub(crate) fn load_pdf_document<'a>(pdfium: &'a Pdfium, path: &str) -> Result<Pd
         .map_err(|e| map_pdfium_load_error(path, e))
 }
 
-// Global LRU cache for PDF documents
-static DOCUMENT_POOL: OnceLock<Mutex<LruCache<String, Arc<PdfDocument<'static>>>>> = OnceLock::new();
+#[derive(Clone)]
+struct DocumentEntry {
+    document: Arc<PdfDocument<'static>>,
+    lock: Arc<Mutex<()>>,
+}
 
-fn get_pool() -> &'static Mutex<LruCache<String, Arc<PdfDocument<'static>>>> {
+// Global LRU cache for PDF documents with per-document execution serialization
+static DOCUMENT_POOL: OnceLock<Mutex<LruCache<String, DocumentEntry>>> = OnceLock::new();
+
+fn get_pool() -> &'static Mutex<LruCache<String, DocumentEntry>> {
     DOCUMENT_POOL.get_or_init(|| {
         Mutex::new(LruCache::new(NonZeroUsize::new(4).unwrap()))
     })
 }
 
-/// Execute a function with a pooled PDF document, strictly serialized
-/// to guarantee single-threaded safety for PDFium C++ structures.
+/// Execute a function with a pooled PDF document, serialized PER DOCUMENT
+/// to guarantee single-threaded safety for that document's PDFium C++ structures
+/// without blocking operations on other documents or global concurrency.
 pub fn with_document<F, R>(path: &str, f: F) -> Result<R>
 where
     F: FnOnce(&PdfDocument) -> Result<R>,
 {
-    let exec_lock = get_execution_lock();
-    let _guard = match exec_lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    let pool = get_pool();
-    
-    // 1. Try to get from cache first (holding pool lock briefly)
-    let doc = {
+    // 1. Get or create the DocumentEntry with brief pool lock
+    let entry = {
+        let pool = get_pool();
         let mut cache = match pool.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -185,25 +180,27 @@ where
                 poisoned.into_inner()
             }
         };
-        cache.get(path).cloned()
-    };
-    
-    // 2. If not in cache, load it
-    let doc = match doc {
-        Some(doc) => doc,
-        None => {
+
+        if let Some(existing) = cache.get(path) {
+            existing.clone()
+        } else {
             let loaded_doc = Arc::new(load_pdf_document(get_pdfium(), path)?);
-            let mut cache = match pool.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
+            let new_entry = DocumentEntry {
+                document: loaded_doc,
+                lock: Arc::new(Mutex::new(())),
             };
-            cache.put(path.to_string(), loaded_doc.clone());
-            loaded_doc
+            cache.put(path.to_string(), new_entry.clone());
+            new_entry
         }
     };
-    
-    // 3. Call f with the document while holding the execution lock
-    f(&doc)
+
+    // 2. Lock ONLY this specific document's operations
+    let _guard = match entry.lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    f(&entry.document)
 }
 
 #[inline(always)]
@@ -220,11 +217,6 @@ pub fn with_pdfium<F, R>(f: F) -> Result<R>
 where
     F: FnOnce(&Pdfium) -> Result<R>,
 {
-    let exec_lock = get_execution_lock();
-    let _guard = match exec_lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
     let pdfium = get_pdfium();
     f(pdfium)
 }
@@ -262,6 +254,8 @@ pub fn get_pdf_page_dimensions(path: String) -> Result<Vec<PdfPageDimension>> {
 }
 
 const MAX_OUTLINE_DEPTH: u32 = 32;
+const MAX_SIBLINGS_PER_LEVEL: u32 = 500;
+const MAX_TOTAL_OUTLINE_ITEMS: usize = 2000;
 
 /// Extract table of contents / bookmarks natively using PDFium C++ outline APIs.
 /// Uses iterative sibling loops and depth bounds to prevent stack overflows,
@@ -286,12 +280,18 @@ fn traverse_bookmark_level(
     depth: u32,
     out: &mut Vec<PdfOutlineItem>,
 ) {
-    if depth >= MAX_OUTLINE_DEPTH {
+    if depth >= MAX_OUTLINE_DEPTH || out.len() >= MAX_TOTAL_OUTLINE_ITEMS {
         return;
     }
 
     let mut current = Some(first_bookmark);
+    let mut sibling_count = 0;
     while let Some(bookmark) = current {
+        if sibling_count >= MAX_SIBLINGS_PER_LEVEL || out.len() >= MAX_TOTAL_OUTLINE_ITEMS {
+            break;
+        }
+        sibling_count += 1;
+
         let title = bookmark.title().unwrap_or_default().trim().to_string();
 
         let target_page = bookmark
@@ -378,7 +378,7 @@ pub fn render_pdf_page(
 
             let actual_width = bitmap.width() as u32;
             let actual_height = bitmap.height() as u32;
-            let raw_bytes = bitmap.as_rgba_bytes();
+            let raw_bytes = bitmap.as_raw_bytes();
 
             let tl = extract_rgb(&raw_bytes, 0);
             let tr = extract_rgb(&raw_bytes, (actual_width.saturating_sub(1)) as usize * 4);

@@ -97,7 +97,9 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   @override
   void initState() {
     super.initState();
-    _activePage = widget.currentPage;
+    _activePage = widget.pageCount > 0
+        ? widget.currentPage.clamp(0, widget.pageCount - 1)
+        : 0;
     _progressNotifier = ValueNotifier<double>(0.0);
     // Premium, relaxed animation duration: ~480ms for silky, smooth motion
     _curlController = AnimationController(
@@ -147,7 +149,9 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         _directionDetermined = false;
         _turnDirection = 0;
       }
-      _activePage = widget.currentPage.clamp(0, widget.pageCount - 1);
+      _activePage = widget.pageCount > 0
+          ? widget.currentPage.clamp(0, widget.pageCount - 1)
+          : 0;
       _pruneCache();
     }
   }
@@ -164,7 +168,9 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   void _onAnimationStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
       final newIndex = _turnDirection == 1 ? _activePage + 1 : _activePage - 1;
-      _activePage = newIndex.clamp(0, widget.pageCount - 1);
+      _activePage = widget.pageCount > 0
+          ? newIndex.clamp(0, widget.pageCount - 1)
+          : 0;
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
       _directionDetermined = false;
@@ -188,8 +194,8 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     }
   }
 
-  bool _canTurnForward() => _activePage < widget.pageCount - 1;
-  bool _canTurnBackward() => _activePage > 0;
+  bool _canTurnForward() => widget.pageCount > 0 && _activePage < widget.pageCount - 1;
+  bool _canTurnBackward() => widget.pageCount > 0 && _activePage > 0;
 
   void _handleHorizontalDragStart(DragStartDetails details) {
     if (!widget.enabled || _isAnimating || !(widget.canSwipe?.call() ?? true)) return;
@@ -290,7 +296,9 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     if (reduceMotion || !widget.enabled) {
       final newIndex = direction == 1 ? _activePage + 1 : _activePage - 1;
-      _activePage = newIndex.clamp(0, widget.pageCount - 1);
+      _activePage = widget.pageCount > 0
+          ? newIndex.clamp(0, widget.pageCount - 1)
+          : 0;
       _turnDirection = 0;
       widget.onPageChanged(_activePage);
       _pruneCache();

@@ -625,13 +625,15 @@ class SafHandler(private val activity: MainActivity) {
             
             // Check cache
             val cachedFile = File(cacheDir, "$cacheKey$suffix")
-            if (!force && cachedFile.exists() && cachedFile.length() > 0 && cachedFile.length() == size) {
+            val isSizeMatch = if (size > 0L) cachedFile.length() == size else cachedFile.length() > 0
+            if (!force && cachedFile.exists() && cachedFile.length() > 0 && isSizeMatch) {
                 // Cache hit! Update mtime to prevent early cleanup
                 cachedFile.setLastModified(System.currentTimeMillis())
                 return@withContext cachedFile.absolutePath
             }
 
-            // Cache miss — copy file
+            // Cache miss — copy to atomic temporary file first to prevent concurrent readers from seeing 0-byte/truncated files
+            val tempFile = File(cacheDir, "$cacheKey.tmp_${System.currentTimeMillis()}")
             try {
                 if (force && cachedFile.exists()) {
                     cachedFile.delete()
@@ -639,12 +641,23 @@ class SafHandler(private val activity: MainActivity) {
                 val input = activity.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("Unable to open URI stream. The file may no longer exist.")
                 input.use { stream ->
-                    FileOutputStream(cachedFile).use { output ->
+                    FileOutputStream(tempFile).use { output ->
                         stream.copyTo(output)
                     }
                 }
+                if (tempFile.length() == 0L) {
+                    tempFile.delete()
+                    throw IllegalStateException("Copied 0 bytes from URI: stream is empty or still syncing.")
+                }
+                if (cachedFile.exists()) {
+                    cachedFile.delete()
+                }
+                if (!tempFile.renameTo(cachedFile)) {
+                    tempFile.copyTo(cachedFile, overwrite = true)
+                    tempFile.delete()
+                }
             } catch (e: Exception) {
-                if (cachedFile.exists()) cachedFile.delete()
+                if (tempFile.exists()) tempFile.delete()
                 throw e
             }
             

@@ -105,9 +105,17 @@ class BookRepository extends ChangeNotifier {
   }) async {
     final book = getBook(id);
     if (book != null) {
+      // Guard against corrupting totalPages to 0 if a valid positive totalPages is already recorded
+      final effectiveTotalPages = (totalPages != null && totalPages > 0)
+          ? totalPages
+          : book.totalPages;
+      final effectiveCurrentPage = currentPage != null
+          ? (effectiveTotalPages > 0 ? currentPage.clamp(0, effectiveTotalPages - 1) : currentPage)
+          : book.currentPage;
+
       final updated = book.copyWith(
-        currentPage: currentPage,
-        totalPages: totalPages,
+        currentPage: effectiveCurrentPage,
+        totalPages: effectiveTotalPages,
         sectionIndex: sectionIndex,
         scrollPosition: scrollPosition,
         readingMode: readingMode,
@@ -179,15 +187,7 @@ class BookRepository extends ChangeNotifier {
         await _coverSemaphore.acquire();
         try {
           final resolved = await resolver.resolve(book);
-          try {
-            await _extractCover(resolved.path, expectedCoverPath);
-          } finally {
-            if (resolved.isTemp) {
-              try {
-                await File(resolved.path).delete();
-              } catch (_) {}
-            }
-          }
+          await _extractCover(resolved.path, expectedCoverPath);
 
           final updated = book.copyWith(coverPath: expectedCoverPath);
           await box.put(book.id, updated);
