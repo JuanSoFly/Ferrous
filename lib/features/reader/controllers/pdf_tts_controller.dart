@@ -46,10 +46,19 @@ class PdfTtsController extends ChangeNotifier {
     required this.pageController,
   }) : _ttsService = ttsService {
     _ttsService.setOnFinished(_handleTtsFinished);
+    pageController.addListener(_onPageControllerUpdated);
 
     // Initialize from book persistence: lastTtsPage and lastTtsSentenceStart (index)
     _speakingPage = book.lastTtsPage >= 0 ? book.lastTtsPage : pageController.pageIndex;
     _speakingSentenceIndex = book.lastTtsSentenceStart >= 0 ? book.lastTtsSentenceStart : 0;
+  }
+
+  void _onPageControllerUpdated() {
+    if (_disposed) return;
+    final current = pageController.pageIndex;
+    if (current >= 0 && current < pageController.pageCount) {
+      unawaited(getSentencesForPage(current));
+    }
   }
 
   bool _disposed = false;
@@ -67,7 +76,7 @@ class PdfTtsController extends ChangeNotifier {
 
   // Per-page cached sentences
   final Map<int, List<PdfSentence>> _pageSentencesCache = {};
-  final Set<int> _loadingPages = {};
+  final Map<int, Future<List<PdfSentence>>> _inFlightSentenceLoads = {};
 
   DateTime _lastAutoPanAt = DateTime.fromMillisecondsSinceEpoch(0);
   TransformationController? pdfTransformController;
@@ -92,26 +101,35 @@ class PdfTtsController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Segment page text into sentences and compute gutter-safe line bounding rects.
-  Future<List<PdfSentence>> getSentencesForPage(int pageIndex) async {
+  Future<List<PdfSentence>> getSentencesForPage(int pageIndex) {
     if (_pageSentencesCache.containsKey(pageIndex)) {
-      return _pageSentencesCache[pageIndex]!;
+      return Future.value(_pageSentencesCache[pageIndex]!);
     }
 
-    if (_loadingPages.contains(pageIndex)) {
-      // Avoid parallel duplicate loads
-      while (_loadingPages.contains(pageIndex)) {
-        await Future.delayed(const Duration(milliseconds: 20));
-      }
-      return _pageSentencesCache[pageIndex] ?? const [];
+    final inFlight = _inFlightSentenceLoads[pageIndex];
+    if (inFlight != null) {
+      return inFlight;
     }
 
-    _loadingPages.add(pageIndex);
+    final future = _loadSentencesForPageInternal(pageIndex);
+    _inFlightSentenceLoads[pageIndex] = future;
+    return future;
+  }
+
+  Future<List<PdfSentence>> _loadSentencesForPageInternal(int pageIndex) async {
     try {
-      await pageController.ensureCharacterBoundsLoaded(pageIndex);
+      // Eagerly load both page text and character bounds in parallel
+      await Future.wait([
+        pageController.loadPageText(pageIndex),
+        pageController.ensureCharacterBoundsLoaded(pageIndex),
+      ]);
+      if (_disposed) return const [];
+
       final text = pageController.pageTextCache[pageIndex] ?? '';
       final bounds = pageController.pageCharBoundsCache[pageIndex] ?? const [];
 
       if (text.trim().isEmpty || bounds.isEmpty) {
+        // Page genuinely has zero readable characters (e.g. blank page or illustration)
         _pageSentencesCache[pageIndex] = const [];
         return const [];
       }
@@ -154,10 +172,12 @@ class PdfTtsController extends ChangeNotifier {
 
       _pageSentencesCache[pageIndex] = sentences;
       return sentences;
-    } catch (_) {
+    } catch (e) {
+      // DO NOT cache transient failures so subsequent attempts can retry!
+      debugPrint('PdfTtsController: Error loading sentences for page $pageIndex: $e');
       return const [];
     } finally {
-      _loadingPages.remove(pageIndex);
+      _inFlightSentenceLoads.remove(pageIndex);
     }
   }
 
@@ -303,6 +323,10 @@ class PdfTtsController extends ChangeNotifier {
 
   Future<void> play() async {
     if (_disposed) return;
+    if (_ttsService.state == TtsState.stopped && _speakingPage != pageController.pageIndex) {
+      _speakingPage = pageController.pageIndex;
+      _speakingSentenceIndex = 0;
+    }
     if (_speakingPage < 0 || _speakingPage >= pageController.pageCount) {
       _speakingPage = pageController.pageIndex;
       _speakingSentenceIndex = 0;
@@ -519,6 +543,7 @@ class PdfTtsController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    pageController.removeListener(_onPageControllerUpdated);
     _ttsService.setOnFinished(null);
     unawaited(_ttsService.stop());
     highlightRectsNotifier.dispose();

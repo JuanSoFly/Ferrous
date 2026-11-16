@@ -1,3 +1,23 @@
+## [1.4.2-alpha.2] - 2026-11-16
+
+### HTML & EPUB Pagination Engine Overhaul
+- **Inline Run Aggregation**: Re-architected `SafeScreenPaginator` to measure and group contiguous inline text nodes and elements into anonymous container blocks, preventing fragmentation of styled inline text and eliminating erroneous page overflows.
+- **Replaced Element & Anchor Preservation**: Added detection for standalone media tags (`img`, `svg`, `canvas`, `video`) and preserved empty anchor bookmarks (`<a id="...">`) and `<br>` spacer line metrics without discarding them during pagination.
+
+### PDF Continuous Scroll & Navigation Synchronization
+- **Scroll Restore Locking**: Added `_isRestoringScroll` lifecycle guard in `PdfPageController` to suppress redundant scroll listeners and prevent progress saves from corrupting stored offsets during restoration.
+- **Direct Jump Navigation**: Implemented `jumpToPage` across both paged and continuous (vertical, horizontal, webtoon) modes with layout-aware offset calculations.
+- **E-Ink Adaptive Background Optimization**: Enhanced `CbzAdaptiveBackground` with static fallback rendering for E-Ink themes, reducing redraw costs.
+
+### Reactive Table of Contents & Outline Integration
+- **Dynamic Controller Binding**: Bound `PdfTableOfContentsSheet` directly to `PdfPageController` to reactively render bookmarks as they finish loading asynchronously in the background.
+- **Loading & Empty State Feedback**: Added dedicated progress spinners and empty outline messaging, along with auto-scrolling to active chapters with E-Ink color tokens.
+
+### Text Selection & Page Turn Stability
+- **Stable Continuous Selection Key**: Added memoized `'continuous-viewport'` selection key to `ReaderSelectionController` for continuous EPUB and MOBI reading, preventing state thrashing when crossing chapter boundaries.
+- **RealisticPageTurn Chapter Synchronization**: Added `chapterIndex` tracking and deferred page change notification in `RealisticPageTurn` to eliminate cache desync and render tree detachment during rapid chapter flips.
+- **TTS Concurrency & Cleanup**: Eagerly loaded page text and character bounds in parallel within `PdfTtsController` while deduplicating in-flight sentence segmentation requests and ensuring listener cleanup on disposal.
+
 ## [1.4.2-alpha.1] - 2026-11-16
 
 ### PDF Outline Extraction & Table of Contents

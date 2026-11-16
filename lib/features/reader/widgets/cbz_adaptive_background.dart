@@ -17,6 +17,8 @@ class CbzAdaptiveBackground extends StatelessWidget {
   final PageCornerColors? colors;
   final ReadingMode readingMode;
   final Duration animationDuration;
+  final Color? fallbackColor;
+  final bool isEInk;
 
   const CbzAdaptiveBackground({
     super.key,
@@ -24,13 +26,31 @@ class CbzAdaptiveBackground extends StatelessWidget {
     required this.colors,
     required this.readingMode,
     this.animationDuration = const Duration(milliseconds: 260),
+    this.fallbackColor,
+    this.isEInk = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fallbackColor = theme.scaffoldBackgroundColor;
-    final fallback = PageCornerColors.fallback(baseColor: fallbackColor);
+    final effectiveFallback = fallbackColor ?? theme.scaffoldBackgroundColor;
+
+    if (isEInk) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          RepaintBoundary(
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: effectiveFallback),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          child,
+        ],
+      );
+    }
+
+    final fallback = PageCornerColors.fallback(baseColor: effectiveFallback);
     final targetColors = colors ?? fallback;
 
     final isContinuous = readingMode == ReadingMode.verticalContinuous ||
@@ -46,7 +66,7 @@ class CbzAdaptiveBackground extends StatelessWidget {
           child: isContinuous
               ? DecoratedBox(
                   decoration: BoxDecoration(
-                    color: targetColors.isMangaWhitePaper ? const Color(0xFFFFFFFF) : fallbackColor,
+                    color: targetColors.isMangaWhitePaper ? const Color(0xFFFFFFFF) : effectiveFallback,
                   ),
                   child: const SizedBox.expand(),
                 )

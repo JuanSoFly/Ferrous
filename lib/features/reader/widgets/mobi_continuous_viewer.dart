@@ -94,20 +94,20 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
         return false;
       },
       child: SelectionArea(
-        key: widget.selectionController.keyForContinuous(widget.chapterController.currentChapterIndex),
+        key: widget.selectionController.keyForContinuousMode(),
         contextMenuBuilder: (context, selectableRegionState) => ReaderSelectionMenuBuilder.build(
           context: context,
           selectableRegionState: selectableRegionState,
           selectedContent: widget.selectionController.selectedContent,
           onAnnotate: widget.onAnnotate,
           onSelectionCleared: () => widget.selectionController.updateSelection(
-            'continuous-${widget.chapterController.currentChapterIndex}',
+            'continuous-viewport',
             null,
           ),
         ),
         onSelectionChanged: (content) {
           widget.selectionController.updateSelection(
-            'continuous-${widget.chapterController.currentChapterIndex}',
+            'continuous-viewport',
             content,
           );
         },

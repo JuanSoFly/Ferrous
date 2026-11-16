@@ -21,7 +21,6 @@ class PdfPageController extends ChangeNotifier {
 
   final ScrollController scrollController = ScrollController();
   Timer? _progressSaveTimer;
-  bool isRestoringScroll = false;
   double _lastScrollPosition;
   ReadingMode _readingMode;
 
@@ -75,6 +74,11 @@ class PdfPageController extends ChangeNotifier {
   // Chapters & Table of Contents
   List<PdfChapter> _chapters = const [];
   List<PdfChapter> get chapters => _chapters;
+  bool _isLoadingChapters = true;
+  bool get isLoadingChapters => _isLoadingChapters;
+
+  bool _isRestoringScroll = false;
+  bool get isRestoringScroll => _isRestoringScroll;
 
   PdfChapter? get currentChapter {
     if (_chapters.isEmpty) return null;
@@ -124,7 +128,8 @@ class PdfPageController extends ChangeNotifier {
 
   void _handleScrollUpdate() {
     if (!isContinuousMode) return;
-    if (isRestoringScroll) return;
+    if (_isRestoringScroll) return;
+    _syncCurrentPageFromScroll();
     _scheduleContinuousProgressSave();
   }
 
@@ -141,6 +146,7 @@ class PdfPageController extends ChangeNotifier {
   }
 
   void _syncCurrentPageFromScroll() {
+    if (_isRestoringScroll) return;
     if (!scrollController.hasClients || _pageCount == 0 || _pageKeys.isEmpty) return;
 
     RenderBox? viewportBox;
@@ -192,7 +198,7 @@ class PdfPageController extends ChangeNotifier {
   }
 
   void saveContinuousProgress() {
-    if (!scrollController.hasClients || _pageCount == 0) return;
+    if (!scrollController.hasClients || _pageCount == 0 || _isRestoringScroll) return;
 
     _syncCurrentPageFromScroll();
 
@@ -212,17 +218,24 @@ class PdfPageController extends ChangeNotifier {
     if (targetPage <= 0) return 0.0;
     final defaultAr = _defaultAspectRatio > 0 ? _defaultAspectRatio : 0.70;
     final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+    final isWebtoon = _readingMode == ReadingMode.webtoon;
 
-    double offset = isHorizontal ? 16.0 : 16.0; // padding
+    double offset = isWebtoon ? 0.0 : 16.0;
+
     for (int i = 0; i < targetPage; i++) {
       final size = _renderedPageSizes[i];
       final ar = (size != null && size.height > 0)
           ? (size.width / size.height).clamp(0.2, 5.0)
           : defaultAr;
 
-      final extent = isHorizontal
-          ? (_viewerSize.height > 0 ? (_viewerSize.height * ar) : 600.0)
-          : (_viewerSize.width > 0 ? (_viewerSize.width / ar) : 600.0);
+      double extent;
+      if (isHorizontal) {
+        final effH = _viewerSize.height > 0 ? _viewerSize.height : 800.0;
+        extent = effH * ar;
+      } else {
+        final effW = _viewerSize.width > 0 ? _viewerSize.width : 600.0;
+        extent = effW / ar;
+      }
 
       offset += extent + spacing;
     }
@@ -231,16 +244,21 @@ class PdfPageController extends ChangeNotifier {
 
   void restoreContinuousScroll() {
     if (!scrollController.hasClients || _pageCount == 0) return;
-    if (_lastScrollPosition <= 0 && _pageIndex <= 0) return;
+    if (_lastScrollPosition <= 0 && _pageIndex <= 0) {
+      _isRestoringScroll = false;
+      return;
+    }
 
-    isRestoringScroll = true;
+    _isRestoringScroll = true;
     final isWebtoon = _readingMode == ReadingMode.webtoon;
     final spacing = isWebtoon ? 1.0 : 12.0;
-    final targetOffset = calculateEstimatedOffsetForPage(_pageIndex, spacing);
+    final targetOffset = _lastScrollPosition > 0
+        ? _lastScrollPosition
+        : calculateEstimatedOffsetForPage(_pageIndex, spacing);
 
     void tryRestore() {
-      if (!scrollController.hasClients) {
-        isRestoringScroll = false;
+      if (!scrollController.hasClients || _disposed) {
+        _isRestoringScroll = false;
         return;
       }
       final position = scrollController.position;
@@ -253,7 +271,9 @@ class PdfPageController extends ChangeNotifier {
       if ((position.pixels - clamped).abs() > 1.0) {
         scrollController.jumpTo(clamped);
       }
-      isRestoringScroll = false;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _isRestoringScroll = false;
+      });
     }
 
     SchedulerBinding.instance.addPostFrameCallback((_) => tryRestore());
@@ -279,20 +299,54 @@ class PdfPageController extends ChangeNotifier {
     repository.updateReadingProgress(book.id, readingMode: mode);
 
     if (isContinuousMode) {
+      _isRestoringScroll = true;
       final isWebtoon = _readingMode == ReadingMode.webtoon;
       final spacing = isWebtoon ? 1.0 : 12.0;
       final targetScroll = calculateEstimatedOffsetForPage(_pageIndex, spacing);
 
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (!scrollController.hasClients) return;
-        scrollController.jumpTo(targetScroll.clamp(0.0, scrollController.position.maxScrollExtent));
-      });
-    } else if (wasContinuous) {
-      // Switching from continuous to paged: ensure target page is fully rendered immediately
-      renderPage(_pageIndex, userInitiated: true);
+      void tryJump() {
+        if (!scrollController.hasClients || _disposed) {
+          _isRestoringScroll = false;
+          return;
+        }
+        final position = scrollController.position;
+        if (!position.hasContentDimensions) {
+          SchedulerBinding.instance.addPostFrameCallback((_) => tryJump());
+          return;
+        }
+        scrollController.jumpTo(targetScroll.clamp(0.0, position.maxScrollExtent));
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          _isRestoringScroll = false;
+        });
+      }
+
+      SchedulerBinding.instance.addPostFrameCallback((_) => tryJump());
+    } else {
+      _isRestoringScroll = false;
+      if (wasContinuous) {
+        // Switching from continuous to paged: ensure target page is fully rendered immediately
+        renderPage(_pageIndex, userInitiated: true);
+      }
     }
 
     notifyListeners();
+  }
+
+  void jumpToPage(int targetPage) {
+    if (targetPage < 0 || targetPage >= _pageCount) return;
+    if (isContinuousMode) {
+      final isWebtoon = _readingMode == ReadingMode.webtoon;
+      final spacing = isWebtoon ? 1.0 : 12.0;
+      final offset = calculateEstimatedOffsetForPage(targetPage, spacing);
+      if (scrollController.hasClients) {
+        final clamped = offset.clamp(0.0, scrollController.position.maxScrollExtent);
+        scrollController.jumpTo(clamped);
+      }
+      _pageIndex = targetPage;
+      notifyListeners();
+    } else {
+      renderPage(targetPage, userInitiated: true);
+    }
   }
 
   void _saveProgressOnDispose() {
@@ -315,13 +369,26 @@ class PdfPageController extends ChangeNotifier {
     final widthClamped = renderedSize.width.clamp(1.0, double.infinity);
     final heightClamped = renderedSize.height.clamp(1.0, double.infinity);
     final aspectRatio = widthClamped / heightClamped;
-    final viewerAspect = _viewerSize.width / _viewerSize.height;
 
+    if (_readingMode == ReadingMode.verticalContinuous || _readingMode == ReadingMode.webtoon) {
+      final w = _viewerSize.width;
+      return Size(w, w / aspectRatio);
+    } else if (_readingMode == ReadingMode.horizontalContinuous) {
+      final h = _viewerSize.height;
+      return Size(h * aspectRatio, h);
+    }
+
+    final viewerAspect = _viewerSize.width / _viewerSize.height;
     if (aspectRatio > viewerAspect) {
       return Size(_viewerSize.width, _viewerSize.width / aspectRatio);
     } else {
       return Size(_viewerSize.height * aspectRatio, _viewerSize.height);
     }
+  }
+
+  void updateViewportSize(Size size) {
+    if (_viewerSize == size) return;
+    viewerSize = size;
   }
 
   set viewerSize(Size size) {
@@ -454,6 +521,11 @@ class PdfPageController extends ChangeNotifier {
           totalPages: _pageCount,
         );
 
+        unawaited(Future.wait([
+          loadPageText(index),
+          ensureCharacterBoundsLoaded(index),
+        ]));
+
         _schedulePrefetch(index);
         return;
       }
@@ -515,6 +587,11 @@ class PdfPageController extends ChangeNotifier {
           _pruneImageProviders();
           _extractCornerColors(index, result.data);
 
+          unawaited(Future.wait([
+            loadPageText(index),
+            ensureCharacterBoundsLoaded(index),
+          ]));
+
           notifyListeners();
         } finally {
           _pdfSemaphore.release();
@@ -539,6 +616,9 @@ class PdfPageController extends ChangeNotifier {
     if (_disposed) return;
     _resolvedFile = resolved;
 
+    _isLoadingChapters = true;
+    _isRestoringScroll = isContinuousMode;
+
     final count = await pdf_api.getPdfPageCount(path: resolved.path);
     if (_disposed) return;
     _pageCount = count;
@@ -549,10 +629,25 @@ class PdfPageController extends ChangeNotifier {
     unawaited(PdfOutlineService.extractBookmarks(resolved.path).then((extracted) {
       if (_disposed) return;
       _chapters = extracted;
+    }).catchError((e) {
+      debugPrint('Failed to extract bookmarks: $e');
+    }).whenComplete(() {
+      if (_disposed) return;
+      _isLoadingChapters = false;
       notifyListeners();
     }));
 
     await renderPage(_pageIndex);
+
+    if (isContinuousMode) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) {
+          restoreContinuousScroll();
+        }
+      });
+    } else {
+      _isRestoringScroll = false;
+    }
   }
 
   void _extractCornerColors(int index, Uint8List jpegBytes) {

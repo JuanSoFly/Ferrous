@@ -26,6 +26,15 @@ class ReaderSelectionController {
     );
   }
 
+  /// Retrieves or creates a memoized [GlobalKey<SelectionAreaState>] for the stable continuous viewport.
+  GlobalKey<SelectionAreaState> keyForContinuousMode() {
+    const id = 'continuous-viewport';
+    return _keys.putIfAbsent(
+      id,
+      () => GlobalKey<SelectionAreaState>(debugLabel: 'selection-$id'),
+    );
+  }
+
   /// Whether non-empty text content is currently selected.
   bool get hasSelection =>
       selectedContent != null && selectedContent!.plainText.trim().isNotEmpty;
@@ -76,9 +85,11 @@ class ReaderSelectionController {
       if (key.currentState != null && key.currentState!.mounted) {
         return false;
       }
-      // 2. Retain active continuous key
+      // 2. Retain stable continuous viewport key
+      if (id == 'continuous-viewport') return false;
+      // 3. Retain active continuous key
       if (id == 'continuous-$activeChapter') return false;
-      // 3. Retain the adjacent chapter sentinel window (-1, current, +1)
+      // 4. Retain the adjacent chapter sentinel window (-1, current, +1)
       for (int ch = activeChapter - 1; ch <= activeChapter + 1; ch++) {
         if (id.startsWith('$ch-')) return false;
       }

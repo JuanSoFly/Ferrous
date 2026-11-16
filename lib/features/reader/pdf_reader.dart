@@ -6,11 +6,11 @@ import 'package:ferrous/data/repositories/book_repository.dart';
 import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/features/reader/reading_mode_sheet.dart';
 import 'package:ferrous/features/reader/widgets/pdf_toc_sheet.dart';
+import 'package:ferrous/features/settings/app_themes.dart';
 import 'controllers/pdf_page_controller.dart';
 import 'controllers/pdf_tts_controller.dart';
 import 'controllers/reader_chrome_controller.dart';
 import 'controllers/reader_mode_controller.dart';
-import 'widgets/book_background_texture.dart';
 import 'widgets/cbz_adaptive_background.dart';
 import 'widgets/pdf_page_viewer.dart';
 import 'widgets/pdf_reader_top_bar.dart';
@@ -73,7 +73,6 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeController.enterImmersiveMode();
-      _pageController.restoreContinuousScroll();
     });
   }
 
@@ -136,11 +135,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
       backgroundColor: Colors.transparent,
       builder: (context) {
         return PdfTableOfContentsSheet(
-          chapters: _pageController.chapters,
-          currentPage: _pageController.pageIndex,
-          pageCount: _pageController.pageCount,
+          pageController: _pageController,
           onSelectChapter: (pageIndex) {
-            _pageController.renderPage(pageIndex, userInitiated: true);
+            _pageController.jumpToPage(pageIndex);
           },
         );
       },
@@ -173,10 +170,14 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final themeRepo = context.watch<ReaderThemeRepository>();
+    final currentTheme = context.watch<AppTheme?>();
+    final isEInk = currentTheme == AppTheme.eInk;
+    final theme = Theme.of(context);
+
     return Scaffold(
       body: Stack(
         children: [
-          // Content layer wrapped in CbzAdaptiveBackground + physical book background
+          // Content layer wrapped in CbzAdaptiveBackground
           Positioned.fill(
             child: ListenableBuilder(
               listenable: _pageController,
@@ -184,18 +185,16 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
                 return CbzAdaptiveBackground(
                   colors: _pageController.currentCornerColors,
                   readingMode: _pageController.readingMode,
-                  child: RealBookBackground(
-                    textureId: themeRepo.config.paperTexture,
-                    showSpine: themeRepo.config.showBookSpine,
-                    child: PdfPageViewer(
-                      pageController: _pageController,
-                      ttsController: _ttsController,
-                      chromeController: _chromeController,
-                      modeController: _modeController,
-                      transformController: _pdfTransformController,
-                      pageImageKey: _pageImageKey,
-                      onLockedTap: _handleLockedTap,
-                    ),
+                  fallbackColor: isEInk ? const Color(0xFFEAE6DF) : theme.scaffoldBackgroundColor,
+                  isEInk: isEInk,
+                  child: PdfPageViewer(
+                    pageController: _pageController,
+                    ttsController: _ttsController,
+                    chromeController: _chromeController,
+                    modeController: _modeController,
+                    transformController: _pdfTransformController,
+                    pageImageKey: _pageImageKey,
+                    onLockedTap: _handleLockedTap,
                   ),
                 );
               },

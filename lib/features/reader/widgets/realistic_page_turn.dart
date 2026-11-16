@@ -16,6 +16,7 @@ typedef PageTurnCallback = void Function(int newIndex);
 /// - Outer margin tap-to-turn (left/right 18%) and center tap for reader chrome.
 /// - Zero-allocation custom painters and efficient `RepaintBoundary` caching.
 class RealisticPageTurn extends StatefulWidget {
+  final int chapterIndex;
   final int pageCount;
   final int currentPage;
   final Widget Function(BuildContext context, int index) pageBuilder;
@@ -31,6 +32,7 @@ class RealisticPageTurn extends StatefulWidget {
 
   const RealisticPageTurn({
     super.key,
+    this.chapterIndex = 0,
     required this.pageCount,
     required this.currentPage,
     required this.pageBuilder,
@@ -119,15 +121,23 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   @override
   void didUpdateWidget(RealisticPageTurn oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.textureId != oldWidget.textureId ||
+
+    final bool chapterChanged = widget.chapterIndex != oldWidget.chapterIndex;
+    final bool needsPageSync = chapterChanged ||
+        widget.currentPage != oldWidget.currentPage ||
+        _activePage != widget.currentPage;
+
+    if (chapterChanged ||
+        widget.textureId != oldWidget.textureId ||
         widget.showSpine != oldWidget.showSpine ||
         widget.pageCount != oldWidget.pageCount ||
         widget.enabled != oldWidget.enabled ||
-        widget.currentPage != oldWidget.currentPage) {
+        needsPageSync) {
       _pageCache.clear();
       _pageKeys.clear();
     }
-    if (widget.currentPage != oldWidget.currentPage) {
+
+    if (needsPageSync) {
       if (_isAnimating || _isDragging) {
         _curlController.reset();
         _isAnimating = false;
@@ -162,9 +172,10 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
       _isDragging = false;
       _turnDirection = 0;
       _curlController.reset();
-      widget.onPageChanged(_activePage);
       _pruneCache();
       if (mounted) setState(() {});
+      // Parent callback triggered last; didUpdateWidget will sync _activePage on parent rebuild
+      widget.onPageChanged(_activePage);
     } else if (status == AnimationStatus.dismissed) {
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;

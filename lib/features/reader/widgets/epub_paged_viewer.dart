@@ -679,6 +679,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
           if (useRealisticCurl) {
             return RealisticPageTurn(
               key: _realisticPageTurnKey,
+              chapterIndex: _currentChapter,
               pageCount: totalSlots,
               currentPage: _activeSlot,
               textureId: themeRepo.config.paperTexture,

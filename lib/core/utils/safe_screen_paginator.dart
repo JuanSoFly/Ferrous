@@ -38,7 +38,23 @@ class SafeScreenPaginator {
     'p', 'div', 'section', 'article', 'main', 'aside', 'header', 'footer',
     'blockquote', 'figure', 'figcaption', 'pre', 'ul', 'ol', 'li', 'dl',
     'dt', 'dd', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
+    // Treat standalone media/replaced elements as block-level for pagination measurement
+    'img', 'svg', 'image', 'video', 'canvas',
   };
+
+  static bool _isBlockNode(dom.Node node) {
+    if (node is! dom.Element) return false;
+    final tag = node.localName?.toLowerCase() ?? '';
+    if (_blockTags.contains(tag)) return true;
+    return node.querySelector(_blockTags.join(',')) != null;
+  }
+
+  static bool _hasMeaningfulNonTextContent(dom.Element el) {
+    if (el.attributes.containsKey('id') || el.attributes.containsKey('name')) {
+      return true;
+    }
+    return el.querySelector('img, svg, image, br, hr, [id], [name]') != null;
+  }
 
   static void clearCache() {
     _cache.clear();
@@ -309,185 +325,237 @@ class SafeScreenPaginator {
       }
     }
 
-    void processNodes(List<dom.Node> nodes) {
-      for (int i = 0; i < nodes.length; i++) {
-        final node = nodes[i];
-        if (node is dom.Element) {
-          final tag = node.localName?.toLowerCase() ?? '';
+    late final void Function(List<dom.Node>) processNodes;
 
-          // Structural container elements
-          final hasBlockChildren = tag != 'table' &&
-              node.children.any((c) => _blockTags.contains(c.localName?.toLowerCase()));
+    void processBlockElement(dom.Element node, {bool isAnonymous = false}) {
+      final tag = node.localName?.toLowerCase() ?? '';
 
-          if (hasBlockChildren) {
-            final id = (node.attributes['id'] ?? '').trim();
-            if (id.isNotEmpty) {
-              final escapedId = const HtmlEscape(HtmlEscapeMode.attribute).convert(id);
-              currentBuffer.write('<span id="$escapedId"></span>');
-            }
+      // Structural container elements with block children
+      final hasBlockChildren = !isAnonymous &&
+          tag != 'table' &&
+          tag != 'p' &&
+          node.children.any((c) => _blockTags.contains(c.localName?.toLowerCase()));
 
-            final containerAttrs = _serializeAttributes(node, stripId: false);
-            currentBuffer.write('<$tag$containerAttrs>');
-            openAncestors.add(node);
+      if (hasBlockChildren) {
+        final id = (node.attributes['id'] ?? '').trim();
+        if (id.isNotEmpty) {
+          final escapedId = const HtmlEscape(HtmlEscapeMode.attribute).convert(id);
+          currentBuffer.write('<span id="$escapedId"></span>');
+        }
 
-            processNodes(node.nodes);
+        final containerAttrs = _serializeAttributes(node, stripId: false);
+        currentBuffer.write('<$tag$containerAttrs>');
+        openAncestors.add(node);
 
-            if (openAncestors.isNotEmpty && openAncestors.last == node) {
-              openAncestors.removeLast();
-              currentBuffer.write('</$tag>');
-            }
-            continue;
-          }
+        processNodes(node.nodes);
 
-          final isHeading = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}.contains(tag);
-          final hasImage = tag == 'img' ||
-              tag == 'svg' ||
-              tag == 'image' ||
-              node.querySelector('img, svg, image') != null;
+        if (openAncestors.isNotEmpty && openAncestors.last == node) {
+          openAncestors.removeLast();
+          currentBuffer.write('</$tag>');
+        }
+        return;
+      }
 
-          final dom.Element targetElement;
-          if (!hasImage && !isHeading) {
-            final cloned = node.clone(true);
-            HyphenationHelper.processElement(
-              cloned,
-              applyHyphenation: hyphenation && tag != 'pre',
-              applyIndent: paragraphIndent && tag != 'pre',
-              languageCode: primaryLang,
-            );
-            targetElement = cloned;
-          } else {
-            targetElement = node;
-          }
+      final isHeading = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}.contains(tag);
+      final hasImage = tag == 'img' ||
+          tag == 'svg' ||
+          tag == 'image' ||
+          node.querySelector('img, svg, image') != null;
 
-          final nodeText = _extractMeasurementText(targetElement, isPre: tag == 'pre');
-          final textLen = DomTextUtils.extractPlainText(targetElement, preserveSoftHyphens: true).length;
+      final dom.Element targetElement;
+      if (!hasImage && !isHeading) {
+        final cloned = node.clone(true);
+        HyphenationHelper.processElement(
+          cloned,
+          applyHyphenation: hyphenation && tag != 'pre',
+          applyIndent: !isAnonymous && paragraphIndent && tag != 'pre',
+          languageCode: primaryLang,
+        );
+        targetElement = cloned;
+      } else {
+        targetElement = node;
+      }
 
-          final double blockHeight;
-          if (hasImage) {
-            blockHeight = maxPageHeight * 0.72;
-          } else if (isHeading) {
-            final scale = ReaderTypographyMetrics.headingScale(tag);
-            final topMargin = ReaderTypographyMetrics.headingTopMargin(tag, true, fontSize);
-            final bottomMargin = ReaderTypographyMetrics.headingBottomMargin(tag, true, paragraphSpacing);
-            blockHeight = measureTextHeight(
-              nodeText,
-              fontScale: scale,
-              isIndent: false,
-              extraTopMargin: topMargin,
-              extraBottomMargin: bottomMargin,
-              isHeading: true,
-            );
-          } else {
-            blockHeight = measureTextHeight(
-              nodeText,
-              fontScale: 1.0,
-              isIndent: paragraphIndent && tag == 'p',
-              extraTopMargin: 0.0,
-              extraBottomMargin: paragraphSpacing,
+      final nodeText = _extractMeasurementText(targetElement, isPre: tag == 'pre');
+      final textLen = DomTextUtils.extractPlainText(targetElement, preserveSoftHyphens: true).length;
+
+      final double blockHeight;
+      if (hasImage) {
+        blockHeight = maxPageHeight * 0.72;
+      } else if (isHeading) {
+        final scale = ReaderTypographyMetrics.headingScale(tag);
+        final topMargin = ReaderTypographyMetrics.headingTopMargin(tag, true, fontSize);
+        final bottomMargin = ReaderTypographyMetrics.headingBottomMargin(tag, true, paragraphSpacing);
+        blockHeight = measureTextHeight(
+          nodeText,
+          fontScale: scale,
+          isIndent: false,
+          extraTopMargin: topMargin,
+          extraBottomMargin: bottomMargin,
+          isHeading: true,
+        );
+      } else {
+        blockHeight = measureTextHeight(
+          nodeText,
+          fontScale: 1.0,
+          isIndent: !isAnonymous && paragraphIndent && tag == 'p',
+          extraTopMargin: 0.0,
+          extraBottomMargin: paragraphSpacing,
+          isPre: tag == 'pre',
+          isHeading: false,
+        );
+      }
+
+      // Keep headings attached to at least 2 lines of text
+      if (isHeading &&
+          currentHeight > 0 &&
+          (currentHeight + blockHeight + (fontSize * lineHeight * 2.0)) > maxPageHeight) {
+        flushPage();
+      }
+
+      // Standalone image handling
+      if (hasImage) {
+        if (currentHeight > 0 && (currentHeight + blockHeight) > maxPageHeight) {
+          flushPage();
+        }
+        currentBuffer.write(node.outerHtml);
+        currentHeight += blockHeight;
+        runningCharOffset += textLen;
+        if (blockHeight >= maxPageHeight * 0.6) {
+          flushPage();
+        }
+        return;
+      }
+
+      // If block fits on current page, append directly
+      if (currentHeight + blockHeight <= maxPageHeight) {
+        currentBuffer.write(isAnonymous ? targetElement.innerHtml : targetElement.outerHtml);
+        currentHeight += blockHeight;
+        runningCharOffset += textLen;
+        return;
+      }
+
+      // Multi-page paragraph/block splitting
+      final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div') && !hasImage;
+
+      if (canSplit) {
+        final double minRemainingSpace = fontSize * lineHeight * 2.0;
+        double remainingHeight = maxPageHeight - currentHeight;
+
+        // If remaining space on current page is too small (< 2 lines), start fresh on next page
+        if (currentHeight > 0 && remainingHeight < minRemainingSpace) {
+          flushPage();
+          remainingHeight = maxPageHeight;
+        }
+
+        var splitParts = _splitBlockAcrossPages(
+          node: targetElement,
+          firstBudget: remainingHeight,
+          maxPageHeight: maxPageHeight,
+          measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
+            txt,
+            isIndent: isIndent && paragraphIndent && !isAnonymous,
+            extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
+            isPre: tag == 'pre',
+            isHeading: false,
+          ),
+          isPre: tag == 'pre',
+        );
+
+        if (splitParts.isEmpty && currentHeight > 0) {
+          flushPage();
+          splitParts = _splitBlockAcrossPages(
+            node: targetElement,
+            firstBudget: maxPageHeight,
+            maxPageHeight: maxPageHeight,
+            measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
+              txt,
+              isIndent: isIndent && paragraphIndent && !isAnonymous,
+              extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
               isPre: tag == 'pre',
               isHeading: false,
-            );
-          }
+            ),
+            isPre: tag == 'pre',
+          );
+        }
 
-          // Keep headings attached to at least 2 lines of text
-          if (isHeading &&
-              currentHeight > 0 &&
-              (currentHeight + blockHeight + (fontSize * lineHeight * 2.0)) > maxPageHeight) {
+        for (int partIdx = 0; partIdx < splitParts.length; partIdx++) {
+          final part = splitParts[partIdx];
+          if (currentHeight + part.height > maxPageHeight && currentHeight > 0) {
             flushPage();
           }
+          currentBuffer.write(part.html);
+          currentHeight += part.height;
+          runningCharOffset += part.charLength;
+        }
+        return;
+      }
 
-          // Standalone image handling
-          if (hasImage) {
-            if (currentHeight > 0 && (currentHeight + blockHeight) > maxPageHeight) {
-              flushPage();
-            }
-            currentBuffer.write(node.outerHtml);
-            currentHeight += blockHeight;
-            runningCharOffset += textLen;
-            if (blockHeight >= maxPageHeight * 0.6) {
-              flushPage();
-            }
-            continue;
+      // Standard atomic block doesn't fit on current page -> flush and start new page
+      if (currentHeight > 0) {
+        flushPage();
+      }
+      currentBuffer.write(isAnonymous ? targetElement.innerHtml : targetElement.outerHtml);
+      currentHeight += blockHeight;
+      runningCharOffset += textLen;
+    }
+
+    void doProcessNodes(List<dom.Node> nodes) {
+      int i = 0;
+      while (i < nodes.length) {
+        final node = nodes[i];
+
+        // Group contiguous inline nodes (Text nodes and non-block Elements)
+        if (node is dom.Text || (node is dom.Element && !_isBlockNode(node))) {
+          final inlineRun = <dom.Node>[];
+          while (i < nodes.length &&
+              (nodes[i] is dom.Text ||
+                  (nodes[i] is dom.Element && !_isBlockNode(nodes[i])))) {
+            inlineRun.add(nodes[i]);
+            i++;
           }
 
-          // If block fits on current page, append directly
-          if (currentHeight + blockHeight <= maxPageHeight) {
-            currentBuffer.write(targetElement.outerHtml);
-            currentHeight += blockHeight;
-            runningCharOffset += textLen;
-            continue;
+          // Use a neutral <div> wrapper so CSS <p> text-indent/margins aren't injected
+          final anonBlock = dom.Element.tag('div');
+          for (final n in inlineRun) {
+            anonBlock.nodes.add(n.clone(true));
           }
 
-          // Multi-page paragraph/block splitting
-          final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div') && !hasImage;
+          final plainText =
+              DomTextUtils.extractPlainText(anonBlock, preserveSoftHyphens: true);
+          final hasVisibleText = plainText.replaceAll('\u00A0', ' ').trim().isNotEmpty;
 
-          if (canSplit) {
-            final double minRemainingSpace = fontSize * lineHeight * 2.0;
-            double remainingHeight = maxPageHeight - currentHeight;
-
-            // If remaining space on current page is too small (< 2 lines), start fresh on next page
-            if (currentHeight > 0 && remainingHeight < minRemainingSpace) {
-              flushPage();
-              remainingHeight = maxPageHeight;
-            }
-
-            var splitParts = _splitBlockAcrossPages(
-              node: targetElement,
-              firstBudget: remainingHeight,
-              maxPageHeight: maxPageHeight,
-              measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
-                txt,
-                isIndent: isIndent && paragraphIndent,
-                extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
-                isPre: tag == 'pre',
-                isHeading: false,
-              ),
-              isPre: tag == 'pre',
-            );
-
-            if (splitParts.isEmpty && currentHeight > 0) {
-              flushPage();
-              splitParts = _splitBlockAcrossPages(
-                node: targetElement,
-                firstBudget: maxPageHeight,
-                maxPageHeight: maxPageHeight,
-                measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
-                  txt,
-                  isIndent: isIndent && paragraphIndent,
-                  extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
-                  isPre: tag == 'pre',
-                  isHeading: false,
-                ),
-                isPre: tag == 'pre',
-              );
-            }
-
-            for (int partIdx = 0; partIdx < splitParts.length; partIdx++) {
-              final part = splitParts[partIdx];
-              if (currentHeight + part.height > maxPageHeight && currentHeight > 0) {
-                flushPage();
+          if (!hasVisibleText) {
+            // Preserve empty anchors (<a id="chap01"></a>) or <br/> tags without losing them
+            if (_hasMeaningfulNonTextContent(anonBlock)) {
+              currentBuffer.write(anonBlock.innerHtml);
+              // Count <br> vertical height so spacer lines aren't ignored
+              final brCount = anonBlock.querySelectorAll('br').length;
+              if (brCount > 0) {
+                currentHeight += brCount * singleLineHeight;
               }
-              currentBuffer.write(part.html);
-              currentHeight += part.height;
-              runningCharOffset += part.charLength;
+            } else if (plainText.isNotEmpty &&
+                currentBuffer.isNotEmpty &&
+                !currentBuffer.toString().endsWith(' ')) {
+              currentBuffer.write(' ');
             }
+            runningCharOffset += plainText.length;
             continue;
           }
 
-          // Standard atomic block doesn't fit on current page -> flush and start new page
-          if (currentHeight > 0) {
-            flushPage();
-          }
-          currentBuffer.write(node.outerHtml);
-          currentHeight += blockHeight;
-          runningCharOffset += textLen;
-        } else if (node is dom.Text && node.text.trim().isNotEmpty) {
-          final escaped = const HtmlEscape().convert(node.text);
-          currentBuffer.write(escaped);
-          runningCharOffset += node.text.length;
+          // Measure and paginate the aggregated inline run as an anonymous block
+          processBlockElement(anonBlock, isAnonymous: true);
+          continue;
+        }
+
+        // Block element or replaced media element
+        i++;
+        if (node is dom.Element) {
+          processBlockElement(node);
         }
       }
     }
+    processNodes = doProcessNodes;
 
     processNodes(body.nodes);
     flushPage(isEndOfChapter: true);

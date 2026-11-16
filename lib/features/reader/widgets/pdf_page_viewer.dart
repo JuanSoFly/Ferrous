@@ -53,13 +53,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   Offset? _lastTapGlobalPos;
   DateTime? _lastTapTime;
 
-  // Page container keys to resolve unified zoom + scroll coordinates via RenderBox.globalToLocal
-  final Map<int, GlobalKey> _pageContainerKeys = {};
-
-  GlobalKey _getPageContainerKey(int index) {
-    return _pageContainerKeys.putIfAbsent(index, () => GlobalKey(debugLabel: 'pdf-page-$index'));
-  }
-
   @override
   void initState() {
     super.initState();
@@ -182,27 +175,30 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   /// using RenderBox.globalToLocal to automatically invert zoom, pan, and scroll offsets.
   (int pageIndex, Offset normalizedOffset)? _resolvePageTapCoordinates(Offset globalPos) {
     final activePage = widget.pageController.pageIndex;
+    final pageKeys = widget.pageController.pageKeys;
 
     // Check active page first
-    final activeKey = _pageContainerKeys[activePage];
-    final activeContext = activeKey?.currentContext;
-    if (activeContext != null) {
-      final box = activeContext.findRenderObject() as RenderBox?;
-      if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
-        final local = box.globalToLocal(globalPos);
-        final rect = Offset.zero & box.size;
-        if (rect.contains(local)) {
-          final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
-          final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
-          return (activePage, Offset(xNorm, yNorm));
+    if (activePage >= 0 && activePage < pageKeys.length) {
+      final activeKey = pageKeys[activePage];
+      final activeContext = activeKey.currentContext;
+      if (activeContext != null) {
+        final box = activeContext.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
+          final local = box.globalToLocal(globalPos);
+          final rect = Offset.zero & box.size;
+          if (rect.contains(local)) {
+            final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
+            final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
+            return (activePage, Offset(xNorm, yNorm));
+          }
         }
       }
     }
 
     // In continuous mode, check other mounted pages
-    for (final entry in _pageContainerKeys.entries) {
-      if (entry.key == activePage) continue;
-      final ctx = entry.value.currentContext;
+    for (int i = 0; i < pageKeys.length; i++) {
+      if (i == activePage) continue;
+      final ctx = pageKeys[i].currentContext;
       if (ctx == null) continue;
       final box = ctx.findRenderObject() as RenderBox?;
       if (box == null || !box.hasSize || box.size.width <= 0 || box.size.height <= 0) continue;
@@ -211,18 +207,21 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       if (rect.contains(local)) {
         final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
         final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
-        return (entry.key, Offset(xNorm, yNorm));
+        return (i, Offset(xNorm, yNorm));
       }
     }
 
     // Fallback: active page with clamp
-    if (activeContext != null) {
-      final box = activeContext.findRenderObject() as RenderBox?;
-      if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
-        final local = box.globalToLocal(globalPos);
-        final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
-        final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
-        return (activePage, Offset(xNorm, yNorm));
+    if (activePage >= 0 && activePage < pageKeys.length) {
+      final activeContext = pageKeys[activePage].currentContext;
+      if (activeContext != null) {
+        final box = activeContext.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
+          final local = box.globalToLocal(globalPos);
+          final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
+          final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
+          return (activePage, Offset(xNorm, yNorm));
+        }
       }
     }
 
@@ -355,8 +354,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         onTapUp: (details) => _handleTapUp(context, details),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            widget.pageController.viewerSize =
-                Size(constraints.maxWidth, constraints.maxHeight);
+            widget.pageController.updateViewportSize(
+              Size(constraints.maxWidth, constraints.maxHeight),
+            );
 
             return _buildGallery();
           },
@@ -567,11 +567,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
             : pageController.logicalPageSize)
         : pageController.getLogicalPageSize(index);
 
-    final themeRepo = context.watch<ReaderThemeRepository>();
-    final highlightStyle = themeRepo.highlightStyle;
-    final currentTheme = context.watch<AppTheme>();
-    final isEInk = currentTheme == AppTheme.eInk;
-
     Widget imageWidget = Image(
       image: pageController.getPageImageProvider(index),
       fit: BoxFit.contain,
@@ -593,21 +588,28 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
             Positioned.fill(
               child: IgnorePointer(
                 child: RepaintBoundary(
-                  child: ValueListenableBuilder<List<PdfTextRect>>(
-                    valueListenable: ttsController.highlightRectsNotifier,
-                    builder: (context, rects, _) {
-                      if (!ttsController.showTtsControls ||
-                          rects.isEmpty ||
-                          ttsController.highlightPageIndex != index) {
-                        return const SizedBox.shrink();
-                      }
-                      return CustomPaint(
-                        painter: PdfHighlightPainter(
-                          rects: rects,
-                          style: highlightStyle,
-                          primaryColor: Theme.of(context).colorScheme.primary,
-                          isEInk: isEInk,
-                        ),
+                  child: Consumer2<ReaderThemeRepository, AppTheme?>(
+                    builder: (context, themeRepo, currentTheme, _) {
+                      final isEInk = currentTheme == AppTheme.eInk;
+                      final highlightStyle = themeRepo.highlightStyle;
+
+                      return ValueListenableBuilder<List<PdfTextRect>>(
+                        valueListenable: ttsController.highlightRectsNotifier,
+                        builder: (context, rects, _) {
+                          if (!ttsController.showTtsControls ||
+                              rects.isEmpty ||
+                              ttsController.highlightPageIndex != index) {
+                            return const SizedBox.shrink();
+                          }
+                          return CustomPaint(
+                            painter: PdfHighlightPainter(
+                              rects: rects,
+                              style: highlightStyle,
+                              primaryColor: Theme.of(context).colorScheme.primary,
+                              isEInk: isEInk,
+                            ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -619,7 +621,9 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       );
     }
 
-    final containerKey = _getPageContainerKey(index);
+    final containerKey = (index >= 0 && index < widget.pageController.pageKeys.length)
+        ? widget.pageController.pageKeys[index]
+        : null;
 
     if (isActive) {
       return KeyedSubtree(

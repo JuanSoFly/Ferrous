@@ -677,6 +677,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
           if (useRealisticCurl) {
             return RealisticPageTurn(
               key: _realisticPageTurnKey,
+              chapterIndex: _currentChapter,
               pageCount: totalSlots,
               currentPage: _activeSlot,
               textureId: themeRepo.config.paperTexture,
