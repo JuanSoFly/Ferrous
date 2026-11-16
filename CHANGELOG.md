@@ -1,3 +1,32 @@
+## [1.4.2] - 2026-11-17
+
+### Modular Plain Text (TXT) Reader Engine
+- **Native Encoding Auto-Detection**: Integrated `chardetng` and `encoding_rs` in the Rust backend to automatically detect legacy character encodings (Shift-JIS, GBK, Windows-1252, ISO-8859, etc.) and losslessly transcode text into clean UTF-8.
+- **Dynamic Chapter Splitting & Markdown Parsing**: Segmented plain text into discrete chapters using natural heading patterns and size thresholds, with rich rendering support for markdown headings, blockquotes, code blocks, checklists, and Mermaid diagram embeds.
+- **Dedicated TXT Reader Architecture**: Added `TxtReaderScreen` with paged and continuous viewers (`TxtPagedViewer`, `TxtContinuousViewer`, `TxtContentViewer`), page-curl animations, tap navigation, text selection, and typography customization.
+- **Synchronized TXT TTS Engine**: Implemented `TxtTtsController` with word- and sentence-level highlight tracking, continuous cross-chapter audio playback, and tap-to-speak interaction.
+
+### Native PDFium Outline & Table of Contents
+- **Native C++ Bookmark Extraction**: Implemented `getPdfOutline` in Rust using native PDFium outline APIs, running in < 3ms with full support for compressed object streams (`/ObjStm`), hierarchical bookmark trees, and parent page inheritance.
+- **Interactive PDF Table of Contents Sheet**: Added `PdfTableOfContentsSheet` modal with hierarchical indentation, active chapter tracking, auto-scrolling to the current chapter, and one-tap jump navigation.
+
+### High-Performance PDF Render Pipeline & Viewport Stability
+- **Raw RGBA Direct GPU Textures**: Switched PDF page rendering in Rust to raw RGBA bytebuffers directly from PDFium under granular per-document locks, eliminating encoding bottlenecks.
+- **Distance-Prioritized Render Queue**: Replaced naive prefetching in `PdfPageController` with an asynchronous render queue that prioritizes pages closest to the viewport.
+- **Epoch-Guarded Render Cancellation**: Implemented atomic render epochs in Rust and Dart to immediately abort obsolete background renders during rapid page navigation while preserving adjacent page renders.
+- **Layout Aspect-Ratio Locking**: Constrained horizontal and vertical page items with exact PDF point dimensions extracted from Rust, eliminating viewport jitter and layout shifts during scrolling.
+- **Resident GPU Image Cache**: Integrated LRU `PdfGpuImageCache` with post-frame deferred disposal, preventing flickering and frame drops.
+
+### Synchronized Word & Sentence PDF TTS
+- **Word-Level Glyph Tracking**: Added live TTS word boundary tracking in `PdfTtsController` synchronized with sanitized Rust text offsets (`clean_to_pdf_map`), delivering drift-free highlighting across multi-column PDF layouts.
+- **Lazy Text Extraction**: Deferred PDF sentence extraction to trigger strictly on demand when audio controls are opened.
+
+### HTML/EPUB DOM Normalization & Reader Stability
+- **In-Place DOM Text Normalization**: Overhauled `SafeScreenPaginator` with anonymous inline run aggregation and text measurement, preventing whitespace collapse across inline formatting boundaries (e.g. `<i>...</i>`).
+- **Anchor & Media Preservation**: Retained standalone media tags (`img`, `svg`, `video`), bookmark anchor targets (`<a id="...">`), and spacer lines without generating blank page slices.
+- **Atomic SAF File Staging**: Staged Android SAF caching via temporary files (`.tmp_<timestamp>`) in `SafHandler` with atomic renaming to protect against partial reads.
+- **Unified Text Selection**: Standardized `ReaderSelectionController` and `ReaderSelectionMenuBuilder` across EPUB, MOBI, TXT, and HTML readers.
+
 ## [1.4.2-alpha.4] - 2026-11-16
 
 ### Modular TXT Reader Engine & Encoding Auto-Detection
