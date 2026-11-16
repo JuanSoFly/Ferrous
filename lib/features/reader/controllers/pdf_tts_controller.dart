@@ -14,6 +14,7 @@ class PdfSentence {
   final int sentenceIndex;
   final int charStart;
   final int charEnd;
+  final int pageCleanStartOffset;
   final String rawText;
   final String cleanText;
   final List<PdfTextRect> rects;
@@ -23,6 +24,7 @@ class PdfSentence {
     required this.sentenceIndex,
     required this.charStart,
     required this.charEnd,
+    required this.pageCleanStartOffset,
     required this.rawText,
     required this.cleanText,
     required this.rects,
@@ -46,11 +48,37 @@ class PdfTtsController extends ChangeNotifier {
     required this.pageController,
   }) : _ttsService = ttsService {
     _ttsService.setOnFinished(_handleTtsFinished);
+    _ttsService.addListener(_onTtsServiceUpdated);
     pageController.addListener(_onPageControllerUpdated);
 
     // Initialize from book persistence: lastTtsPage and lastTtsSentenceStart (index)
     _speakingPage = book.lastTtsPage >= 0 ? book.lastTtsPage : pageController.pageIndex;
     _speakingSentenceIndex = book.lastTtsSentenceStart >= 0 ? book.lastTtsSentenceStart : 0;
+  }
+
+  void _onTtsServiceUpdated() {
+    if (_disposed || _currentSentence == null) return;
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart != null && wordEnd != null && wordEnd > wordStart) {
+      final sanitized = pageController.sanitizedTextCache[_speakingPage];
+      final bounds = pageController.pageCharBoundsCache[_speakingPage];
+      if (sanitized != null && bounds != null) {
+        final sentenceOffset = _currentSentence!.pageCleanStartOffset;
+        final cleanStart = sentenceOffset + wordStart;
+        final cleanEnd = sentenceOffset + wordEnd;
+        final wordRects = _computeSentenceRectsFromCleanOffsets(bounds, sanitized.cleanToPdfMap, cleanStart, cleanEnd);
+        if (wordRects.isNotEmpty) {
+          _ttsHighlightRects = wordRects;
+          highlightRectsNotifier.value = wordRects;
+          return;
+        }
+      }
+    }
+    if (_currentSentence != null && _ttsHighlightRects != _currentSentence!.rects) {
+      _ttsHighlightRects = _currentSentence!.rects;
+      highlightRectsNotifier.value = _currentSentence!.rects;
+    }
   }
 
   void _onPageControllerUpdated() {
@@ -125,47 +153,38 @@ class PdfTtsController extends ChangeNotifier {
       ]);
       if (_disposed) return const [];
 
-      final text = pageController.pageTextCache[pageIndex] ?? '';
+      final sanitized = pageController.sanitizedTextCache[pageIndex] ??
+          await pageController.loadSanitizedPageText(pageIndex);
       final bounds = pageController.pageCharBoundsCache[pageIndex] ?? const [];
 
-      if (text.trim().isEmpty || bounds.isEmpty) {
+      if (sanitized == null || sanitized.cleanText.trim().isEmpty || bounds.isEmpty) {
         // Page genuinely has zero readable characters (e.g. blank page or illustration)
         _pageSentencesCache[pageIndex] = const [];
         return const [];
       }
 
-      final spans = splitIntoSentences(text);
+      final cleanText = sanitized.cleanText;
+      final map = sanitized.cleanToPdfMap;
+      final spans = splitIntoSentences(cleanText);
       final sentences = <PdfSentence>[];
 
       for (var i = 0; i < spans.length; i++) {
         final span = spans[i];
-        if (span.start >= text.length || span.end <= span.start) continue;
+        if (span.start >= cleanText.length || span.end <= span.start) continue;
 
-        final raw = text.substring(span.start, span.end.clamp(span.start, text.length));
+        final sentenceClean = cleanText.substring(span.start, span.end.clamp(span.start, cleanText.length)).trim();
+        if (sentenceClean.isEmpty) continue;
 
-        // Precision Line-Break Hyphen Sanitization:
-        // Preserves capitalized compound words (e.g. New-York, U.S.-based)
-        // while cleanly rejoining broken words across line breaks.
-        final clean = raw
-            .replaceAll('\u00AD', '')
-            .replaceAllMapped(
-              RegExp(r'([a-zA-Z])-\s*\r?\n\s*([a-z])'),
-              (m) => '${m[1]}${m[2]}',
-            )
-            .replaceAll(RegExp(r'\s*\r?\n\s*'), ' ')
-            .trim();
-
-        if (clean.isEmpty) continue;
-
-        final lineRects = _computeSentenceRects(bounds, span.start, span.end);
+        final lineRects = _computeSentenceRectsFromCleanOffsets(bounds, map, span.start, span.end);
 
         sentences.add(PdfSentence(
           pageIndex: pageIndex,
           sentenceIndex: sentences.length,
           charStart: span.start,
           charEnd: span.end,
-          rawText: raw,
-          cleanText: clean,
+          pageCleanStartOffset: span.start,
+          rawText: sentenceClean,
+          cleanText: sentenceClean,
           rects: lineRects,
         ));
       }
@@ -181,24 +200,31 @@ class PdfTtsController extends ChangeNotifier {
     }
   }
 
-  /// Groups character glyph bounding boxes into visual line segments.
-  /// Splits bounding rects when glyph horizontal separation exceeds 2.5x character width,
-  /// preventing highlights from spanning across multi-column gutters.
-  List<PdfTextRect> _computeSentenceRects(
+  /// Computes line bounding rects mapped from clean UTF-16 text offsets to PDF glyph bounds.
+  List<PdfTextRect> _computeSentenceRectsFromCleanOffsets(
     List<PdfTextRect> charBounds,
-    int start,
-    int end,
+    List<int> cleanToPdfMap,
+    int cleanStart,
+    int cleanEnd,
   ) {
     final validRects = <PdfTextRect>[];
-    final clampedEnd = end.clamp(0, charBounds.length);
-    for (var i = start; i < clampedEnd; i++) {
-      final r = charBounds[i];
+    final mapLen = cleanToPdfMap.length;
+    final boundsLen = charBounds.length;
+
+    for (var i = cleanStart; i < cleanEnd && i < mapLen; i++) {
+      final pdfIdx = cleanToPdfMap[i];
+      if (pdfIdx >= boundsLen) continue;
+      final r = charBounds[pdfIdx];
       if (r.left == 0 && r.top == 0 && r.right == 0 && r.bottom == 0) continue;
       if ((r.right - r.left) <= 0 || (r.bottom - r.top) <= 0) continue;
       validRects.add(r);
     }
     if (validRects.isEmpty) return const [];
 
+    return _groupRectsIntoLines(validRects);
+  }
+
+  List<PdfTextRect> _groupRectsIntoLines(List<PdfTextRect> validRects) {
     final lineRects = <PdfTextRect>[];
 
     var lineLeft = validRects[0].left;
@@ -544,6 +570,7 @@ class PdfTtsController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     pageController.removeListener(_onPageControllerUpdated);
+    _ttsService.removeListener(_onTtsServiceUpdated);
     _ttsService.setOnFinished(null);
     unawaited(_ttsService.stop());
     highlightRectsNotifier.dispose();

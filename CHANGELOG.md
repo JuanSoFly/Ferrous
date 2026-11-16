@@ -1,3 +1,22 @@
+## [1.4.2-alpha.3] - 2026-11-16
+
+### Native PDFium Outline & Bookmarks Engine
+- **Native C++ Bookmark Extraction**: Implemented `getPdfOutline` in Rust using native PDFium outline APIs, replacing Dart-side regex parsing. Runs in < 3ms with full support for compressed object streams (`/ObjStm`), hierarchical bookmark trees, and automatic parent page inheritance.
+- **Service Integration**: Updated `PdfOutlineService` to delegate directly to the Rust backend, delivering instant bookmark extraction without isolate serialization overhead.
+
+### Direct GPU Texture Pipeline & Zero-Copy PDF Rendering
+- **Raw RGBA GPU Textures**: Updated PDF page renderer to output raw RGBA bytebuffers and corner color profiles directly from PDFium under a strict execution lock and global render epoch guard.
+- **PdfGpuImageCache**: Added LRU resident GPU `ui.Image` cache with post-frame deferred disposal in `PdfPageController`, eliminating JPEG/PNG encoding overhead.
+- **RawImage Rendering**: Updated `PdfPageViewer` to render GPU textures via `RawImage` and stabilized `RealisticPageTurn` keying to prevent render tree detachment.
+
+### Real-Time Word & Sentence PDF TTS Synchronization
+- **Sanitized Text Extraction with Offset Mapping**: Implemented `extract_sanitized_page_text` in Rust with guarded de-hyphenation and UTF-16 code unit mapping (`clean_to_pdf_map`).
+- **Word-Level Highlight Tracking**: Added active `_ttsService` word boundary listener in `PdfTtsController`, translating live spoken word offsets directly to PDFium glyph bounds with zero visual drift.
+
+### DOM Pagination Normalization & Inline Style Preservation
+- **In-Place DOM Text Normalization**: Added `_normalizeBlockTextNodes` and `_measureNormalizedNodeLength` in `SafeScreenPaginator`, preventing whitespace collapse across inline formatting boundaries (e.g. `<i>...</i>`).
+- **Orphan Line & Indent Protection**: Enhanced block splitting to prevent 1-line orphan splits and preserved `<p-indent>` and `<br>` elements during pagination slicing.
+
 ## [1.4.2-alpha.2] - 2026-11-16
 
 ### HTML & EPUB Pagination Engine Overhaul

@@ -439,7 +439,8 @@ class SafeScreenPaginator {
       final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div') && !hasImage;
 
       if (canSplit) {
-        final double minRemainingSpace = fontSize * lineHeight * 2.0;
+        final double singleLineHeight = fontSize * lineHeight;
+        final double minRemainingSpace = singleLineHeight * 2.0;
         double remainingHeight = maxPageHeight - currentHeight;
 
         // If remaining space on current page is too small (< 2 lines), start fresh on next page
@@ -452,6 +453,7 @@ class SafeScreenPaginator {
           node: targetElement,
           firstBudget: remainingHeight,
           maxPageHeight: maxPageHeight,
+          singleLineHeight: singleLineHeight,
           measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
             txt,
             isIndent: isIndent && paragraphIndent && !isAnonymous,
@@ -468,6 +470,7 @@ class SafeScreenPaginator {
             node: targetElement,
             firstBudget: maxPageHeight,
             maxPageHeight: maxPageHeight,
+            singleLineHeight: singleLineHeight,
             measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
               txt,
               isIndent: isIndent && paragraphIndent && !isAnonymous,
@@ -618,14 +621,139 @@ class SafeScreenPaginator {
     return buffer.toString().replaceAll(RegExp(r'[ \t]*\n[ \t]*'), '\n').trim();
   }
 
+  /// Normalizes DOM text nodes in-place so DOM character offsets match
+  /// `_extractMeasurementText` 1:1 without stripping inline element boundary spaces.
+  static void _normalizeBlockTextNodes(dom.Element element, {bool isPre = false}) {
+    if (isPre) return;
+    final nodes = <dom.Node>[];
+
+    void collect(dom.Node node) {
+      if (node is dom.Text) {
+        nodes.add(node);
+      } else if (node is dom.Element) {
+        final tag = node.localName?.toLowerCase();
+        if (tag == 'br') {
+          nodes.add(node);
+        } else if (tag != 'pre' && tag != 'p-indent' && tag != 'indent') {
+          for (final c in node.nodes) {
+            collect(c);
+          }
+        }
+      }
+    }
+
+    collect(element);
+    final textNodes = nodes.whereType<dom.Text>().toList();
+    if (textNodes.isEmpty) return;
+
+    // 1. Collapse internal whitespace runs in each text node
+    for (final t in textNodes) {
+      t.data = t.data.replaceAll(RegExp(r'\s+'), ' ');
+    }
+
+    // 2. Strip leading whitespace across initial text nodes until first non-space char
+    for (int i = 0; i < textNodes.length; i++) {
+      final trimmed = textNodes[i].data.replaceFirst(RegExp(r'^\s+'), '');
+      textNodes[i].data = trimmed;
+      if (trimmed.isNotEmpty) break;
+    }
+
+    // 3. Strip trailing whitespace across final text nodes until last non-space char
+    for (int i = textNodes.length - 1; i >= 0; i--) {
+      final trimmed = textNodes[i].data.replaceFirst(RegExp(r'\s+$'), '');
+      textNodes[i].data = trimmed;
+      if (trimmed.isNotEmpty) break;
+    }
+
+    // 4. Deduplicate adjacent spaces across inline boundaries and strip spaces around <br>
+    bool stripLeadingSpace = false;
+    for (int i = 0; i < nodes.length; i++) {
+      final n = nodes[i];
+      if (n is dom.Element) {
+        // Current node is <br>: strip trailing space from nearest preceding non-empty text node
+        for (int j = i - 1; j >= 0; j--) {
+          final prev = nodes[j];
+          if (prev is dom.Element) break;
+          if (prev is dom.Text && prev.data.isNotEmpty) {
+            prev.data = prev.data.replaceFirst(RegExp(r' +$'), '');
+            break;
+          }
+        }
+        stripLeadingSpace = true;
+      } else if (n is dom.Text) {
+        var data = n.data;
+        if (data.isEmpty) continue;
+        if (stripLeadingSpace && data.startsWith(' ')) {
+          data = data.substring(1);
+          n.data = data;
+        }
+        if (data.isNotEmpty) {
+          stripLeadingSpace = data.endsWith(' ');
+        }
+      }
+    }
+  }
+
+  /// Measures the exact character length of an inline or block node after
+  /// `_normalizeBlockTextNodes` WITHOUT calling `.trim()`, preserving internal
+  /// boundary spaces on inline elements like `<i>I </i>`.
+  static int _measureNormalizedNodeLength(dom.Node node, {bool isPre = false}) {
+    if (node is dom.Text) {
+      return isPre ? node.data.length : node.data.replaceAll(RegExp(r'\s+'), ' ').length;
+    }
+    if (node is dom.Element) {
+      final tag = node.localName?.toLowerCase() ?? '';
+      if (tag == 'p-indent' || tag == 'indent' || tag == 'img' || tag == 'image' || tag == 'hr') {
+        return 0;
+      }
+      if (tag == 'br') {
+        return 1;
+      }
+      final childPre = isPre || tag == 'pre';
+      int total = 0;
+      for (final c in node.nodes) {
+        total += _measureNormalizedNodeLength(c, isPre: childPre);
+      }
+      return total;
+    }
+    return 0;
+  }
+
+  /// Finds the largest word boundary index < [currentBestIndex] that leaves at least
+  /// [minRemainderHeight] of text for the next page.
+  static int _findSplitPointLeavingAtLeastTwoLines(
+    List<int> wordBoundaries,
+    int currentBestIndex,
+    String remainingText,
+    double minRemainderHeight,
+    double Function(String, bool, {required bool isLastPart}) measureText,
+  ) {
+    int candidate = currentBestIndex;
+    while (candidate > 0) {
+      candidate--;
+      final splitPos = wordBoundaries[candidate];
+      final tail = remainingText.substring(splitPos).trim();
+      if (tail.isEmpty) continue;
+      final tailHeight = measureText(tail, false, isLastPart: false);
+      if (tailHeight >= minRemainderHeight) {
+        return candidate;
+      }
+    }
+    return currentBestIndex;
+  }
+
   /// Splits an oversized element into multiple continuous pieces across 2, 3, or more pages
   static List<_BlockPart> _splitBlockAcrossPages({
     required dom.Element node,
     required double firstBudget,
     required double maxPageHeight,
+    required double singleLineHeight,
     required double Function(String, bool, {required bool isLastPart}) measureText,
     bool isPre = false,
   }) {
+    // Normalize text nodes first so DOM offsets and _extractMeasurementText are 1:1
+    _normalizeBlockTextNodes(node, isPre: isPre);
+
     final rawText = _extractMeasurementText(node, isPre: isPre);
     if (rawText.trim().isEmpty) {
       final len = DomTextUtils.extractPlainText(node).length;
@@ -653,22 +781,21 @@ class SafeScreenPaginator {
         break;
       }
 
-      // Check if all remaining text fits in currentBudget
+      // 1. Check if all remaining text fits in currentBudget WITH bottom paragraphSpacing
       final remainingHeight = measureText(remainingText, isFirstPart, isLastPart: true);
       if (remainingHeight <= currentBudget) {
-        final partInnerHtml = _sliceNodeInnerHtmlForRange(
-          node,
-          currentOffset,
-          rawText.length,
-          isPre: isPre,
-        );
-        final String partHtml;
-        if (isFirstPart) {
-          partHtml = '<$tag$attrs>$partInnerHtml</$tag>';
-        } else {
-          partHtml =
-              '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
-        }
+        final partInnerHtml = (currentOffset == 0)
+            ? node.innerHtml
+            : _sliceNodeInnerHtmlForRange(
+                node,
+                currentOffset,
+                rawText.length,
+                isPre: isPre,
+                rawTextLength: rawText.length,
+              );
+        final String partHtml = isFirstPart
+            ? '<$tag$attrs>$partInnerHtml</$tag>'
+            : '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
         final int charLength = (rawText.length - currentOffset) + 1;
         parts.add(_BlockPart(
           html: partHtml,
@@ -678,7 +805,32 @@ class SafeScreenPaginator {
         break;
       }
 
-      // Remaining text exceeds currentBudget. Find word boundaries in remainingText
+      // 2. Check if all remaining text fits WITHOUT bottom paragraphSpacing (Margin Collapse at Page Bottom)
+      final heightTextOnly = measureText(remainingText, isFirstPart, isLastPart: false);
+      if (heightTextOnly <= currentBudget) {
+        final partInnerHtml = (currentOffset == 0)
+            ? node.innerHtml
+            : _sliceNodeInnerHtmlForRange(
+                node,
+                currentOffset,
+                rawText.length,
+                isPre: isPre,
+                rawTextLength: rawText.length,
+              );
+        final String partHtml = isFirstPart
+            ? '<$tag$attrs>$partInnerHtml</$tag>'
+            : '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
+        final int charLength = (rawText.length - currentOffset) + 1;
+        parts.add(_BlockPart(
+          html: partHtml,
+          // Consume full currentBudget so the page flushes before the next block
+          height: math.max(heightTextOnly, currentBudget),
+          charLength: charLength,
+        ));
+        break;
+      }
+
+      // 3. Remaining text exceeds currentBudget. Find word boundaries in remainingText
       final wordBoundaries = <int>[];
       final splitRegex = RegExp(r'\s+|\u00AD');
       for (final m in splitRegex.allMatches(remainingText)) {
@@ -686,29 +838,7 @@ class SafeScreenPaginator {
           wordBoundaries.add(m.end);
         }
       }
-
-      if (wordBoundaries.isEmpty) {
-        final partInnerHtml = _sliceNodeInnerHtmlForRange(
-          node,
-          currentOffset,
-          rawText.length,
-          isPre: isPre,
-        );
-        final String partHtml;
-        if (isFirstPart) {
-          partHtml = '<$tag$attrs>$partInnerHtml</$tag>';
-        } else {
-          partHtml =
-              '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
-        }
-        final int charLength = (rawText.length - currentOffset) + 1;
-        parts.add(_BlockPart(
-          html: partHtml,
-          height: remainingHeight,
-          charLength: charLength,
-        ));
-        break;
-      }
+      wordBoundaries.add(remainingText.length);
 
       // Binary search for the maximum word boundary that fits within currentBudget
       int low = 0;
@@ -730,7 +860,7 @@ class SafeScreenPaginator {
       }
 
       // Prefer clean sentence boundary if one exists within 2 words before bestIndex
-      if (bestIndex > 0) {
+      if (bestIndex > 0 && bestIndex < wordBoundaries.length - 1) {
         final sentencePunct = RegExp(r'[.!?]["”’\)]*\s*$');
         for (int back = 1; back <= 2 && (bestIndex - back) >= 0; back++) {
           final candidateSub = remainingText.substring(0, wordBoundaries[bestIndex - back]);
@@ -748,7 +878,40 @@ class SafeScreenPaginator {
         bestIndex = 0; // At full page height, force taking first word to make progress
       }
 
-      final splitLength = wordBoundaries[bestIndex];
+      int splitLength = wordBoundaries[bestIndex];
+
+      // 4. Widow & Orphan Protection
+      final remainder = remainingText.substring(splitLength).trim();
+      final remainderTextHeight = remainder.isEmpty
+          ? 0.0
+          : measureText(remainder, false, isLastPart: false);
+
+      if (remainder.isNotEmpty && remainderTextHeight < (singleLineHeight * 1.5)) {
+        if (bestIndex > 1) {
+          final pulledBackIndex = _findSplitPointLeavingAtLeastTwoLines(
+            wordBoundaries,
+            bestIndex,
+            remainingText,
+            singleLineHeight * 1.6,
+            measureText,
+          );
+          final pulledBackLength = wordBoundaries[pulledBackIndex];
+          final pulledBackText = remainingText.substring(0, pulledBackLength).trim();
+          final pulledBackHeight = measureText(pulledBackText, isFirstPart, isLastPart: false);
+
+          // Ensure pulling back still leaves at least 2 lines on the current page
+          if (pulledBackHeight >= singleLineHeight * 1.5) {
+            bestIndex = pulledBackIndex;
+            splitLength = pulledBackLength;
+          } else if (isFirstPart && currentBudget < maxPageHeight) {
+            // Pulling back would leave a 1-line orphan; flush and start fresh on next page
+            return const [];
+          }
+        } else if (isFirstPart && currentBudget < maxPageHeight) {
+          return const [];
+        }
+      }
+
       final chunkText = remainingText.substring(0, splitLength);
       final chunkHeight = measureText(chunkText, isFirstPart, isLastPart: false);
       final chunkEndOffset = currentOffset + splitLength;
@@ -758,6 +921,7 @@ class SafeScreenPaginator {
         currentOffset,
         chunkEndOffset,
         isPre: isPre,
+        rawTextLength: rawText.length,
       );
 
       final String partHtml;
@@ -770,7 +934,10 @@ class SafeScreenPaginator {
 
       parts.add(_BlockPart(
         html: partHtml,
-        height: chunkHeight,
+        // Consume currentBudget on non-final parts so next part always flushes to next page
+        height: chunkEndOffset < rawText.length
+            ? math.max(chunkHeight, currentBudget)
+            : chunkHeight,
         charLength: splitLength,
       ));
 
@@ -791,15 +958,21 @@ class SafeScreenPaginator {
   }
 
   /// Slices child DOM tree matching the exact character range [startOffset, endOffset),
-  /// preserving inline tags (`<i>`, `<b>`, `<a>`, `<annotation-highlight>`) and void elements.
+  /// preserving inline tags (`<i>`, `<b>`, `<a>`, `<annotation-highlight>`), `<p-indent>`, and void elements.
   static String _sliceNodeInnerHtmlForRange(
     dom.Element element,
     int startOffset,
     int endOffset, {
     bool isPre = false,
+    int? rawTextLength,
   }) {
     if (startOffset >= endOffset) return '';
     if (element.nodes.isEmpty) return '';
+
+    final totalLen = rawTextLength ?? _measureNormalizedNodeLength(element, isPre: isPre);
+    if (startOffset == 0 && endOffset >= totalLen) {
+      return element.innerHtml;
+    }
 
     final buffer = StringBuffer();
     int nodeStart = 0;
@@ -819,7 +992,9 @@ class SafeScreenPaginator {
         }
 
         final localStart = (startOffset - nodeStart).clamp(0, nodeLen);
-        final localEnd = (endOffset - nodeStart).clamp(localStart, nodeLen);
+        final localEnd = (endOffset >= totalLen && nodeEnd >= endOffset)
+            ? nodeLen
+            : (endOffset - nodeStart).clamp(localStart, nodeLen);
 
         var textSlice = text.substring(localStart, localEnd);
 
@@ -844,9 +1019,17 @@ class SafeScreenPaginator {
       } else if (child is dom.Element) {
         final childTag = child.localName?.toLowerCase() ?? 'span';
 
+        // Custom first-line indent element: emit on Part 1 (startOffset == 0), omit on continuations
+        if (childTag == 'p-indent' || childTag == 'indent') {
+          if (startOffset == 0) {
+            buffer.write(child.outerHtml);
+          }
+          continue;
+        }
+
         // Void elements: <br> emits only within slice boundary
         if (childTag == 'br') {
-          if (nodeStart > startOffset && nodeStart < endOffset) {
+          if (nodeStart >= startOffset && nodeStart < endOffset) {
             buffer.write('<br/>');
           }
           nodeStart += 1;
@@ -861,8 +1044,8 @@ class SafeScreenPaginator {
           continue;
         }
 
-        final childText = _extractMeasurementText(child, isPre: isPre);
-        final int nodeLen = childText.length;
+        final childIsPre = isPre || childTag == 'pre';
+        final int nodeLen = _measureNormalizedNodeLength(child, isPre: childIsPre);
         final int nodeEnd = nodeStart + nodeLen;
 
         if (nodeEnd <= startOffset) {
@@ -874,14 +1057,17 @@ class SafeScreenPaginator {
         }
 
         final localStart = (startOffset - nodeStart).clamp(0, nodeLen);
-        final localEnd = (endOffset - nodeStart).clamp(localStart, nodeLen);
+        final localEnd = (endOffset >= totalLen && nodeEnd >= endOffset)
+            ? nodeLen
+            : (endOffset - nodeStart).clamp(localStart, nodeLen);
 
         final childAttrs = _serializeAttributes(child, stripId: false);
         final innerSlice = _sliceNodeInnerHtmlForRange(
           child,
           localStart,
           localEnd,
-          isPre: isPre,
+          isPre: childIsPre,
+          rawTextLength: nodeLen,
         );
         buffer.write('<$childTag$childAttrs>$innerSlice</$childTag>');
 

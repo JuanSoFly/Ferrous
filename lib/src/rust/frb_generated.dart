@@ -158,6 +158,19 @@ abstract class RustLibApi extends BaseApi {
       required int width,
       required int height});
 
+  Future<List<PdfPageDimension>> crateApiPdfGetPdfPageDimensions(
+      {required String path});
+
+  Future<List<PdfOutlineItem>> crateApiPdfGetPdfOutline(
+      {required String path});
+
+  Future<SanitizedPdfText> crateApiPdfExtractSanitizedPageText(
+      {required String path, required int pageIndex});
+
+  Future<void> crateApiPdfSetRenderEpoch({required int epoch});
+
+  Future<int> crateApiPdfGetRenderEpoch();
+
   Future<List<BookMetadata>> crateApiLibraryScanLibrary(
       {required String rootPath});
 
@@ -782,6 +795,134 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<PdfPageDimension>> crateApiPdfGetPdfPageDimensions(
+      {required String path}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 27, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_pdf_page_dimension,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiPdfGetPdfPageDimensionsConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfGetPdfPageDimensionsConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_pdf_page_dimensions",
+        argNames: ["path"],
+      );
+
+  @override
+  Future<List<PdfOutlineItem>> crateApiPdfGetPdfOutline(
+      {required String path}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 28, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_pdf_outline_item,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiPdfGetPdfOutlineConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfGetPdfOutlineConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_pdf_outline",
+        argNames: ["path"],
+      );
+
+  @override
+  Future<SanitizedPdfText> crateApiPdfExtractSanitizedPageText(
+      {required String path, required int pageIndex}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        sse_encode_u_32(pageIndex, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 29, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_sanitized_pdf_text,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiPdfExtractSanitizedPageTextConstMeta,
+      argValues: [path, pageIndex],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfExtractSanitizedPageTextConstMeta =>
+      const TaskConstMeta(
+        debugName: "extract_sanitized_page_text",
+        argNames: ["path", "pageIndex"],
+      );
+
+  @override
+  Future<void> crateApiPdfSetRenderEpoch({required int epoch}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_u_32(epoch, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 30, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPdfSetRenderEpochConstMeta,
+      argValues: [epoch],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfSetRenderEpochConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_render_epoch",
+        argNames: ["epoch"],
+      );
+
+  @override
+  Future<int> crateApiPdfGetRenderEpoch() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 31, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_u_32,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPdfGetRenderEpochConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPdfGetRenderEpochConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_render_epoch",
+        argNames: [],
+      );
+
+  @override
   Future<List<BookMetadata>> crateApiLibraryScanLibrary(
       {required String rootPath}) {
     return handler.executeNormal(NormalTask(
@@ -1005,13 +1146,72 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PdfPageRenderResult dco_decode_pdf_page_render_result(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return PdfPageRenderResult(
       data: dco_decode_list_prim_u_8_strict(arr[0]),
       width: dco_decode_u_32(arr[1]),
       height: dco_decode_u_32(arr[2]),
+      topLeftRgb: dco_decode_u_32(arr[3]),
+      topRightRgb: dco_decode_u_32(arr[4]),
+      bottomLeftRgb: dco_decode_u_32(arr[5]),
+      bottomRightRgb: dco_decode_u_32(arr[6]),
     );
+  }
+
+  @protected
+  PdfOutlineItem dco_decode_pdf_outline_item(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return PdfOutlineItem(
+      title: dco_decode_String(arr[0]),
+      pageIndex: dco_decode_opt_box_autoadd_u_32(arr[1]),
+      depth: dco_decode_u_32(arr[2]),
+    );
+  }
+
+  @protected
+  List<PdfOutlineItem> dco_decode_list_pdf_outline_item(dynamic raw) {
+    return (raw as List<dynamic>).map(dco_decode_pdf_outline_item).toList();
+  }
+
+  @protected
+  PdfPageDimension dco_decode_pdf_page_dimension(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return PdfPageDimension(
+      width: dco_decode_f_32(arr[0]),
+      height: dco_decode_f_32(arr[1]),
+      aspectRatio: dco_decode_f_32(arr[2]),
+    );
+  }
+
+  @protected
+  List<PdfPageDimension> dco_decode_list_pdf_page_dimension(dynamic raw) {
+    return (raw as List<dynamic>).map(dco_decode_pdf_page_dimension).toList();
+  }
+
+  @protected
+  SanitizedPdfText dco_decode_sanitized_pdf_text(dynamic raw) {
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SanitizedPdfText(
+      cleanText: dco_decode_String(arr[0]),
+      cleanToPdfMap: dco_decode_list_prim_u_32_strict(arr[1]),
+    );
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    return raw as Uint32List;
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    return raw == null ? null : dco_decode_u_32(raw);
   }
 
   @protected
@@ -1279,8 +1479,93 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_data = sse_decode_list_prim_u_8_strict(deserializer);
     var var_width = sse_decode_u_32(deserializer);
     var var_height = sse_decode_u_32(deserializer);
+    var var_topLeftRgb = sse_decode_u_32(deserializer);
+    var var_topRightRgb = sse_decode_u_32(deserializer);
+    var var_bottomLeftRgb = sse_decode_u_32(deserializer);
+    var var_bottomRightRgb = sse_decode_u_32(deserializer);
     return PdfPageRenderResult(
-        data: var_data, width: var_width, height: var_height);
+      data: var_data,
+      width: var_width,
+      height: var_height,
+      topLeftRgb: var_topLeftRgb,
+      topRightRgb: var_topRightRgb,
+      bottomLeftRgb: var_bottomLeftRgb,
+      bottomRightRgb: var_bottomRightRgb,
+    );
+  }
+
+  @protected
+  PdfOutlineItem sse_decode_pdf_outline_item(SseDeserializer deserializer) {
+    var var_title = sse_decode_String(deserializer);
+    var var_pageIndex = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_depth = sse_decode_u_32(deserializer);
+    return PdfOutlineItem(
+      title: var_title,
+      pageIndex: var_pageIndex,
+      depth: var_depth,
+    );
+  }
+
+  @protected
+  List<PdfOutlineItem> sse_decode_list_pdf_outline_item(
+      SseDeserializer deserializer) {
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PdfOutlineItem>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_pdf_outline_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  PdfPageDimension sse_decode_pdf_page_dimension(
+      SseDeserializer deserializer) {
+    var var_width = sse_decode_f_32(deserializer);
+    var var_height = sse_decode_f_32(deserializer);
+    var var_aspectRatio = sse_decode_f_32(deserializer);
+    return PdfPageDimension(
+      width: var_width,
+      height: var_height,
+      aspectRatio: var_aspectRatio,
+    );
+  }
+
+  @protected
+  List<PdfPageDimension> sse_decode_list_pdf_page_dimension(
+      SseDeserializer deserializer) {
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PdfPageDimension>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_pdf_page_dimension(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  SanitizedPdfText sse_decode_sanitized_pdf_text(
+      SseDeserializer deserializer) {
+    var var_cleanText = sse_decode_String(deserializer);
+    var var_cleanToPdfMap = sse_decode_list_prim_u_32_strict(deserializer);
+    return SanitizedPdfText(
+      cleanText: var_cleanText,
+      cleanToPdfMap: var_cleanToPdfMap,
+    );
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(
+      SseDeserializer deserializer) {
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    if (sse_decode_bool(deserializer)) {
+      return sse_decode_u_32(deserializer);
+    } else {
+      return null;
+    }
   }
 
   @protected
@@ -1518,6 +1803,67 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_prim_u_8_strict(self.data, serializer);
     sse_encode_u_32(self.width, serializer);
     sse_encode_u_32(self.height, serializer);
+    sse_encode_u_32(self.topLeftRgb, serializer);
+    sse_encode_u_32(self.topRightRgb, serializer);
+    sse_encode_u_32(self.bottomLeftRgb, serializer);
+    sse_encode_u_32(self.bottomRightRgb, serializer);
+  }
+
+  @protected
+  void sse_encode_pdf_outline_item(
+      PdfOutlineItem self, SseSerializer serializer) {
+    sse_encode_String(self.title, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.pageIndex, serializer);
+    sse_encode_u_32(self.depth, serializer);
+  }
+
+  @protected
+  void sse_encode_list_pdf_outline_item(
+      List<PdfOutlineItem> self, SseSerializer serializer) {
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_pdf_outline_item(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_pdf_page_dimension(
+      PdfPageDimension self, SseSerializer serializer) {
+    sse_encode_f_32(self.width, serializer);
+    sse_encode_f_32(self.height, serializer);
+    sse_encode_f_32(self.aspectRatio, serializer);
+  }
+
+  @protected
+  void sse_encode_list_pdf_page_dimension(
+      List<PdfPageDimension> self, SseSerializer serializer) {
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_pdf_page_dimension(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_sanitized_pdf_text(
+      SanitizedPdfText self, SseSerializer serializer) {
+    sse_encode_String(self.cleanText, serializer);
+    sse_encode_list_prim_u_32_strict(self.cleanToPdfMap, serializer);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+      Uint32List self, SseSerializer serializer) {
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(
+      int? self, SseSerializer serializer) {
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_u_32(self, serializer);
+    }
   }
 
   @protected

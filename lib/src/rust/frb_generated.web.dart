@@ -93,6 +93,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PdfPageRenderResult dco_decode_pdf_page_render_result(dynamic raw);
 
   @protected
+  PdfOutlineItem dco_decode_pdf_outline_item(dynamic raw);
+
+  @protected
+  List<PdfOutlineItem> dco_decode_list_pdf_outline_item(dynamic raw);
+
+  @protected
+  PdfPageDimension dco_decode_pdf_page_dimension(dynamic raw);
+
+  @protected
+  List<PdfPageDimension> dco_decode_list_pdf_page_dimension(dynamic raw);
+
+  @protected
+  SanitizedPdfText dco_decode_sanitized_pdf_text(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
   PdfTextRect dco_decode_pdf_text_rect(dynamic raw);
 
   @protected
@@ -180,6 +201,29 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   PdfPageRenderResult sse_decode_pdf_page_render_result(
       SseDeserializer deserializer);
+
+  @protected
+  PdfOutlineItem sse_decode_pdf_outline_item(SseDeserializer deserializer);
+
+  @protected
+  List<PdfOutlineItem> sse_decode_list_pdf_outline_item(
+      SseDeserializer deserializer);
+
+  @protected
+  PdfPageDimension sse_decode_pdf_page_dimension(SseDeserializer deserializer);
+
+  @protected
+  List<PdfPageDimension> sse_decode_list_pdf_page_dimension(
+      SseDeserializer deserializer);
+
+  @protected
+  SanitizedPdfText sse_decode_sanitized_pdf_text(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
   PdfTextRect sse_decode_pdf_text_rect(SseDeserializer deserializer);
@@ -277,6 +321,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_pdf_page_render_result(
       PdfPageRenderResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pdf_outline_item(
+      PdfOutlineItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_pdf_outline_item(
+      List<PdfOutlineItem> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pdf_page_dimension(
+      PdfPageDimension self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_pdf_page_dimension(
+      List<PdfPageDimension> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sanitized_pdf_text(
+      SanitizedPdfText self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+      Uint32List self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(
+      int? self, SseSerializer serializer);
 
   @protected
   void sse_encode_pdf_text_rect(PdfTextRect self, SseSerializer serializer);

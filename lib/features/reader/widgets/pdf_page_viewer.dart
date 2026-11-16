@@ -336,11 +336,14 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       return _buildErrorState(pageController.error!);
     }
 
-    if (pageController.isLoading && pageController.currentPageImage == null) {
+    final hasCurrentPage = pageController.getPageUiImage(pageController.pageIndex) != null ||
+        pageController.currentPageImage != null;
+
+    if (pageController.isLoading && !hasCurrentPage) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (pageController.currentPageImage == null) {
+    if (!hasCurrentPage) {
       return const Center(child: Text("Initializing..."));
     }
 
@@ -392,7 +395,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
     if (useRealisticCurl) {
       return RealisticPageTurn(
-        key: ValueKey('page-curl-${widget.pageController.pageIndex}-${widget.pageController.getPageImage(widget.pageController.pageIndex) != null}'),
+        key: ValueKey('pdf-realistic-curl-${widget.pageController.book.id}'),
         pageCount: widget.pageController.pageCount,
         currentPage: widget.pageController.pageIndex,
         textureId: themeRepo.config.paperTexture,
@@ -515,9 +518,10 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   Widget _buildPageLayer(BuildContext context, int index) {
     final pageController = widget.pageController;
     final ttsController = widget.ttsController;
+    final pageUiImage = pageController.getPageUiImage(index);
     final pageImage = pageController.getPageImage(index);
 
-    if (pageImage == null) {
+    if (pageUiImage == null && pageImage == null) {
       pageController.preloadPage(index);
 
       double? placeholderHeight;
@@ -567,10 +571,18 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
             : pageController.logicalPageSize)
         : pageController.getLogicalPageSize(index);
 
-    Widget imageWidget = Image(
-      image: pageController.getPageImageProvider(index),
-      fit: BoxFit.contain,
-    );
+    Widget imageWidget;
+    if (pageUiImage != null) {
+      imageWidget = RawImage(
+        image: pageUiImage,
+        fit: BoxFit.contain,
+      );
+    } else {
+      imageWidget = Image(
+        image: pageController.getPageImageProvider(index),
+        fit: BoxFit.contain,
+      );
+    }
 
     Widget layer;
     if (layoutSize.isEmpty) {

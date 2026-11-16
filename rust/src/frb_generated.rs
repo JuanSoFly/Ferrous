@@ -966,6 +966,172 @@ fn wire__crate__api__pdf__test_pdf_module_impl(
         },
     )
 }
+fn wire__crate__api__pdf__get_pdf_page_dimensions_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_pdf_page_dimensions",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::pdf::get_pdf_page_dimensions(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__pdf__get_pdf_outline_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_pdf_outline",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::pdf::get_pdf_outline(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__pdf__extract_sanitized_page_text_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "extract_sanitized_page_text",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_page_index = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::pdf::extract_sanitized_page_text(api_path, api_page_index)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__pdf__set_render_epoch_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_render_epoch",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_epoch = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>(
+                    (move || {
+                        crate::api::pdf::set_render_epoch(api_epoch);
+                        Ok(())
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__pdf__get_render_epoch_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_render_epoch",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_sse::<_, ()>(
+                    (move || {
+                        let output_ok = crate::api::pdf::get_render_epoch();
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__tts_text__test_tts_text_module_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1213,10 +1379,98 @@ impl SseDecode for crate::api::pdf::PdfPageRenderResult {
         let mut var_data = <Vec<u8>>::sse_decode(deserializer);
         let mut var_width = <u32>::sse_decode(deserializer);
         let mut var_height = <u32>::sse_decode(deserializer);
+        let mut var_top_left_rgb = <u32>::sse_decode(deserializer);
+        let mut var_top_right_rgb = <u32>::sse_decode(deserializer);
+        let mut var_bottom_left_rgb = <u32>::sse_decode(deserializer);
+        let mut var_bottom_right_rgb = <u32>::sse_decode(deserializer);
         return crate::api::pdf::PdfPageRenderResult {
             data: var_data,
             width: var_width,
             height: var_height,
+            top_left_rgb: var_top_left_rgb,
+            top_right_rgb: var_top_right_rgb,
+            bottom_left_rgb: var_bottom_left_rgb,
+            bottom_right_rgb: var_bottom_right_rgb,
+        };
+    }
+}
+
+impl SseDecode for Option<u32> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Vec<u32> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for _ in 0..len_ {
+            ans_.push(<u32>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for crate::api::pdf::PdfOutlineItem {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_page_index = <Option<u32>>::sse_decode(deserializer);
+        let mut var_depth = <u32>::sse_decode(deserializer);
+        return crate::api::pdf::PdfOutlineItem {
+            title: var_title,
+            page_index: var_page_index,
+            depth: var_depth,
+        };
+    }
+}
+
+impl SseDecode for Vec<crate::api::pdf::PdfOutlineItem> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for _ in 0..len_ {
+            ans_.push(<crate::api::pdf::PdfOutlineItem>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for crate::api::pdf::PdfPageDimension {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_width = <f32>::sse_decode(deserializer);
+        let mut var_height = <f32>::sse_decode(deserializer);
+        let mut var_aspect_ratio = <f32>::sse_decode(deserializer);
+        return crate::api::pdf::PdfPageDimension {
+            width: var_width,
+            height: var_height,
+            aspect_ratio: var_aspect_ratio,
+        };
+    }
+}
+
+impl SseDecode for Vec<crate::api::pdf::PdfPageDimension> {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for _ in 0..len_ {
+            ans_.push(<crate::api::pdf::PdfPageDimension>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for crate::api::pdf::SanitizedPdfText {
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_clean_text = <String>::sse_decode(deserializer);
+        let mut var_clean_to_pdf_map = <Vec<u32>>::sse_decode(deserializer);
+        return crate::api::pdf::SanitizedPdfText {
+            clean_text: var_clean_text,
+            clean_to_pdf_map: var_clean_to_pdf_map,
         };
     }
 }
@@ -1370,6 +1624,11 @@ fn pde_ffi_dispatcher_primary_impl(
         26 => {
             wire__crate__api__tts_text__test_tts_text_module_impl(port, ptr, rust_vec_len, data_len)
         }
+        27 => wire__crate__api__pdf__get_pdf_page_dimensions_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__pdf__get_pdf_outline_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__pdf__extract_sanitized_page_text_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__pdf__set_render_epoch_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__pdf__get_render_epoch_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1474,6 +1733,10 @@ impl flutter_rust_bridge::IntoDart for crate::api::pdf::PdfPageRenderResult {
             self.data.into_into_dart().into_dart(),
             self.width.into_into_dart().into_dart(),
             self.height.into_into_dart().into_dart(),
+            self.top_left_rgb.into_into_dart().into_dart(),
+            self.top_right_rgb.into_into_dart().into_dart(),
+            self.bottom_left_rgb.into_into_dart().into_dart(),
+            self.bottom_right_rgb.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1486,6 +1749,71 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::pdf::PdfPageRenderResult>
     for crate::api::pdf::PdfPageRenderResult
 {
     fn into_into_dart(self) -> crate::api::pdf::PdfPageRenderResult {
+        self
+    }
+}
+
+impl flutter_rust_bridge::IntoDart for crate::api::pdf::PdfOutlineItem {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.title.into_into_dart().into_dart(),
+            self.page_index.into_into_dart().into_dart(),
+            self.depth.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::pdf::PdfOutlineItem
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::pdf::PdfOutlineItem>
+    for crate::api::pdf::PdfOutlineItem
+{
+    fn into_into_dart(self) -> crate::api::pdf::PdfOutlineItem {
+        self
+    }
+}
+
+impl flutter_rust_bridge::IntoDart for crate::api::pdf::PdfPageDimension {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+            self.aspect_ratio.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::pdf::PdfPageDimension
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::pdf::PdfPageDimension>
+    for crate::api::pdf::PdfPageDimension
+{
+    fn into_into_dart(self) -> crate::api::pdf::PdfPageDimension {
+        self
+    }
+}
+
+impl flutter_rust_bridge::IntoDart for crate::api::pdf::SanitizedPdfText {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.clean_text.into_into_dart().into_dart(),
+            self.clean_to_pdf_map.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::pdf::SanitizedPdfText
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::pdf::SanitizedPdfText>
+    for crate::api::pdf::SanitizedPdfText
+{
+    fn into_into_dart(self) -> crate::api::pdf::SanitizedPdfText {
         self
     }
 }
@@ -1742,6 +2070,69 @@ impl SseEncode for crate::api::pdf::PdfPageRenderResult {
         <Vec<u8>>::sse_encode(self.data, serializer);
         <u32>::sse_encode(self.width, serializer);
         <u32>::sse_encode(self.height, serializer);
+        <u32>::sse_encode(self.top_left_rgb, serializer);
+        <u32>::sse_encode(self.top_right_rgb, serializer);
+        <u32>::sse_encode(self.bottom_left_rgb, serializer);
+        <u32>::sse_encode(self.bottom_right_rgb, serializer);
+    }
+}
+
+impl SseEncode for Option<u32> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u32>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<u32> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u32>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for crate::api::pdf::PdfOutlineItem {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.title, serializer);
+        <Option<u32>>::sse_encode(self.page_index, serializer);
+        <u32>::sse_encode(self.depth, serializer);
+    }
+}
+
+impl SseEncode for Vec<crate::api::pdf::PdfOutlineItem> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::pdf::PdfOutlineItem>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for crate::api::pdf::PdfPageDimension {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <f32>::sse_encode(self.width, serializer);
+        <f32>::sse_encode(self.height, serializer);
+        <f32>::sse_encode(self.aspect_ratio, serializer);
+    }
+}
+
+impl SseEncode for Vec<crate::api::pdf::PdfPageDimension> {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::pdf::PdfPageDimension>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for crate::api::pdf::SanitizedPdfText {
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.clean_text, serializer);
+        <Vec<u32>>::sse_encode(self.clean_to_pdf_map, serializer);
     }
 }
 

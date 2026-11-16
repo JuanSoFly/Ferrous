@@ -17,7 +17,15 @@ Future<void> initPdfium({required String path}) =>
 Future<int> getPdfPageCount({required String path}) =>
     RustLib.instance.api.crateApiPdfGetPdfPageCount(path: path);
 
-/// Render a specific page of a PDF to PNG bytes with actual dimensions.
+/// Get exact dimensions and aspect ratios for all pages without loading PdfPage objects.
+Future<List<PdfPageDimension>> getPdfPageDimensions({required String path}) =>
+    RustLib.instance.api.crateApiPdfGetPdfPageDimensions(path: path);
+
+/// Extract table of contents / bookmarks natively using PDFium C++ outline APIs.
+Future<List<PdfOutlineItem>> getPdfOutline({required String path}) =>
+    RustLib.instance.api.crateApiPdfGetPdfOutline(path: path);
+
+/// Render a specific page of a PDF to raw RGBA bytes with actual dimensions and corner colors.
 Future<PdfPageRenderResult> renderPdfPage(
         {required String path,
         required int pageIndex,
@@ -25,6 +33,20 @@ Future<PdfPageRenderResult> renderPdfPage(
         required int height}) =>
     RustLib.instance.api.crateApiPdfRenderPdfPage(
         path: path, pageIndex: pageIndex, width: width, height: height);
+
+/// Extract sanitized page text with guarded de-hyphenation and UTF-16 code unit offset mapping.
+Future<SanitizedPdfText> extractSanitizedPageText(
+        {required String path, required int pageIndex}) =>
+    RustLib.instance.api.crateApiPdfExtractSanitizedPageText(
+        path: path, pageIndex: pageIndex);
+
+/// Set global render epoch to drop stale background renders.
+Future<void> setRenderEpoch({required int epoch}) =>
+    RustLib.instance.api.crateApiPdfSetRenderEpoch(epoch: epoch);
+
+/// Get current global render epoch.
+Future<int> getRenderEpoch() =>
+    RustLib.instance.api.crateApiPdfGetRenderEpoch();
 
 /// Extract the text of a specific page of a PDF file.
 Future<String> extractPdfPageText(
@@ -62,19 +84,103 @@ Future<List<PdfTextRect>> extractAllPageCharacterBounds(
 Future<String> testPdfModule() =>
     RustLib.instance.api.crateApiPdfTestPdfModule();
 
+class PdfOutlineItem {
+  final String title;
+  final int? pageIndex;
+  final int depth;
+
+  const PdfOutlineItem({
+    required this.title,
+    this.pageIndex,
+    required this.depth,
+  });
+
+  @override
+  int get hashCode => title.hashCode ^ pageIndex.hashCode ^ depth.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfOutlineItem &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          pageIndex == other.pageIndex &&
+          depth == other.depth;
+}
+
+class PdfPageDimension {
+  final double width;
+  final double height;
+  final double aspectRatio;
+
+  const PdfPageDimension({
+    required this.width,
+    required this.height,
+    required this.aspectRatio,
+  });
+
+  @override
+  int get hashCode => width.hashCode ^ height.hashCode ^ aspectRatio.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfPageDimension &&
+          runtimeType == other.runtimeType &&
+          width == other.width &&
+          height == other.height &&
+          aspectRatio == other.aspectRatio;
+}
+
+class SanitizedPdfText {
+  final String cleanText;
+  final Uint32List cleanToPdfMap;
+
+  const SanitizedPdfText({
+    required this.cleanText,
+    required this.cleanToPdfMap,
+  });
+
+  @override
+  int get hashCode => cleanText.hashCode ^ cleanToPdfMap.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SanitizedPdfText &&
+          runtimeType == other.runtimeType &&
+          cleanText == other.cleanText &&
+          cleanToPdfMap == other.cleanToPdfMap;
+}
+
 class PdfPageRenderResult {
   final Uint8List data;
   final int width;
   final int height;
+  final int topLeftRgb;
+  final int topRightRgb;
+  final int bottomLeftRgb;
+  final int bottomRightRgb;
 
   const PdfPageRenderResult({
     required this.data,
     required this.width,
     required this.height,
+    required this.topLeftRgb,
+    required this.topRightRgb,
+    required this.bottomLeftRgb,
+    required this.bottomRightRgb,
   });
 
   @override
-  int get hashCode => data.hashCode ^ width.hashCode ^ height.hashCode;
+  int get hashCode =>
+      data.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      topLeftRgb.hashCode ^
+      topRightRgb.hashCode ^
+      bottomLeftRgb.hashCode ^
+      bottomRightRgb.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -83,7 +189,11 @@ class PdfPageRenderResult {
           runtimeType == other.runtimeType &&
           data == other.data &&
           width == other.width &&
-          height == other.height;
+          height == other.height &&
+          topLeftRgb == other.topLeftRgb &&
+          topRightRgb == other.topRightRgb &&
+          bottomLeftRgb == other.bottomLeftRgb &&
+          bottomRightRgb == other.bottomRightRgb;
 }
 
 class PdfTextRect {
