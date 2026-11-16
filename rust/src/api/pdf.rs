@@ -239,7 +239,7 @@ pub fn get_pdf_page_dimensions(path: String) -> Result<Vec<PdfPageDimension>> {
             let mut dims = Vec::with_capacity(count as usize);
 
             for i in 0..count {
-                let rect = pages.page_size(i as u16)?;
+                let rect = pages.page_size(i)?;
                 let w = rect.width().value;
                 let h = rect.height().value;
                 let ar = if h > 0.0 { (w / h).clamp(0.2, 5.0) } else { 0.70 };
