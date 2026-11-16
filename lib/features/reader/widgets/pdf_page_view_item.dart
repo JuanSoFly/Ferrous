@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ferrous/features/reader/controllers/pdf_page_controller.dart';
@@ -54,19 +55,18 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
 
   void _checkPreload() {
     if (_preloadScheduled) return;
-    if (!widget.pageController.hasPageImage(widget.pageIndex)) {
-      final dist = (widget.pageIndex - widget.pageController.pageIndex).abs();
-      if (dist <= 1) {
-        _preloadScheduled = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _preloadScheduled = false;
-          if (!widget.pageController.hasPageImage(widget.pageIndex)) {
-            widget.pageController.preloadPage(widget.pageIndex);
-          }
-        });
+    _preloadScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _preloadScheduled = false;
+      if (!mounted) return;
+      if (!widget.pageController.hasPageImage(widget.pageIndex)) {
+        final isActive = widget.pageIndex == widget.pageController.pageIndex;
+        widget.pageController.requestPageRender(
+          widget.pageIndex,
+          isActivePage: isActive,
+        );
       }
-    }
+    });
   }
 
   @override
@@ -79,14 +79,17 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
         final hasImage = pageController.hasPageImage(index);
 
         if (!hasImage) {
-          final dist = (index - pageController.pageIndex).abs();
-          if (dist <= 1 && !_preloadScheduled) {
+          if (!_preloadScheduled) {
             _preloadScheduled = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
               _preloadScheduled = false;
               if (!widget.pageController.hasPageImage(index)) {
-                widget.pageController.preloadPage(index);
+                final isActive = index == widget.pageController.pageIndex;
+                widget.pageController.requestPageRender(
+                  index,
+                  isActivePage: isActive,
+                );
               }
             });
           }
@@ -122,7 +125,7 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2.0,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -131,7 +134,6 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
         }
 
         final pageUiImage = pageController.getPageUiImage(index);
-        final pageImage = pageController.getPageImage(index);
         final isActive = index == pageController.pageIndex;
 
         final layoutSize = pageController.getLogicalPageSize(index).isEmpty
@@ -144,11 +146,6 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
         if (pageUiImage != null) {
           imageWidget = RawImage(
             image: pageUiImage,
-            fit: BoxFit.contain,
-          );
-        } else if (pageImage != null) {
-          imageWidget = Image(
-            image: pageController.getPageImageProvider(index),
             fit: BoxFit.contain,
           );
         } else {

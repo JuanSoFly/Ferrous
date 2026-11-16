@@ -507,8 +507,12 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
+          final ar = widget.pageController.getPageAspectRatio(index) ?? 0.70;
           return Center(
-            child: _buildPageLayer(context, index),
+            child: AspectRatio(
+              aspectRatio: ar > 0 ? ar : 0.70,
+              child: _buildPageLayer(context, index),
+            ),
           );
         },
       ),

@@ -1,3 +1,18 @@
+## [1.4.2-alpha.4] - 2026-11-16
+
+### Modular TXT Reader Engine & Encoding Auto-Detection
+- **Native Encoding Detection**: Integrated `chardetng` and `encoding_rs` in the Rust backend to automatically detect legacy character sets (Shift-JIS, GBK, Windows-1252, ISO-8859, etc.) and losslessly transcode plain text documents into clean UTF-8.
+- **Dynamic Chapter Splitting & Markdown Parsing**: Overhauled `read_txt` in Rust to segment plain text into discrete chapters based on natural chapter heading patterns, roman numerals, or size thresholds. Added support for markdown headings, blockquotes, code fences, Mermaid diagram embeds, checkboxes, and lists.
+- **Dedicated TXT Reader Architecture**: Refactored `TxtReaderScreen` into a full-featured modular reader with `TxtChapterController` for asynchronous chapter paging and reading progress tracking.
+- **Synchronized TXT TTS Engine**: Implemented `TxtTtsController` with sentence and word-level highlight tracking, continuous cross-chapter audio flow, and tap-to-speak interaction.
+- **Paged & Continuous Viewers**: Added `TxtContentViewer`, `TxtContinuousViewer`, and `TxtPagedViewer` supporting page flip animations, page curls, margin tuning, and reading themes.
+
+### Prioritized PDF Render Queue & Viewport Stability
+- **Distance-Prioritized Render Queue**: Replaced naive eager page prefetching in `PdfPageController` with an asynchronous render queue (`_drainRenderQueue`) that dynamically sorts pending page requests by proximity to the active viewport, ensuring visible pages render first.
+- **Intelligent Epoch Cancellation**: Guarded epoch aborts in `requestPageRender` so rapid adjacent page turns (within 1 page) preserve active rendering jobs while immediately cancelling distant obsolete renders.
+- **Dynamic GPU Cache Sizing**: Expanded resident `PdfGpuImageCache` capacity to 16 pages for continuous scroll modes and 8 pages for paged modes, with post-frame deferred disposal preventing frame drops.
+- **Layout Aspect Ratio Locking**: Wrapped horizontal page items in `PdfPageViewer` with exact aspect-ratio constraints derived from Rust-extracted PDF point dimensions, eliminating viewport shifts during scroll gestures.
+
 ## [1.4.2-alpha.3] - 2026-11-16
 
 ### Native PDFium Outline & Bookmarks Engine

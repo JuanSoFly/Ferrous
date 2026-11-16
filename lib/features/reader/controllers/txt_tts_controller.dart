@@ -1,0 +1,693 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:ferrous/core/models/book.dart';
+import 'package:ferrous/data/repositories/book_repository.dart';
+import 'package:ferrous/data/services/tts_service.dart';
+import 'package:ferrous/core/utils/sentence_utils.dart';
+import 'package:ferrous/core/utils/normalized_text_map.dart';
+import 'package:html/parser.dart' as html_parser;
+import 'package:html/dom.dart' as dom;
+import 'package:ferrous/core/utils/dom_text_utils.dart';
+import 'package:ferrous/core/utils/text_offset_resolver.dart';
+import 'txt_chapter_controller.dart';
+import 'reader_mode_controller.dart';
+
+class TxtTtsController extends ChangeNotifier {
+  final Book book;
+  final BookRepository repository;
+  final TtsService _ttsService;
+  final TxtChapterController chapterController;
+
+  TxtTtsController({
+    required this.book,
+    required this.repository,
+    required TtsService ttsService,
+    required this.chapterController,
+  }) : _ttsService = ttsService {
+    _ttsService.setOnFinished(_handleTtsFinished);
+    _ttsService.addListener(_handleTtsProgress);
+
+    _lastTtsSentenceStart = book.lastTtsSentenceStart;
+    _lastTtsSentenceEnd = book.lastTtsSentenceEnd;
+    _lastTtsSection = book.lastTtsSection;
+  }
+
+  bool _showTtsControls = false;
+  bool _ttsContinuous = true;
+  bool _ttsFollowMode = true;
+  bool _tapToStartEnabled = true;
+
+  int _ttsAdvanceRequestId = 0;
+  bool _isStartingSpeech = false;
+  int _ttsRawBaseOffset = 0;
+  NormalizedTextMap? _ttsNormalizationMap;
+  final GlobalKey _ttsHighlightKey = GlobalKey();
+  bool highlightKeyAssigned = false;
+
+  int? _lastHighlightStart;
+  int? _lastHighlightEnd;
+  int? _lastEnsuredStart;
+  int? _lastEnsuredEnd;
+  String? _cachedHighlightedHtml;
+  String? _lastHighlightedSourceHtml;
+
+  late int _lastTtsSentenceStart;
+  late int _lastTtsSentenceEnd;
+  late int _lastTtsSection;
+
+  static const String _ttsHighlightTag = 'tts-highlight';
+
+  // Getters
+  TtsService get ttsService => _ttsService;
+  bool get showTtsControls => _showTtsControls;
+  bool get ttsContinuous => _ttsContinuous;
+  bool get ttsFollowMode => _ttsFollowMode;
+  bool get tapToStartEnabled => _tapToStartEnabled;
+  GlobalKey get ttsHighlightKey => _ttsHighlightKey;
+  int? get lastHighlightStart => _lastHighlightStart;
+  int? get lastHighlightEnd => _lastHighlightEnd;
+
+  void setTtsContinuous(bool value) {
+    _ttsContinuous = value;
+    notifyListeners();
+  }
+
+  void setTtsFollowMode(bool value) {
+    _ttsFollowMode = value;
+    notifyListeners();
+  }
+
+  void setTapToStartEnabled(bool value) {
+    _tapToStartEnabled = value;
+    notifyListeners();
+  }
+
+  void setTtsControlsVisible(bool visible) {
+    if (_showTtsControls == visible) return;
+    _showTtsControls = visible;
+    notifyListeners();
+  }
+
+  Future<void> toggleTts({required ReaderModeController modeController}) async {
+    final next = !_showTtsControls;
+    _showTtsControls = next;
+    notifyListeners();
+
+    if (!next) {
+      saveCurrentTtsSentence();
+      _isStartingSpeech = false;
+      _ttsAdvanceRequestId++;
+      _cachedHighlightedHtml = null;
+      _lastHighlightStart = null;
+      _lastHighlightEnd = null;
+      unawaited(_ttsService.stop());
+      return;
+    }
+
+    if (_ttsService.state == TtsState.stopped &&
+        _lastTtsSentenceStart >= 0 &&
+        _lastTtsSection >= 0 &&
+        _lastTtsSection != chapterController.currentChapterIndex) {
+      await chapterController.ensureChapterParsed(_lastTtsSection);
+      await chapterController.loadChapter(_lastTtsSection, userInitiated: false);
+    }
+  }
+
+  void _handleTtsFinished() {
+    if (!_ttsContinuous) return;
+    unawaited(advanceToNextReadableChapterAndSpeak());
+  }
+
+  void _handleTtsProgress() {
+    if (_ttsService.state == TtsState.stopped) {
+      if (_isStartingSpeech) return;
+      _cachedHighlightedHtml = null;
+      _lastHighlightStart = null;
+      _lastHighlightEnd = null;
+      notifyListeners();
+      return;
+    }
+
+    if (_ttsService.state == TtsState.playing) {
+      _isStartingSpeech = false;
+    }
+
+    if (_ttsService.state != TtsState.playing) {
+      return;
+    }
+
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart == null || wordEnd == null) return;
+    _isStartingSpeech = false;
+
+    final map = _ttsNormalizationMap;
+    if (map == null || map.normalizedToRaw.isEmpty) return;
+
+    final maxIdx = map.normalizedToRaw.length;
+    final clampedStart = wordStart.clamp(0, maxIdx - 1);
+    final clampedEnd = wordEnd.clamp(0, maxIdx);
+    if (clampedEnd <= clampedStart) return;
+
+    final rawWordStart = map.normalizedToRaw[clampedStart];
+    final rawWordEnd = clampedEnd < map.normalizedToRaw.length
+        ? map.normalizedToRaw[clampedEnd]
+        : map.normalizedToRaw[clampedEnd - 1] + 1;
+
+    final highlightStart = _ttsRawBaseOffset + rawWordStart;
+    final highlightEnd = _ttsRawBaseOffset + rawWordEnd;
+
+    if (highlightStart == _lastHighlightStart && highlightEnd == _lastHighlightEnd) {
+      return;
+    }
+
+    _lastHighlightStart = highlightStart;
+    _lastHighlightEnd = highlightEnd;
+    _cachedHighlightedHtml = null;
+
+    _lastTtsSentenceStart = highlightStart;
+    _lastTtsSentenceEnd = highlightEnd;
+    _lastTtsSection = chapterController.currentChapterIndex;
+
+    unawaited(repository.updateReadingProgress(
+      book.id,
+      sectionIndex: chapterController.currentChapterIndex,
+      totalPages: chapterController.chapters?.length ?? 0,
+      lastTtsSentenceStart: highlightStart,
+      lastTtsSentenceEnd: highlightEnd,
+      lastTtsSection: chapterController.currentChapterIndex,
+    ));
+
+    notifyListeners();
+    maybeEnsureHighlightVisible();
+  }
+
+  Future<void> advanceToNextReadableChapterAndSpeak() async {
+    if (chapterController.chapters == null) return;
+
+    final startIndex = chapterController.currentChapterIndex + 1;
+    if (startIndex >= chapterController.chapters!.length) return;
+
+    final requestId = ++_ttsAdvanceRequestId;
+
+    for (var index = startIndex; index < chapterController.chapters!.length; index++) {
+      await chapterController.ensureChapterParsed(index);
+      await chapterController.loadChapter(index, userInitiated: false);
+      if (requestId != _ttsAdvanceRequestId) return;
+
+      final rawText = chapterController.currentPlainText;
+      if (rawText.trim().isEmpty) continue;
+
+      _ttsRawBaseOffset = 0;
+      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+
+      await _ttsService.speak(_ttsNormalizationMap!.normalized);
+      return;
+    }
+  }
+
+  String buildTtsHighlightedHtml(String html, {int? overrideStart, int? overrideEnd}) {
+    final highlightStart = overrideStart ?? _lastHighlightStart;
+    final highlightEnd = overrideEnd ?? _lastHighlightEnd;
+    if (highlightStart == null || highlightEnd == null) return html;
+
+    if (_cachedHighlightedHtml != null && _lastHighlightedSourceHtml == html) {
+      return _cachedHighlightedHtml!;
+    }
+
+    final highlighted = _buildHighlightedHtmlAround(html, highlightStart, highlightEnd);
+    _lastHighlightedSourceHtml = html;
+    _cachedHighlightedHtml = highlighted;
+    return highlighted;
+  }
+
+  static bool _matchesWord(String a, String b) {
+    if (a.toLowerCase() == b.toLowerCase()) return true;
+    final normA = a.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+    final normB = b.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+    return normA == normB;
+  }
+
+  String _buildHighlightedHtmlAround(String html, int rawStart, int rawEnd) {
+    if (rawStart < 0 || rawEnd <= rawStart) return html;
+
+    final document = html_parser.parse(html);
+    final root = document.body ?? document.documentElement;
+    if (root == null) return html;
+
+    final textNodes = DomTextUtils.collectTextNodes(root);
+    if (textNodes.isEmpty) return html;
+
+    String? expectedWord = _ttsService.currentWord?.trim();
+    if (expectedWord == null || expectedWord.isEmpty) {
+      final rawText = chapterController.currentPlainText;
+      if (rawStart >= 0 && rawEnd <= rawText.length) {
+        expectedWord = rawText.substring(rawStart, rawEnd).trim();
+      }
+    }
+    final strippedWord = expectedWord?.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
+    final query = (strippedWord != null && strippedWord.isNotEmpty) ? strippedWord : expectedWord;
+
+    var offset = 0;
+    for (final node in textNodes) {
+      final nodeText = node.data;
+      final cleanToProcessed = <int>[];
+      int processedIdx = 0;
+      int indentLen = 0;
+
+      while (processedIdx < nodeText.length) {
+        final cu = nodeText.codeUnitAt(processedIdx);
+        if (cu == 0x2003 || cu == 0x00A0) {
+          processedIdx++;
+          indentLen++;
+        } else {
+          break;
+        }
+      }
+
+      while (processedIdx < nodeText.length) {
+        final codeUnit = nodeText.codeUnitAt(processedIdx);
+        if (codeUnit == 0x00AD || codeUnit == 0x200B) {
+          processedIdx++;
+          continue;
+        }
+        cleanToProcessed.add(processedIdx);
+        processedIdx++;
+      }
+
+      final nodeStart = offset;
+      final rawEquivalentLen = cleanToProcessed.length + (indentLen > 0 ? 1 : 0);
+      final nodeEnd = offset + rawEquivalentLen;
+      offset = nodeEnd;
+
+      if (rawEnd <= nodeStart || rawStart >= nodeEnd) continue;
+      if (node.parent == null) continue;
+
+      int exactCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
+      int exactCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
+
+      if (query != null && query.isNotEmpty && cleanToProcessed.isNotEmpty) {
+        final cleanText = cleanToProcessed.map((i) => nodeText[i]).join();
+        int matchIdx = -1;
+
+        if (exactCleanStart + query.length <= cleanText.length &&
+            _matchesWord(cleanText.substring(exactCleanStart, exactCleanStart + query.length), query)) {
+          matchIdx = exactCleanStart;
+        } else {
+          for (var delta = -1; delta >= -4; delta--) {
+            final testPos = exactCleanStart + delta;
+            if (testPos >= 0 && testPos + query.length <= cleanText.length) {
+              if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
+                matchIdx = testPos;
+                break;
+              }
+            }
+          }
+
+          if (matchIdx < 0) {
+            for (var delta = 1; delta <= 4; delta++) {
+              final testPos = exactCleanStart + delta;
+              if (testPos >= 0 && testPos + query.length <= cleanText.length) {
+                if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
+                  matchIdx = testPos;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (matchIdx < 0) {
+            const window = 12;
+            final searchStart = (exactCleanStart - window).clamp(0, cleanText.length);
+            final searchEnd = (exactCleanStart + query.length + window).clamp(0, cleanText.length);
+            final region = cleanText.substring(searchStart, searchEnd);
+
+            final normRegion = region.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+            final normQuery = query.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
+            final localIdx = normRegion.indexOf(normQuery);
+            if (localIdx >= 0) {
+              matchIdx = searchStart + localIdx;
+            }
+          }
+        }
+
+        if (matchIdx >= 0 && matchIdx < cleanToProcessed.length) {
+          exactCleanStart = matchIdx;
+          exactCleanEnd = (matchIdx + query.length).clamp(exactCleanStart + 1, cleanToProcessed.length);
+        }
+      }
+
+      if (exactCleanStart >= exactCleanEnd) continue;
+
+      final localStart = exactCleanStart < cleanToProcessed.length
+          ? cleanToProcessed[exactCleanStart]
+          : nodeText.length;
+      final localEnd = exactCleanEnd < cleanToProcessed.length
+          ? cleanToProcessed[exactCleanEnd]
+          : (cleanToProcessed.isNotEmpty ? cleanToProcessed.last + 1 : nodeText.length);
+
+      if (localStart >= localEnd) continue;
+
+      final before = nodeText.substring(0, localStart);
+      final mid = nodeText.substring(localStart, localEnd);
+      final after = nodeText.substring(localEnd);
+
+      final parent = node.parent;
+      if (parent == null) continue;
+
+      final index = parent.nodes.indexOf(node);
+      if (index < 0) continue;
+
+      final newNodes = <dom.Node>[];
+      if (before.isNotEmpty) newNodes.add(dom.Text(before));
+      if (mid.isNotEmpty) {
+        final mark = dom.Element.tag(_ttsHighlightTag);
+        mark.append(dom.Text(mid));
+        newNodes.add(mark);
+      }
+      if (after.isNotEmpty) newNodes.add(dom.Text(after));
+
+      parent.nodes.removeAt(index);
+      parent.nodes.insertAll(index, newNodes);
+      break;
+    }
+
+    return root.outerHtml;
+  }
+
+  String resolveTtsText({required ReaderModeController modeController}) {
+    final rawText = chapterController.currentPlainText;
+    if (rawText.trim().isEmpty) return '';
+
+    if (_lastTtsSentenceStart >= 0 &&
+        _lastTtsSentenceEnd > _lastTtsSentenceStart &&
+        _lastTtsSection == chapterController.currentChapterIndex) {
+      final start = _lastTtsSentenceStart.clamp(0, rawText.length);
+      _ttsRawBaseOffset = start;
+
+      final textToSpeak = rawText.substring(start);
+      _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
+      return _ttsNormalizationMap!.normalized;
+    }
+
+    return _ttsTextFromScrollPosition(modeController: modeController);
+  }
+
+  String _ttsTextFromScrollPosition({required ReaderModeController modeController}) {
+    final rawText = chapterController.currentPlainText;
+    if (rawText.trim().isEmpty) return '';
+
+    if (modeController.isPagedMode) {
+      final rawStart = chapterController.activePageStartCharOffset >= 0
+          ? chapterController.activePageStartCharOffset
+          : (chapterController.lastReadingSentenceStart >= 0 ? chapterController.lastReadingSentenceStart : 0);
+      final start = rawStart.clamp(0, rawText.length);
+      _ttsRawBaseOffset = start;
+      final textToSpeak = rawText.substring(start);
+      _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
+      return _ttsNormalizationMap!.normalized;
+    }
+
+    final scrollController = chapterController.scrollController;
+    if (!scrollController.hasClients) {
+      _ttsRawBaseOffset = 0;
+      _ttsNormalizationMap = buildNormalizedTextMap(rawText);
+      return _ttsNormalizationMap!.normalized;
+    }
+
+    final maxExtent = scrollController.position.maxScrollExtent;
+    final offset = scrollController.offset.clamp(0.0, maxExtent);
+    final fraction = maxExtent <= 0 ? 0.0 : (offset / maxExtent);
+    final maxIndex = rawText.length - 1;
+    final approxIndex = maxIndex <= 0 ? 0 : (fraction * maxIndex).floor().clamp(0, maxIndex);
+
+    final start = findSentenceStart(rawText, approxIndex);
+    _ttsRawBaseOffset = start;
+
+    final textToSpeak = rawText.substring(start);
+    _ttsNormalizationMap = buildNormalizedTextMap(textToSpeak);
+    return _ttsNormalizationMap!.normalized;
+  }
+
+  TapDetectionResult? detectWordAtTap({
+    TapUpDetails? details,
+    Offset? position,
+    required ReaderModeController modeController,
+    required BuildContext context,
+  }) {
+    if (!_tapToStartEnabled) return null;
+    if (chapterController.allChapterPlainTexts.isEmpty) return null;
+
+    final tap = position ?? details?.globalPosition;
+    if (tap == null) return null;
+
+    final chapterIndex = _findChapterIndexAtTap(tap, modeController: modeController, context: context) ??
+        chapterController.currentChapterIndex.clamp(0, chapterController.allChapterPlainTexts.length - 1);
+
+    final chapterText = chapterController.allChapterPlainTexts[chapterIndex];
+    if (chapterText.trim().isEmpty) return null;
+
+    final hit = _hitTestTextAt(tap, context: context);
+    if (hit == null || hit.rawText.trim().isEmpty) return null;
+
+    final bounds = chapterController.getReadingBoundsForTap(
+      tapDy: tap.dy,
+      viewportHeight: MediaQuery.sizeOf(context).height,
+      modeController: modeController,
+      chapterLength: chapterText.length,
+      tappedChapterIndex: chapterIndex,
+    );
+
+    final resolved = TextOffsetResolver.resolveExactOffset(
+      chapterText: chapterText,
+      rawParagraphFragment: hit.rawText,
+      rawHitOffset: hit.rawOffset,
+      windowStart: bounds.start,
+      windowEnd: bounds.end,
+      expectedOffset: bounds.expected,
+    );
+
+    if (resolved != null) {
+      return TapDetectionResult(
+        word: resolved.word,
+        chapterIndex: chapterIndex,
+        offset: resolved.offset,
+        tapPosition: tap,
+      );
+    }
+    return null;
+  }
+
+  int _findWordEnd(String text, int start) {
+    var end = start;
+    while (end < text.length && text[end].trim().isNotEmpty) {
+      end++;
+    }
+    return end;
+  }
+
+  Future<void> speakFromLocation({
+    required int chapterIndex,
+    required int offset,
+  }) async {
+    await chapterController.ensureChapterParsed(chapterIndex);
+    if (chapterIndex != chapterController.currentChapterIndex) {
+      await chapterController.loadChapter(chapterIndex, userInitiated: false);
+    }
+
+    final chapterText = chapterController.allChapterPlainTexts[chapterIndex];
+    if (offset >= 0 && offset < chapterText.length) {
+      final startText = chapterText.substring(offset);
+      await _speakFromHere(startText, baseOffset: offset);
+    }
+  }
+
+  Future<void> startPlayback({required ReaderModeController modeController}) async {
+    await chapterController.ensureChapterParsed(chapterController.currentChapterIndex);
+    final text = resolveTtsText(modeController: modeController);
+    if (text.trim().isEmpty) return;
+
+    final wordEnd = _findWordEnd(chapterController.currentPlainText, _ttsRawBaseOffset);
+    _lastHighlightStart = _ttsRawBaseOffset;
+    _lastHighlightEnd = wordEnd > _ttsRawBaseOffset ? wordEnd : _ttsRawBaseOffset + 1;
+    _cachedHighlightedHtml = null;
+
+    _isStartingSpeech = true;
+    _showTtsControls = true;
+    notifyListeners();
+
+    await _ttsService.speak(text);
+  }
+
+  Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
+    if (startText.trim().isEmpty) return;
+
+    final map = buildNormalizedTextMap(startText);
+    if (map.normalized.isEmpty) return;
+
+    if (baseOffset != null && baseOffset >= 0) {
+      _ttsRawBaseOffset = baseOffset;
+    } else {
+      final fullRaw = chapterController.currentPlainText;
+      final index = fullRaw.indexOf(startText);
+      _ttsRawBaseOffset = index >= 0 ? index : 0;
+    }
+
+    _ttsNormalizationMap = map;
+    _ttsAdvanceRequestId++;
+
+    final wordEnd = _findWordEnd(chapterController.currentPlainText, _ttsRawBaseOffset);
+    _lastHighlightStart = _ttsRawBaseOffset;
+    _lastHighlightEnd = wordEnd > _ttsRawBaseOffset ? wordEnd : _ttsRawBaseOffset + 1;
+    _cachedHighlightedHtml = null;
+
+    _isStartingSpeech = true;
+    _showTtsControls = true;
+    notifyListeners();
+
+    await _ttsService.speak(map.normalized);
+  }
+
+  int? _findChapterIndexAtTap(Offset globalPosition, {required ReaderModeController modeController, required BuildContext context}) {
+    if (modeController.isPagedMode) return chapterController.currentChapterIndex;
+    if (chapterController.chapterKeys.isEmpty) return null;
+
+    for (var i = 0; i < chapterController.chapterKeys.length; i++) {
+      final ctx = chapterController.chapterKeys[i].currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      final rect = topLeft & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  ({String rawText, int rawOffset})? _hitTestTextAt(Offset globalPosition, {required BuildContext context}) {
+    final viewId = View.of(context).viewId;
+    const offsets = [
+      Offset.zero,
+      Offset(0, -6),
+      Offset(0, 6),
+      Offset(-6, 0),
+      Offset(6, 0),
+      Offset(0, -12),
+      Offset(0, 12),
+    ];
+
+    for (final delta in offsets) {
+      final result = HitTestResult();
+      WidgetsBinding.instance.hitTestInView(result, globalPosition + delta, viewId);
+
+      for (final entry in result.path) {
+        final target = entry.target;
+        if (target is RenderParagraph) {
+          final local = target.globalToLocal(globalPosition + delta);
+          final position = target.getPositionForOffset(local);
+          return (rawText: target.text.toPlainText(), rawOffset: position.offset);
+        }
+      }
+    }
+    return null;
+  }
+
+  void maybeEnsureHighlightVisible() {
+    if (!_ttsFollowMode) return;
+    if (_lastHighlightStart == null || _lastHighlightEnd == null) return;
+    if (_lastEnsuredStart == _lastHighlightStart && _lastEnsuredEnd == _lastHighlightEnd) return;
+
+    final context = _ttsHighlightKey.currentContext;
+    if (context == null) {
+      Future.delayed(const Duration(milliseconds: 50), _retryEnsureVisible);
+      return;
+    }
+
+    _performEnsureVisible(context);
+  }
+
+  void _retryEnsureVisible() {
+    if (!_ttsFollowMode) return;
+    final retryContext = _ttsHighlightKey.currentContext;
+    if (retryContext == null) return;
+    _performEnsureVisible(retryContext);
+  }
+
+  void _performEnsureVisible(BuildContext context) {
+    _lastEnsuredStart = _lastHighlightStart;
+    _lastEnsuredEnd = _lastHighlightEnd;
+
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      alignment: 0.5,
+    );
+  }
+
+  void saveCurrentTtsSentence() {
+    final wordStart = _ttsService.currentWordStart;
+    final wordEnd = _ttsService.currentWordEnd;
+    if (wordStart == null || wordEnd == null) return;
+    if (chapterController.currentPlainText.trim().isEmpty) return;
+
+    final map = _ttsNormalizationMap;
+    if (map == null || map.normalizedToRaw.isEmpty) return;
+
+    final maxIdx = map.normalizedToRaw.length;
+    final clampedStart = wordStart.clamp(0, maxIdx - 1);
+    final clampedEnd = wordEnd.clamp(0, maxIdx);
+    if (clampedEnd <= clampedStart) return;
+
+    final rawWordStart = map.normalizedToRaw[clampedStart];
+    final rawWordEnd = map.normalizedToRaw[clampedEnd - 1] + 1;
+
+    final absoluteStart = _ttsRawBaseOffset + rawWordStart;
+    final absoluteEnd = _ttsRawBaseOffset + rawWordEnd;
+
+    _lastTtsSentenceStart = absoluteStart;
+    _lastTtsSentenceEnd = absoluteEnd;
+    _lastTtsSection = chapterController.currentChapterIndex;
+
+    unawaited(repository.updateReadingProgress(
+      book.id,
+      sectionIndex: chapterController.currentChapterIndex,
+      totalPages: chapterController.chapters?.length ?? 0,
+      lastTtsSentenceStart: absoluteStart,
+      lastTtsSentenceEnd: absoluteEnd,
+      lastTtsSection: chapterController.currentChapterIndex,
+    ));
+  }
+
+  void closeTtsControls() {
+    _ttsAdvanceRequestId++;
+    _isStartingSpeech = false;
+    _showTtsControls = false;
+    _cachedHighlightedHtml = null;
+    _lastHighlightStart = null;
+    _lastHighlightEnd = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _ttsService.setOnFinished(null);
+    _ttsService.removeListener(_handleTtsProgress);
+    unawaited(_ttsService.stop());
+    super.dispose();
+  }
+}
+
+class TapDetectionResult {
+  final String word;
+  final int chapterIndex;
+  final int offset;
+  final Offset tapPosition;
+
+  const TapDetectionResult({
+    required this.word,
+    required this.chapterIndex,
+    required this.offset,
+    required this.tapPosition,
+  });
+}
