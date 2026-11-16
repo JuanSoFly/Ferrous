@@ -12,6 +12,7 @@ import 'package:ferrous/features/reader/controllers/txt_tts_controller.dart';
 import 'package:ferrous/features/reader/controllers/reader_selection_controller.dart';
 import 'txt_content_viewer.dart';
 import 'realistic_page_turn.dart';
+import 'reader_selection_menu_builder.dart';
 
 class TxtPagedViewer extends StatefulWidget {
   final TxtChapterController chapterController;
@@ -45,6 +46,7 @@ class TxtPagedViewer extends StatefulWidget {
 
 class _TxtPagedViewerState extends State<TxtPagedViewer> {
   final GlobalKey<RealisticPageTurnState> _realisticPageTurnKey = GlobalKey<RealisticPageTurnState>();
+  bool _hadSelectionOnTapDown = false;
   late int _currentChapter;
   late int _activeSlot;
   late PageController _viewPageController;
@@ -313,6 +315,94 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
     );
   }
 
+  void _goToPreviousPage(int totalSlots) {
+    if (_activeSlot > 0 && !_isPageAnimating) {
+      widget.selectionController.clearSelection();
+      widget.onClearSelection?.call();
+      final target = _activeSlot - 1;
+      final themeRepo = context.read<ReaderThemeRepository>();
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+          themeRepo.config.pageFlip;
+      if (useRealisticCurl) {
+        _handleSlotChanged(target);
+      } else if (_viewPageController.hasClients) {
+        _isPageAnimating = true;
+        _viewPageController
+            .animateToPage(
+              target,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) => _isPageAnimating = false)
+            .catchError((_) => _isPageAnimating = false);
+      }
+    }
+  }
+
+  void _goToNextPage(int totalSlots) {
+    if (_activeSlot < totalSlots - 1 && !_isPageAnimating) {
+      widget.selectionController.clearSelection();
+      widget.onClearSelection?.call();
+      final target = _activeSlot + 1;
+      final themeRepo = context.read<ReaderThemeRepository>();
+      final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+          themeRepo.config.pageFlip;
+      if (useRealisticCurl) {
+        _handleSlotChanged(target);
+      } else if (_viewPageController.hasClients) {
+        _isPageAnimating = true;
+        _viewPageController
+            .animateToPage(
+              target,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) => _isPageAnimating = false)
+            .catchError((_) => _isPageAnimating = false);
+      }
+    }
+  }
+
+  void _handleTapUp(TapUpDetails details, Size size, int totalSlots) {
+    widget.onTapUp(details);
+
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
+        themeRepo.config.pageFlip;
+
+    if (widget.readingMode == ReadingMode.vertical) {
+      const marginRatio = 0.15;
+      final tapY = details.globalPosition.dy;
+      final height = size.height;
+      if (tapY < height * marginRatio) {
+        _goToPreviousPage(totalSlots);
+      } else if (tapY > height * (1.0 - marginRatio)) {
+        _goToNextPage(totalSlots);
+      } else {
+        widget.onToggleChrome();
+      }
+    } else {
+      const marginRatio = 0.18;
+      final tapX = details.globalPosition.dx;
+      final width = size.width;
+      if (tapX < width * marginRatio) {
+        if (useRealisticCurl) {
+          _realisticPageTurnKey.currentState?.turnPageAnimated(-1);
+        } else {
+          _goToPreviousPage(totalSlots);
+        }
+      } else if (tapX > width * (1.0 - marginRatio)) {
+        if (useRealisticCurl) {
+          _realisticPageTurnKey.currentState?.turnPageAnimated(1);
+        } else {
+          _goToNextPage(totalSlots);
+        }
+      } else {
+        widget.onToggleChrome();
+      }
+    }
+  }
+
   Widget _buildPageItem(
     BuildContext context,
     int chapterIndex,
@@ -320,16 +410,58 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
     int totalSlots,
   ) {
     if (slice == null) return const SizedBox.shrink();
+    final sliceIdx = slice.pageIndex;
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: TxtContentViewer(
-        key: ValueKey('txt-page-slice-$chapterIndex-${slice.pageIndex}'),
-        chapterIndex: chapterIndex,
-        htmlContent: slice.html,
-        chapterController: widget.chapterController,
-        ttsController: widget.ttsController,
-        pageSlice: slice,
+    return SelectionArea(
+      key: widget.selectionController.keyForPage(chapterIndex, sliceIdx),
+      onSelectionChanged: (content) =>
+          widget.selectionController.updateSelection('$chapterIndex-$sliceIdx', content),
+      contextMenuBuilder: (context, selectableRegionState) =>
+          ReaderSelectionMenuBuilder.build(
+            context: context,
+            selectableRegionState: selectableRegionState,
+            selectedContent: widget.selectionController.selectedContent,
+            onAnnotate: widget.onAnnotate,
+            onSelectionCleared: () =>
+                widget.selectionController.updateSelection('$chapterIndex-$sliceIdx', null),
+          ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (_) {
+          _hadSelectionOnTapDown = widget.selectionController.hasSelection;
+        },
+        onTapCancel: () {
+          _hadSelectionOnTapDown = false;
+        },
+        onTapUp: (details) {
+          final shouldConsume =
+              _hadSelectionOnTapDown || widget.selectionController.tryDismissSelection();
+          _hadSelectionOnTapDown = false;
+          if (shouldConsume) {
+            widget.selectionController.clearSelection();
+            return;
+          }
+          _handleTapUp(details, MediaQuery.sizeOf(context), totalSlots);
+        },
+        child: SizedBox.expand(
+          child: SingleChildScrollView(
+            key: ValueKey('txt-page-slice-$chapterIndex-$sliceIdx'),
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(
+              left: 16.0,
+              right: 16.0,
+              top: 16.0,
+              bottom: 16.0,
+            ),
+            child: TxtContentViewer(
+              chapterIndex: chapterIndex,
+              htmlContent: slice.html,
+              chapterController: widget.chapterController,
+              ttsController: widget.ttsController,
+              pageSlice: slice,
+            ),
+          ),
+        ),
       ),
     );
   }
