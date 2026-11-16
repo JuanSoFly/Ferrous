@@ -117,8 +117,9 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> with WidgetsBindingOb
     );
     if (selected == null || selected == _pageController.readingMode) return;
     
-    _pageController.updateReadingMode(selected);
     _modeController.mode = selected;
+    _pageController.updateReadingMode(selected);
+    if (mounted) setState(() {});
   }
 
   void _openTableOfContents() {

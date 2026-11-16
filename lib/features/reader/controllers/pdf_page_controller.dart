@@ -82,6 +82,8 @@ class PdfPageController extends ChangeNotifier {
     scrollController.addListener(_handleScrollUpdate);
   }
 
+  double get scrollPosition => scrollController.hasClients ? scrollController.offset : _lastScrollPosition;
+
   bool hasPageImage(int index) => getPageUiImage(index) != null;
 
   PageCornerColors? getPageCornerColors(int index) => _cornerColorsCache[index];
@@ -159,7 +161,7 @@ class PdfPageController extends ChangeNotifier {
 
   // GPU texture cache & render generation tracking
   late final PdfGpuImageCache _gpuImageCache = PdfGpuImageCache(
-    maxResident: isContinuousMode ? 8 : 4,
+    maxResident: isContinuousMode ? 12 : 4,
   );
   ui.Image? getPageUiImage(int index) => _gpuImageCache.get(index);
   int _renderEpoch = 0;
@@ -225,14 +227,32 @@ class PdfPageController extends ChangeNotifier {
     if (viewportBox == null || !viewportBox.hasSize) return;
 
     final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+    final isWebtoon = _readingMode == ReadingMode.webtoon;
     final focusPoint = isHorizontal
         ? viewportBox.size.width * 0.35
         : viewportBox.size.height * 0.35;
 
+    final offset = scrollController.offset;
+    final defaultAr = _defaultAspectRatio > 0 ? _defaultAspectRatio : 0.70;
+    final spacing = isWebtoon ? 1.0 : 12.0;
+
+    double estimatedExtent;
+    if (isHorizontal) {
+      final effH = _viewerSize.height > 0 ? _viewerSize.height : 800.0;
+      estimatedExtent = (effH * defaultAr) + spacing;
+    } else {
+      final effW = _viewerSize.width > 0 ? _viewerSize.width : 600.0;
+      estimatedExtent = (effW / defaultAr) + spacing;
+    }
+
+    final estimatedIndex = (offset / (estimatedExtent > 0 ? estimatedExtent : 800.0)).floor().clamp(0, _pageCount - 1);
+    final searchStart = (estimatedIndex - 4).clamp(0, _pageCount - 1);
+    final searchEnd = (estimatedIndex + 6).clamp(0, _pageCount - 1);
+
     int? bestIndex;
     double minDistance = double.infinity;
 
-    for (int i = 0; i < _pageCount; i++) {
+    for (int i = searchStart; i <= searchEnd; i++) {
       if (i >= _pageKeys.length) break;
       final ctx = _pageKeys[i].currentContext;
       if (ctx == null) continue;
@@ -258,7 +278,9 @@ class PdfPageController extends ChangeNotifier {
       }
     }
 
-    if (bestIndex != null && bestIndex != _pageIndex) {
+    bestIndex ??= estimatedIndex;
+
+    if (bestIndex != _pageIndex) {
       _pageIndex = bestIndex;
       notifyListeners();
     }
@@ -271,6 +293,7 @@ class PdfPageController extends ChangeNotifier {
 
     final offset = scrollController.offset;
     _lastScrollPosition = offset;
+    book.scrollPosition = offset;
 
     final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
     if (effectiveTotalPages <= 0) return;
@@ -312,41 +335,78 @@ class PdfPageController extends ChangeNotifier {
     return offset;
   }
 
-  void restoreContinuousScroll() {
-    if (!scrollController.hasClients || _pageCount == 0) return;
-    if (_lastScrollPosition <= 0 && _pageIndex <= 0) {
+  void _anchorToContinuousPage(int targetPage, {int attempt = 0}) {
+    if (!scrollController.hasClients || _disposed || !isContinuousMode) {
       _isRestoringScroll = false;
       return;
     }
 
-    _isRestoringScroll = true;
+    final position = scrollController.position;
+    if (!position.hasContentDimensions) {
+      if (attempt < 20) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          _anchorToContinuousPage(targetPage, attempt: attempt + 1);
+        });
+      } else {
+        _isRestoringScroll = false;
+      }
+      return;
+    }
+
+    // Stage 1: If target page key is already mounted, anchor precisely to it
+    if (targetPage < _pageKeys.length) {
+      final ctx = _pageKeys[targetPage].currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        final viewport = scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize && viewport != null && viewport.hasSize) {
+          final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
+          final itemStart = isHorizontal
+              ? box.localToGlobal(Offset.zero, ancestor: viewport).dx
+              : box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+          if (itemStart.abs() > 1.0) {
+            final corrected = (scrollController.offset + itemStart).clamp(0.0, position.maxScrollExtent);
+            scrollController.jumpTo(corrected);
+          }
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            _isRestoringScroll = false;
+          });
+          return;
+        }
+      }
+    }
+
+    // Stage 2: Coarse jump to estimated offset
     final isWebtoon = _readingMode == ReadingMode.webtoon;
     final spacing = isWebtoon ? 1.0 : 12.0;
-    final targetOffset = _lastScrollPosition > 0
-        ? _lastScrollPosition
-        : calculateEstimatedOffsetForPage(_pageIndex, spacing);
+    final targetOffset = calculateEstimatedOffsetForPage(targetPage, spacing);
+    final maxExtent = position.maxScrollExtent;
+    final targetJump = (maxExtent > 0 && targetOffset > maxExtent) ? maxExtent : targetOffset;
 
-    void tryRestore() {
+    if ((position.pixels - targetJump).abs() > 1.0) {
+      scrollController.jumpTo(targetJump);
+    }
+
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!scrollController.hasClients || _disposed) {
         _isRestoringScroll = false;
         return;
       }
-      final position = scrollController.position;
-      if (!position.hasContentDimensions) {
-        SchedulerBinding.instance.addPostFrameCallback((_) => tryRestore());
-        return;
-      }
-
-      final clamped = targetOffset.clamp(0.0, position.maxScrollExtent);
-      if ((position.pixels - clamped).abs() > 1.0) {
-        scrollController.jumpTo(clamped);
-      }
-      SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (attempt < 20) {
+        _anchorToContinuousPage(targetPage, attempt: attempt + 1);
+      } else {
         _isRestoringScroll = false;
-      });
-    }
+      }
+    });
+  }
 
-    SchedulerBinding.instance.addPostFrameCallback((_) => tryRestore());
+  void restoreContinuousScroll() {
+    if (!scrollController.hasClients || _pageCount == 0 || !isContinuousMode) {
+      _isRestoringScroll = false;
+      return;
+    }
+    _isRestoringScroll = true;
+    _anchorToContinuousPage(_pageIndex);
   }
 
   Future<ui.Image> _createUiImageFromRgba(Uint8List rgbaBytes, int width, int height) async {
@@ -384,57 +444,14 @@ class PdfPageController extends ChangeNotifier {
 
     final wasContinuous = isContinuousMode;
     _readingMode = mode;
-    _gpuImageCache.maxResident = isContinuousMode ? 8 : 4;
+    _gpuImageCache.maxResident = isContinuousMode ? 12 : 4;
     repository.updateReadingProgress(book.id, readingMode: mode);
 
     if (isContinuousMode) {
       _isRestoringScroll = true;
-      final isWebtoon = _readingMode == ReadingMode.webtoon;
-      final spacing = isWebtoon ? 1.0 : 12.0;
-      final targetScroll = calculateEstimatedOffsetForPage(_pageIndex, spacing);
-
-      void tryJump() {
-        if (!scrollController.hasClients || _disposed) {
-          _isRestoringScroll = false;
-          return;
-        }
-        final position = scrollController.position;
-        if (!position.hasContentDimensions) {
-          SchedulerBinding.instance.addPostFrameCallback((_) => tryJump());
-          return;
-        }
-        scrollController.jumpTo(targetScroll.clamp(0.0, position.maxScrollExtent));
-
-        // Stage 2: Micro-anchor to the exact render box if already laid out
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (_disposed || !scrollController.hasClients) {
-            _isRestoringScroll = false;
-            return;
-          }
-          if (_pageIndex < _pageKeys.length) {
-            final ctx = _pageKeys[_pageIndex].currentContext;
-            if (ctx != null) {
-              final box = ctx.findRenderObject() as RenderBox?;
-              if (box != null && box.hasSize) {
-                final isHorizontal = _readingMode == ReadingMode.horizontalContinuous;
-                final viewport = scrollController.position.context.notificationContext?.findRenderObject() as RenderBox?;
-                if (viewport != null && viewport.hasSize) {
-                  final offset = isHorizontal
-                      ? box.localToGlobal(Offset.zero, ancestor: viewport).dx
-                      : box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-                  if (offset.abs() > 2.0) {
-                    final corrected = (scrollController.offset + offset).clamp(0.0, scrollController.position.maxScrollExtent);
-                    scrollController.jumpTo(corrected);
-                  }
-                }
-              }
-            }
-          }
-          _isRestoringScroll = false;
-        });
-      }
-
-      SchedulerBinding.instance.addPostFrameCallback((_) => tryJump());
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _anchorToContinuousPage(_pageIndex);
+      });
     } else {
       _isRestoringScroll = false;
       if (wasContinuous) {
@@ -449,14 +466,9 @@ class PdfPageController extends ChangeNotifier {
   void jumpToPage(int targetPage) {
     if (targetPage < 0 || targetPage >= _pageCount) return;
     if (isContinuousMode) {
-      final isWebtoon = _readingMode == ReadingMode.webtoon;
-      final spacing = isWebtoon ? 1.0 : 12.0;
-      final offset = calculateEstimatedOffsetForPage(targetPage, spacing);
-      if (scrollController.hasClients) {
-        final clamped = offset.clamp(0.0, scrollController.position.maxScrollExtent);
-        scrollController.jumpTo(clamped);
-      }
       _pageIndex = targetPage;
+      _isRestoringScroll = true;
+      _anchorToContinuousPage(targetPage);
       notifyListeners();
     } else {
       renderPage(targetPage, userInitiated: true);
@@ -523,7 +535,11 @@ class PdfPageController extends ChangeNotifier {
     _devicePixelRatio = effectiveDpr;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (hasListeners && _resolvedFile != null && !_isLoading) {
-        renderPage(_pageIndex);
+        if (!isContinuousMode) {
+          renderPage(_pageIndex);
+        } else {
+          notifyListeners();
+        }
       }
     });
   }
@@ -616,9 +632,15 @@ class PdfPageController extends ChangeNotifier {
         final nextIndex = sorted.first;
         _pendingRenderQueue.remove(nextIndex);
 
-        final maxRadius = isContinuousMode ? 4 : 2;
+        final maxRadius = isContinuousMode ? 10 : 3;
         // Drop stale queue items that are now far from the viewport
         if ((nextIndex - _pageIndex).abs() > maxRadius || hasPageImage(nextIndex)) {
+          final completers = _pageRenderCompleters.remove(nextIndex);
+          if (completers != null) {
+            for (final c in completers) {
+              if (!c.isCompleted) c.complete();
+            }
+          }
           continue;
         }
 
@@ -692,7 +714,7 @@ class PdfPageController extends ChangeNotifier {
         } catch (e, stack) {
           if (e.toString().contains('RENDER_CANCELLED')) {
             // If it's still near the active page, put it back in the queue!
-            final maxRadius = isContinuousMode ? 4 : 2;
+            final maxRadius = isContinuousMode ? 10 : 3;
             if ((nextIndex - _pageIndex).abs() <= maxRadius && !hasPageImage(nextIndex)) {
               _pendingRenderQueue.add(nextIndex);
             }
@@ -721,7 +743,7 @@ class PdfPageController extends ChangeNotifier {
 
         // Automatically enqueue immediate neighbors once the active page finishes
         if (nextIndex == _pageIndex) {
-          final aheadCount = isContinuousMode ? 3 : 1;
+          final aheadCount = isContinuousMode ? 4 : 1;
           final behindCount = isContinuousMode ? 2 : 1;
           for (int i = 1; i <= aheadCount; i++) {
             if (_pageIndex + i < _pageCount && !hasPageImage(_pageIndex + i)) {

@@ -29,6 +29,14 @@
 
 ## [1.4.2-alpha.4] - 2026-11-16
 
+### Continuous PDF Scrolling & Viewport Anchoring
+- **Precision Page Anchoring & Scroll Restoration**: Replaced naive scroll restoration with a multi-frame retry mechanism (`_anchorToContinuousPage`) that deterministically aligns the target page's top edge to the viewport top upon opening a document or toggling reading modes.
+- **RenderBox & Aspect-Ratio Jump Navigation**: Upgraded `jumpToPage` in continuous modes to compute exact pixel offsets via mounted RenderBox coordinates or cumulative aspect-ratio extents, eliminating inaccurate fixed-extent approximations.
+- **Bounded Active Page Search**: Restricted `_updateActivePageFromScroll` to a localized window around the estimated page index (`[searchStart, searchEnd]`) rather than iterating every document page on every scroll tick.
+- **Aspect-Ratio Locked Vertical Continuous List**: Wrapped vertical continuous pages in `AspectRatio` constraints within `ListView.separated` with increased cache extent (`2x viewport height`), preventing layout jumps during dynamic bitmap loading.
+- **Jitter-Free Continuous Rendering**: Suppressed redundant `setState` and controller syncs during continuous scrolling in `_onPageControllerChanged`, and unified `RepaintBoundary` and `KeyedSubtree` handling across placeholder and rendered page layers.
+- **Expanded Continuous GPU Cache**: Tuned resident continuous GPU texture cache to 12 pages for smooth, uninterrupted fast scrolling.
+
 ### Modular TXT Reader Engine & Encoding Auto-Detection
 - **Native Encoding Detection**: Integrated `chardetng` and `encoding_rs` in the Rust backend to automatically detect legacy character sets (Shift-JIS, GBK, Windows-1252, ISO-8859, etc.) and losslessly transcode plain text documents into clean UTF-8.
 - **Dynamic Chapter Splitting & Markdown Parsing**: Overhauled `read_txt` in Rust to segment plain text into discrete chapters based on natural chapter heading patterns, roman numerals, or size thresholds. Added support for markdown headings, blockquotes, code fences, Mermaid diagram embeds, checkboxes, and lists.

@@ -77,6 +77,11 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
         final pageController = widget.pageController;
         final index = widget.pageIndex;
         final hasImage = pageController.hasPageImage(index);
+        final containerKey = (index >= 0 && index < pageController.pageKeys.length)
+            ? pageController.pageKeys[index]
+            : null;
+        final cornerColors = pageController.getPageCornerColors(index);
+        final double? pageAr = pageController.getPageAspectRatio(index);
 
         if (!hasImage) {
           if (!_preloadScheduled) {
@@ -94,26 +99,7 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
             });
           }
 
-          double? placeholderHeight;
-          double? placeholderWidth;
-          if (!pageController.viewerSize.isEmpty) {
-            if (widget.isHorizontal) {
-              placeholderHeight = pageController.viewerSize.height;
-              placeholderWidth = pageController.viewerSize.width * 0.75;
-            } else {
-              placeholderWidth = pageController.viewerSize.width;
-              placeholderHeight = pageController.viewerSize.width * 1.41;
-              if (placeholderHeight > pageController.viewerSize.height) {
-                placeholderHeight = pageController.viewerSize.height;
-              }
-            }
-          } else {
-            placeholderHeight = 400.0;
-          }
-
-          return Container(
-            width: placeholderWidth,
-            height: placeholderHeight,
+          final placeholder = Container(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(4),
@@ -131,10 +117,23 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
               ),
             ),
           );
+
+          final placeholderContent = CbzPageLetterboxContainer(
+            colors: cornerColors,
+            readingMode: pageController.readingMode,
+            aspectRatio: pageAr,
+            child: placeholder,
+          );
+
+          return KeyedSubtree(
+            key: containerKey,
+            child: RepaintBoundary(
+              child: placeholderContent,
+            ),
+          );
         }
 
         final pageUiImage = pageController.getPageUiImage(index);
-        final isActive = index == pageController.pageIndex;
 
         final layoutSize = pageController.getLogicalPageSize(index).isEmpty
             ? (pageController.logicalPageSize.isEmpty
@@ -199,29 +198,12 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
           );
         }
 
-        final cornerColors = pageController.getPageCornerColors(index);
-        final double? pageAr = pageController.getPageAspectRatio(index);
-
         Widget content = CbzPageLetterboxContainer(
           colors: cornerColors,
           readingMode: pageController.readingMode,
           aspectRatio: pageAr,
           child: Center(child: layer),
         );
-
-        final containerKey = (index >= 0 && index < pageController.pageKeys.length)
-            ? pageController.pageKeys[index]
-            : null;
-
-        if (isActive) {
-          return KeyedSubtree(
-            key: containerKey,
-            child: RepaintBoundary(
-              key: widget.pageImageKey,
-              child: content,
-            ),
-          );
-        }
 
         return KeyedSubtree(
           key: containerKey,

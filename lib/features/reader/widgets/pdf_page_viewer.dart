@@ -90,6 +90,11 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
 
   void _onPageControllerChanged() {
     if (_syncing) return;
+    if (widget.pageController.isContinuousMode) {
+      // In continuous mode, ListView is already scrolling and positioned.
+      // Do not recreate PageControllers or call setState() during continuous scroll!
+      return;
+    }
     if (_viewPageController.hasClients) {
       final target = widget.pageController.pageIndex;
       if (_viewPageController.page?.round() != target) {
@@ -384,10 +389,6 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   Widget _buildGallery() {
     final mode = widget.pageController.readingMode;
 
-    if (widget.modeController.isPagedMode) {
-      return _buildPagedView();
-    }
-
     if (mode == ReadingMode.verticalContinuous || mode == ReadingMode.webtoon) {
       return _buildVerticalContinuousView();
     }
@@ -472,21 +473,24 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
         return false;
       },
       child: ListView.separated(
-        scrollCacheExtent: ScrollCacheExtent.pixels(size.height),
+        key: ValueKey('pdf-vertical-continuous-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
+        scrollCacheExtent: ScrollCacheExtent.pixels(size.height * 2),
         controller: widget.pageController.scrollController,
         physics: _isMultiTouchZooming
             ? const NeverScrollableScrollPhysics()
             : const AlwaysScrollableScrollPhysics(),
-        key: PageStorageKey(
-            'pdf-${widget.pageController.book.id}-${widget.pageController.readingMode.name}'),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: EdgeInsets.symmetric(vertical: isWebtoon ? 0 : 16),
         itemCount: widget.pageController.pageCount,
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         separatorBuilder: (_, __) => SizedBox(height: spacing),
         itemBuilder: (context, index) {
+          final ar = widget.pageController.getPageAspectRatio(index) ?? 0.70;
           return Center(
-            child: _buildPageLayer(context, index),
+            child: AspectRatio(
+              aspectRatio: ar > 0 ? ar : 0.70,
+              child: _buildPageLayer(context, index),
+            ),
           );
         },
       ),
@@ -537,8 +541,7 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
       pageIndex: index,
       pageController: widget.pageController,
       ttsController: widget.ttsController,
-      isHorizontal: widget.modeController.isHorizontal,
-      pageImageKey: widget.pageImageKey,
+      isHorizontal: widget.pageController.readingMode == ReadingMode.horizontalContinuous,
     );
   }
 
