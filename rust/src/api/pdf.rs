@@ -10,14 +10,7 @@ use lru::LruCache;
 
 pub static GLOBAL_RENDER_EPOCH: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum TaskPriority {
-    P0_VisiblePage = 0,
-    P1_ActiveTextBounds = 1,
-    P2_PrefetchNeighbor = 2,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub struct PdfOutlineItem {
     pub title: String,
     pub page_index: Option<u32>,
