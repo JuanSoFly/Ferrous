@@ -36,16 +36,9 @@ const NUMBER_WORDS: &[&str] = &[
 
 fn is_valid_chapter_identifier(id: &str) -> bool {
     let lower = id.to_lowercase();
-    if lower.chars().all(|c| c.is_ascii_digit()) {
-        return true;
-    }
-    if NUMBER_WORDS.contains(&lower.as_str()) {
-        return true;
-    }
-    if ROMAN_NUMERAL_RE.is_match(&lower) {
-        return true;
-    }
-    false
+    lower.chars().all(|c| c.is_ascii_digit())
+        || NUMBER_WORDS.contains(&lower.as_str())
+        || ROMAN_NUMERAL_RE.is_match(&lower)
 }
 
 fn ends_with_sentence_punct(text: &str) -> bool {
@@ -71,7 +64,7 @@ fn match_chapter_heading(trimmed: &str, preceded_by_empty: bool) -> Option<Strin
         }
     }
 
-    if let Some(_caps) = CJK_CHAPTER_RE.captures(trimmed) {
+    if CJK_CHAPTER_RE.is_match(trimmed) {
         return Some(trimmed.to_string());
     }
 
@@ -79,10 +72,10 @@ fn match_chapter_heading(trimmed: &str, preceded_by_empty: bool) -> Option<Strin
         let id_part = caps.get(1).map_or("", |m| m.as_str());
         let subtitle = caps.get(2).map_or("", |m| m.as_str()).trim();
 
-        if is_valid_chapter_identifier(id_part) {
-            if subtitle.is_empty() || !ends_with_sentence_punct(subtitle) {
-                return Some(trimmed.to_string());
-            }
+        if is_valid_chapter_identifier(id_part)
+            && (subtitle.is_empty() || !ends_with_sentence_punct(subtitle))
+        {
+            return Some(trimmed.to_string());
         }
     }
 
@@ -102,8 +95,10 @@ fn decode_txt_bytes(raw_bytes: &[u8]) -> String {
     // 2. Check for UTF-16LE BOM
     if raw_bytes.starts_with(&[0xFF, 0xFE]) {
         let u16_slice: Vec<u16> = raw_bytes[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
             .collect();
         return String::from_utf16_lossy(&u16_slice);
     }
@@ -111,8 +106,10 @@ fn decode_txt_bytes(raw_bytes: &[u8]) -> String {
     // 3. Check for UTF-16BE BOM
     if raw_bytes.starts_with(&[0xFE, 0xFF]) {
         let u16_slice: Vec<u16> = raw_bytes[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_be_bytes(*c))
             .collect();
         return String::from_utf16_lossy(&u16_slice);
     }
@@ -240,11 +237,11 @@ pub fn read_txt(path: String) -> Result<Vec<TxtChapter>> {
                 &mut current_raw_chars,
                 &mut current_bytes,
             );
-            current_title = heading_title.clone();
             current_html.push_str(&format!(
                 "<h3 class='chapter-heading' style='margin-top: 24px; margin-bottom: 16px;'>{}</h3>",
                 escape_html(&heading_title)
             ));
+            current_title = heading_title;
             current_raw_chars += line.chars().count() + 1;
             current_bytes += line.len() + 1;
             preceded_by_empty = false;
