@@ -325,8 +325,8 @@ class SafHandler(private val activity: MainActivity) {
                 for (i in 0 until clipData.itemCount) {
                     clipData.getItemAt(i)?.uri?.let { uris.add(it) }
                 }
-            } else if (data.data != null) {
-                uris.add(data.data!)
+            } else {
+                data.data?.let { uris.add(it) }
             }
 
             if (uris.isEmpty()) {
