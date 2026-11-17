@@ -32,8 +32,11 @@ class PdfReaderTopBar extends StatelessWidget {
     final currentTheme = context.watch<AppTheme>();
     final isEInk = currentTheme == AppTheme.eInk;
 
+    final totalPages = pageController.pageCount > 0
+        ? pageController.pageCount
+        : (book.totalPages > 0 ? book.totalPages : 0);
     final chapterTitle = pageController.currentChapter?.title;
-    final pageProgress = '${pageController.pageIndex + 1} / ${pageController.pageCount}';
+    final pageProgress = '${pageController.pageIndex + 1} / $totalPages';
     final subtitleText = chapterTitle != null && chapterTitle.trim().isNotEmpty
         ? '$chapterTitle • $pageProgress'
         : pageProgress;
@@ -84,12 +87,12 @@ class PdfReaderTopBar extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                    fontWeight: FontWeight.w600,
-                                   fontSize: pageController.pageCount > 0 ? 14 : 16,
+                                   fontSize: totalPages > 0 ? 14 : 16,
                                    letterSpacing: -0.2,
                                    color: isEInk ? const Color(0xFF1A1A18) : null,
                                 ),
                               ),
-                              if (pageController.pageCount > 0)
+                              if (totalPages > 0)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2.0),
                                   child: Text(

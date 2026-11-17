@@ -15,12 +15,14 @@ import '../models/pdf_chapter.dart';
 import '../models/page_corner_colors.dart';
 import '../services/pdf_outline_service.dart';
 
-/// LRU resident cache for decoded GPU ui.Image handles with post-frame deferred disposal.
+/// LRU resident cache for decoded GPU ui.Image handles with 32ms deferred disposal.
 class PdfGpuImageCache {
   int maxResident;
   final LinkedHashMap<int, ui.Image> _cache = LinkedHashMap();
 
   PdfGpuImageCache({this.maxResident = 8});
+
+  int get length => _cache.length;
 
   ui.Image? get(int pageIndex) {
     if (!_cache.containsKey(pageIndex)) return null;
@@ -33,13 +35,13 @@ class PdfGpuImageCache {
     if (_cache.containsKey(pageIndex)) {
       final old = _cache.remove(pageIndex);
       if (old != image) {
-        _safeDispose(old);
+        safeDispose(old);
       }
     }
     while (_cache.length >= maxResident) {
       final oldestKey = _cache.keys.first;
       final evicted = _cache.remove(oldestKey);
-      _safeDispose(evicted);
+      safeDispose(evicted);
     }
     _cache[pageIndex] = image;
   }
@@ -48,17 +50,18 @@ class PdfGpuImageCache {
 
   void clear() {
     for (final img in _cache.values) {
-      _safeDispose(img);
+      safeDispose(img);
     }
     _cache.clear();
   }
 
-  void _safeDispose(ui.Image? image) {
+  void safeDispose(ui.Image? image) {
     if (image == null) return;
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      image.dispose();
+    Future.delayed(const Duration(milliseconds: 32), () {
+      try {
+        image.dispose();
+      } catch (_) {}
     });
-    SchedulerBinding.instance.ensureVisualUpdate();
   }
 }
 
@@ -76,9 +79,13 @@ class PdfPageController extends ChangeNotifier {
     required this.repository,
     Size? initialViewportSize,
   }) : _pageIndex = book.currentPage,
+       _pageCount = (book.totalPages > 0) ? book.totalPages : 0,
        _readingMode = book.readingMode,
        _lastScrollPosition = book.scrollPosition,
        _viewerSize = initialViewportSize ?? Size.zero {
+    if (_pageCount > 0) {
+      _ensureKeysLength(_pageCount);
+    }
     scrollController.addListener(_handleScrollUpdate);
   }
 
@@ -112,8 +119,8 @@ class PdfPageController extends ChangeNotifier {
   final Map<int, Size> _renderedPageSizes = {};
   double _defaultAspectRatio = 0.70;
 
-  // Maximum safe texture dimension (2048) to guarantee retina sharpness without memory bloat
-  static const int _maxTextureDimension = 2048;
+  // Maximum safe texture dimension (1600) to guarantee crispness without memory bloat
+  static const int _maxTextureDimension = 1600;
 
   int get prefetchAhead => isContinuousMode ? 3 : 2;
   int get prefetchBehind => isContinuousMode ? 2 : 1;
@@ -121,10 +128,37 @@ class PdfPageController extends ChangeNotifier {
   final Set<int> _pendingRenderQueue = {};
   bool _isRustWorkerBusy = false;
   int? _currentlyRenderingIndex;
+  int _workerGeneration = 0;
+  int _activeNativeRenders = 0;
+  static const int _maxConcurrentNativeRenders = 1;
+  bool _isTransitioningMode = false;
+  bool get isTransitioningMode => _isTransitioningMode;
 
   // GlobalKeys per page for layout anchoring
-  List<GlobalKey> _pageKeys = [];
+  final List<GlobalKey> _pageKeys = [];
   List<GlobalKey> get pageKeys => _pageKeys;
+
+  // GlobalKeys per inner page image for precise hit testing
+  final List<GlobalKey> _pageImageKeys = [];
+  List<GlobalKey> get pageImageKeys => _pageImageKeys;
+
+  void _updatePageCount(int count) {
+    if (count > 0) {
+      if (_pageCount <= 0 || count > _pageCount) {
+        _pageCount = count;
+      }
+      _ensureKeysLength(_pageCount);
+    }
+  }
+
+  void _ensureKeysLength(int count) {
+    while (_pageKeys.length < count) {
+      _pageKeys.add(GlobalKey(debugLabel: 'pdf-page-${_pageKeys.length}'));
+    }
+    while (_pageImageKeys.length < count) {
+      _pageImageKeys.add(GlobalKey(debugLabel: 'pdf-page-img-${_pageImageKeys.length}'));
+    }
+  }
 
   // Adaptive background corner & edge colors
   final Map<int, PageCornerColors> _cornerColorsCache = {};
@@ -161,7 +195,7 @@ class PdfPageController extends ChangeNotifier {
 
   // GPU texture cache & render generation tracking
   late final PdfGpuImageCache _gpuImageCache = PdfGpuImageCache(
-    maxResident: isContinuousMode ? 12 : 4,
+    maxResident: isContinuousMode ? 8 : 4,
   );
   ui.Image? getPageUiImage(int index) => _gpuImageCache.get(index);
   int _renderEpoch = 0;
@@ -197,7 +231,7 @@ class PdfPageController extends ChangeNotifier {
 
   void _handleScrollUpdate() {
     if (!isContinuousMode) return;
-    if (_isRestoringScroll) return;
+    if (_isRestoringScroll || _isTransitioningMode) return;
     _syncCurrentPageFromScroll();
     _scheduleContinuousProgressSave();
   }
@@ -266,15 +300,21 @@ class PdfPageController extends ChangeNotifier {
       final itemExtent = isHorizontal ? renderBox.size.width : renderBox.size.height;
       final itemEnd = itemStart + itemExtent;
 
+      final viewportExtent = isHorizontal ? viewportBox.size.width : viewportBox.size.height;
+      if (itemEnd > -100 && itemStart < viewportExtent + 100) {
+        if (!hasPageImage(i)) {
+          requestPageRender(i, isActivePage: i == _pageIndex);
+        }
+      }
+
       if (itemStart <= focusPoint && itemEnd > focusPoint) {
         bestIndex = i;
-        break;
       }
 
       final dist = (itemStart - focusPoint).abs();
       if (dist < minDistance) {
         minDistance = dist;
-        bestIndex = i;
+        bestIndex ??= i;
       }
     }
 
@@ -411,22 +451,28 @@ class PdfPageController extends ChangeNotifier {
 
   Future<ui.Image> _createUiImageFromRgba(Uint8List rgbaBytes, int width, int height) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(rgbaBytes);
-    final descriptor = ui.ImageDescriptor.raw(
-      buffer,
-      width: width,
-      height: height,
-      pixelFormat: ui.PixelFormat.rgba8888,
-    );
-    final codec = await descriptor.instantiateCodec();
-    final frameInfo = await codec.getNextFrame();
-    descriptor.dispose();
-    buffer.dispose();
-    codec.dispose();
-    return frameInfo.image;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    try {
+      descriptor = ui.ImageDescriptor.raw(
+        buffer,
+        width: width,
+        height: height,
+        pixelFormat: ui.PixelFormat.rgba8888,
+      );
+      codec = await descriptor.instantiateCodec();
+      final frameInfo = await codec.getNextFrame();
+      return frameInfo.image;
+    } finally {
+      descriptor?.dispose();
+      buffer.dispose();
+      codec?.dispose();
+    }
   }
 
   void updateReadingMode(ReadingMode mode) {
-    if (_readingMode == mode) return;
+    if (_readingMode == mode || _isTransitioningMode) return;
+    _isTransitioningMode = true;
 
     final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
 
@@ -444,16 +490,22 @@ class PdfPageController extends ChangeNotifier {
 
     final wasContinuous = isContinuousMode;
     _readingMode = mode;
-    _gpuImageCache.maxResident = isContinuousMode ? 12 : 4;
+    _gpuImageCache.maxResident = isContinuousMode ? 8 : 4;
     repository.updateReadingProgress(book.id, readingMode: mode);
 
     if (isContinuousMode) {
       _isRestoringScroll = true;
       SchedulerBinding.instance.addPostFrameCallback((_) {
         _anchorToContinuousPage(_pageIndex);
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          _isTransitioningMode = false;
+        });
       });
     } else {
       _isRestoringScroll = false;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _isTransitioningMode = false;
+      });
       if (wasContinuous) {
         // Switching from continuous to paged: ensure target page is fully rendered immediately
         renderPage(_pageIndex, userInitiated: true);
@@ -619,14 +671,19 @@ class PdfPageController extends ChangeNotifier {
   }
 
   Future<void> _drainRenderQueue() async {
-    if (_isRustWorkerBusy || _pendingRenderQueue.isEmpty || _disposed || _resolvedFile == null) {
+    if (_activeNativeRenders >= _maxConcurrentNativeRenders ||
+        _pendingRenderQueue.isEmpty ||
+        _disposed ||
+        _resolvedFile == null) {
       return;
     }
+    _activeNativeRenders++;
     _isRustWorkerBusy = true;
 
     try {
       while (_pendingRenderQueue.isNotEmpty && !_disposed && _resolvedFile != null) {
-        // Always pick the page closest to the current _pageIndex first!
+        // Pop the queued page closest to the currently visible scroll viewport (_pageIndex)
+        // Bidirectional distance: (a - _pageIndex).abs()
         final sorted = _pendingRenderQueue.toList()
           ..sort((a, b) => (a - _pageIndex).abs().compareTo((b - _pageIndex).abs()));
         final nextIndex = sorted.first;
@@ -644,8 +701,24 @@ class PdfPageController extends ChangeNotifier {
           continue;
         }
 
+        // Enforce decode backpressure before decoding next page
+        if (_gpuImageCache.length >= _gpuImageCache.maxResident && !_gpuImageCache.contains(nextIndex)) {
+          await Future.delayed(const Duration(milliseconds: 16));
+          if (_disposed) return;
+        }
+
+        final int myGen = ++_workerGeneration;
         _currentlyRenderingIndex = nextIndex;
         final int myEpoch = _renderEpoch;
+
+        Timer? watchdogTimer = Timer(const Duration(milliseconds: 5000), () {
+          if (_workerGeneration == myGen && _isRustWorkerBusy) {
+            debugPrint('⚠️ PDF render watchdog fired for page $nextIndex (gen $myGen)');
+            _isRustWorkerBusy = false;
+            _currentlyRenderingIndex = null;
+            unawaited(_drainRenderQueue());
+          }
+        });
 
         try {
           final effW = _viewerSize.width > 0 ? _viewerSize.width : 600.0;
@@ -662,7 +735,15 @@ class PdfPageController extends ChangeNotifier {
             expectedEpoch: myEpoch,
           ), metadata: {'page': nextIndex, 'width': targetW, 'height': targetH});
 
+          watchdogTimer.cancel();
+          watchdogTimer = null;
+
           if (_disposed) return;
+
+          // Only commit if this render generation is still valid
+          if (_workerGeneration != myGen) {
+            continue;
+          }
 
           // ALWAYS keep the rendered image if it is within maxRadius of _pageIndex,
           // even if _renderEpoch changed while it was finishing!
@@ -680,7 +761,7 @@ class PdfPageController extends ChangeNotifier {
             );
 
             final uiImage = await _createUiImageFromRgba(result.data, result.width, result.height);
-            if (!_disposed) {
+            if (!_disposed && _workerGeneration == myGen) {
               _gpuImageCache.put(nextIndex, uiImage);
 
               if (nextIndex == _pageIndex) {
@@ -705,13 +786,13 @@ class PdfPageController extends ChangeNotifier {
                 unawaited(loadPageText(nextIndex));
               }
             } else {
-              SchedulerBinding.instance.addPostFrameCallback((_) {
-                uiImage.dispose();
-              });
-              SchedulerBinding.instance.ensureVisualUpdate();
+              _gpuImageCache.safeDispose(uiImage);
             }
           }
         } catch (e, stack) {
+          watchdogTimer?.cancel();
+          watchdogTimer = null;
+
           if (e.toString().contains('RENDER_CANCELLED')) {
             // If it's still near the active page, put it back in the queue!
             final maxRadius = isContinuousMode ? 10 : 3;
@@ -726,7 +807,10 @@ class PdfPageController extends ChangeNotifier {
             _error = _formatPdfError(e, context: 'Render');
           }
         } finally {
-          _currentlyRenderingIndex = null;
+          watchdogTimer?.cancel();
+          if (_workerGeneration == myGen) {
+            _currentlyRenderingIndex = null;
+          }
           final completers = _pageRenderCompleters.remove(nextIndex);
           if (completers != null) {
             for (final c in completers) {
@@ -758,21 +842,24 @@ class PdfPageController extends ChangeNotifier {
         }
       }
     } finally {
-      _isRustWorkerBusy = false;
+      _activeNativeRenders = (_activeNativeRenders - 1).clamp(0, _maxConcurrentNativeRenders);
+      if (_activeNativeRenders == 0) {
+        _isRustWorkerBusy = false;
+      }
     }
   }
 
   Future<void> renderPage(int index, {bool userInitiated = false}) async {
     if (_disposed) return;
-    if (_pageCount <= 0 || index < 0 || index >= _pageCount) {
+    final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
+    if (effectiveTotalPages <= 0 || index < 0 || (effectiveTotalPages > 0 && index >= effectiveTotalPages)) {
       _isLoading = false;
-      _error = _pageCount <= 0 ? 'This PDF document is empty.' : 'Page index out of bounds.';
+      _error = effectiveTotalPages <= 0 ? 'This PDF document is empty.' : 'Page index out of bounds.';
       notifyListeners();
       return;
     }
 
     _pageIndex = index;
-    final effectiveTotalPages = _pageCount > 0 ? _pageCount : (book.totalPages > 0 ? book.totalPages : 0);
 
     if (hasPageImage(index)) {
       _isLoading = false;
@@ -825,9 +912,8 @@ class PdfPageController extends ChangeNotifier {
     if (count <= 0) {
       throw StateError('PDF returned $count pages (PDF_OPEN_ERROR::EMPTY)');
     }
-    _pageCount = count;
+    _updatePageCount(count);
     _pageIndex = book.currentPage.clamp(0, count - 1);
-    _pageKeys = List.generate(count, (i) => GlobalKey(debugLabel: 'pdf-page-$i'));
     notifyListeners();
 
     // Render Saved Page IMMEDIATELY! (Intrinsic dimensions returned in PdfPageRenderResult)
@@ -927,6 +1013,10 @@ class PdfPageController extends ChangeNotifier {
       _pageTextCache[index] = sanitized.cleanText;
       return sanitized;
     } catch (e) {
+      if (e.toString().contains('PREEMPTED_BY_VISUAL_RENDER')) {
+        debugPrint('PDF: Text extraction preempted by visual render for page $index');
+        return null;
+      }
       debugPrint('PDF: Failed to extract sanitized text for page $index: $e');
       return null;
     }
@@ -983,6 +1073,10 @@ class PdfPageController extends ChangeNotifier {
       _pageCharBoundsCache[pageIndex] = bounds;
     } catch (e) {
       if (_disposed) return;
+      if (e.toString().contains('PREEMPTED_BY_VISUAL_RENDER')) {
+        debugPrint('TTS: Bounds extraction preempted by visual render for page $pageIndex');
+        return;
+      }
       debugPrint('TTS: Failed to precompute bounds for page $pageIndex: $e');
     }
   }
@@ -1026,5 +1120,7 @@ class PdfPageController extends ChangeNotifier {
     _pendingRenderQueue.clear();
     _currentlyRenderingIndex = null;
     _isRustWorkerBusy = false;
+    _activeNativeRenders = 0;
+    _workerGeneration++;
   }
 }

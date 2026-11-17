@@ -41,14 +41,32 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
   @override
   void initState() {
     super.initState();
+    widget.pageController.scrollController.addListener(_onScroll);
     _checkPreload();
   }
 
   @override
   void didUpdateWidget(PdfPageViewItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.pageIndex != widget.pageIndex) {
+    if (oldWidget.pageController != widget.pageController) {
+      oldWidget.pageController.scrollController.removeListener(_onScroll);
+      widget.pageController.scrollController.addListener(_onScroll);
+    }
+    if (oldWidget.pageIndex != widget.pageIndex || !widget.pageController.hasPageImage(widget.pageIndex)) {
       _preloadScheduled = false;
+      _checkPreload();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.pageController.scrollController.removeListener(_onScroll);
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+    if (!widget.pageController.hasPageImage(widget.pageIndex)) {
       _checkPreload();
     }
   }
@@ -84,20 +102,7 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
         final double? pageAr = pageController.getPageAspectRatio(index);
 
         if (!hasImage) {
-          if (!_preloadScheduled) {
-            _preloadScheduled = true;
-            SchedulerBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              _preloadScheduled = false;
-              if (!widget.pageController.hasPageImage(index)) {
-                final isActive = index == widget.pageController.pageIndex;
-                widget.pageController.requestPageRender(
-                  index,
-                  isActivePage: isActive,
-                );
-              }
-            });
-          }
+          _checkPreload();
 
           final placeholder = Container(
             decoration: BoxDecoration(
@@ -151,11 +156,20 @@ class _PdfPageViewItemState extends State<PdfPageViewItem> {
           imageWidget = const SizedBox.shrink();
         }
 
+        final imageKey = widget.pageImageKey ??
+            ((index >= 0 && index < pageController.pageImageKeys.length)
+                ? pageController.pageImageKeys[index]
+                : null);
+
         Widget layer;
         if (layoutSize.isEmpty) {
-          layer = imageWidget;
+          layer = KeyedSubtree(
+            key: imageKey,
+            child: imageWidget,
+          );
         } else {
           layer = SizedBox(
+            key: imageKey,
             width: layoutSize.width,
             height: layoutSize.height,
             child: Stack(

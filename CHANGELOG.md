@@ -1,3 +1,23 @@
+## [1.4.3-alpha.2] - 2026-11-18
+
+### PDF Visual Render Preemption & 120Hz Smooth Scrolling
+- **Active Visual Render Priority**: Implemented an atomic `ActiveVisualRenderGuard` pipeline in the Rust PDF engine. Background text sanitization and bounds extraction jobs yield every 50 characters and abort (`PREEMPTED_BY_VISUAL_RENDER`) during user scrolling, eliminating lock contention and ensuring rock-solid 120Hz rendering.
+- **Resilient TTS Preemption Recovery**: Integrated automatic backoff retries in `PdfTtsController` when text extraction yields to interactive visual page renders.
+- **Single-Concurrency Native Render Queue**: Serialized native PDF page rendering to `_maxConcurrentNativeRenders = 1` in `PdfPageController`, preventing GPU memory pressure and raster contention.
+- **32ms Deferred GPU Image Disposal**: Replaced post-frame callbacks in `PdfGpuImageCache` with 32ms deferred disposal, preventing texture invalidation during active frame rasterization.
+- **Inner Page Image Hit Testing**: Added `pageImageKeys` per-page image GlobalKeys for pixel-perfect tap detection and viewport coordinate translation.
+- **Tight Character Bounds**: Switched PDF glyph boundaries to native PDFium `tight_bounds()` for pinpoint text highlight and selection alignment.
+- **Memory-Tuned Texture Dimension**: Capped texture generation to 1600px, reducing memory consumption while maintaining razor-sharp rendering on high-DPI devices.
+
+### Redesigned Storage Import & Add Books/Folder Dialogs
+- **Dedicated Import Flows**: Split generic add dialog into distinct, purpose-built workflows for adding individual books versus configuring monitored folders.
+- **Theme-Aware Storage Mode Dialog**: Created `StorageModeDialog` with full support for Light, Dark, Console, and authentic E-Ink themes (Roboto Slab, sharp 2px radii, high-contrast borders, hard drop shadows).
+- **Streamlined Dialog Layout**: Positioned Cancel and confirmation buttons side-by-side with responsive action cards and tactile haptic feedback.
+
+### F-Droid Build Recipe Synchronization
+- **Stable Metadata Recipe Alignment**: Synchronized `fdroid/com.juansofly.ferrous.yml` to track stable `v1.4.2` (commit `6e8ec91`, versionCode `32`).
+- **Fastlane Release Notes**: Added version 32 release changelog (`fastlane/metadata/android/en-US/changelogs/32.txt`).
+
 ## [1.4.3-alpha.1] - 2026-11-17
 
 ### Single & Multi-File Direct Import with Auto-Launch

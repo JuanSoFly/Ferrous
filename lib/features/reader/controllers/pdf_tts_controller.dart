@@ -146,7 +146,7 @@ class PdfTtsController extends ChangeNotifier {
     return future;
   }
 
-  Future<List<PdfSentence>> _loadSentencesForPageInternal(int pageIndex) async {
+  Future<List<PdfSentence>> _loadSentencesForPageInternal(int pageIndex, [int attempt = 0]) async {
     try {
       // Eagerly load both page text and character bounds in parallel
       await Future.wait([
@@ -155,12 +155,22 @@ class PdfTtsController extends ChangeNotifier {
       ]);
       if (_disposed) return const [];
 
-      final sanitized = pageController.sanitizedTextCache[pageIndex] ??
-          await pageController.loadSanitizedPageText(pageIndex);
-      final bounds = pageController.pageCharBoundsCache[pageIndex] ?? const [];
+      var sanitized = pageController.sanitizedTextCache[pageIndex];
+      sanitized ??= await pageController.loadSanitizedPageText(pageIndex);
+      var bounds = pageController.pageCharBoundsCache[pageIndex];
+      if (bounds == null) {
+        await pageController.ensureCharacterBoundsLoaded(pageIndex);
+        bounds = pageController.pageCharBoundsCache[pageIndex] ?? const [];
+      }
 
       if (sanitized == null || sanitized.cleanText.trim().isEmpty || bounds.isEmpty) {
-        // Page genuinely has zero readable characters (e.g. blank page or illustration)
+        // If preempted by visual render, debounce and retry
+        if (attempt < 2) {
+          await Future.delayed(const Duration(milliseconds: 250));
+          if (!_disposed) {
+            return await _loadSentencesForPageInternal(pageIndex, attempt + 1);
+          }
+        }
         _pageSentencesCache[pageIndex] = const [];
         return const [];
       }
@@ -194,6 +204,12 @@ class PdfTtsController extends ChangeNotifier {
       _pageSentencesCache[pageIndex] = sentences;
       return sentences;
     } catch (e) {
+      if (e.toString().contains('PREEMPTED_BY_VISUAL_RENDER') && attempt < 3) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        if (!_disposed) {
+          return await _loadSentencesForPageInternal(pageIndex, attempt + 1);
+        }
+      }
       // DO NOT cache transient failures so subsequent attempts can retry!
       debugPrint('PdfTtsController: Error loading sentences for page $pageIndex: $e');
       return const [];
@@ -276,17 +292,83 @@ class PdfTtsController extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Check whether a normalized (0.0 to 1.0) point on [pageIndex] falls over a sentence.
+  /// Converts 4pt tolerance to normalized units, executes glyph hit-testing,
+  /// snaps to nearest glyph via 2D Euclidean distance, and falls back to line rects.
   Future<PdfSentence?> hitTestSentence(int pageIndex, Offset normalizedPoint) async {
     final sentences = await getSentencesForPage(pageIndex);
     if (sentences.isEmpty) return null;
 
+    final logicalSize = pageController.getLogicalPageSize(pageIndex);
+    final renderedSize = pageController.renderedPageSize;
+    final effWidth = (logicalSize.width > 0)
+        ? logicalSize.width
+        : (renderedSize.width > 0 ? renderedSize.width : 600.0);
+    final effHeight = (logicalSize.height > 0)
+        ? logicalSize.height
+        : (renderedSize.height > 0 ? renderedSize.height : 800.0);
+
+    // Convert 4 pt tolerance into normalized units
+    final padX = (4.0 / effWidth).clamp(0.003, 0.02);
+    final padY = (4.0 / effHeight).clamp(0.003, 0.02);
+
+    final bounds = pageController.pageCharBoundsCache[pageIndex];
+    final sanitized = pageController.sanitizedTextCache[pageIndex];
+    if (bounds != null && bounds.isNotEmpty && sanitized != null) {
+      final map = sanitized.cleanToPdfMap;
+
+      // 1. Direct Glyph Hit Check
+      for (final sentence in sentences) {
+        final end = sentence.charEnd.clamp(0, map.length);
+        for (var c = sentence.charStart; c < end; c++) {
+          final pdfIdx = map[c];
+          if (pdfIdx < bounds.length) {
+            final r = bounds[pdfIdx];
+            if (r.left == 0 && r.right == 0 && r.top == 0 && r.bottom == 0) continue;
+            if (normalizedPoint.dx >= r.left - padX &&
+                normalizedPoint.dx <= r.right + padX &&
+                normalizedPoint.dy >= r.top - padY &&
+                normalizedPoint.dy <= r.bottom + padY) {
+              return sentence;
+            }
+          }
+        }
+      }
+
+      // 2. 2D Nearest-Glyph Snap (Euclidean distance: sqrt(dx^2 + (dy * 1.8)^2) < 0.045)
+      double nearestGlyphDist = double.infinity;
+      PdfSentence? nearestSentence;
+      for (final sentence in sentences) {
+        final end = sentence.charEnd.clamp(0, map.length);
+        for (var c = sentence.charStart; c < end; c++) {
+          final pdfIdx = map[c];
+          if (pdfIdx < bounds.length) {
+            final r = bounds[pdfIdx];
+            if (r.left == 0 && r.right == 0 && r.top == 0 && r.bottom == 0) continue;
+            final glyphCenterX = (r.left + r.right) / 2.0;
+            final glyphCenterY = (r.top + r.bottom) / 2.0;
+            final dx = normalizedPoint.dx - glyphCenterX;
+            final dy = (normalizedPoint.dy - glyphCenterY) * 1.8;
+            final distSq = dx * dx + dy * dy;
+            if (distSq < (0.045 * 0.045) && distSq < nearestGlyphDist) {
+              nearestGlyphDist = distSq;
+              nearestSentence = sentence;
+            }
+          }
+        }
+      }
+      if (nearestSentence != null) {
+        return nearestSentence;
+      }
+    }
+
+    // 3. Line-Rect Fallback
     for (final sentence in sentences) {
       for (final rect in sentence.rects) {
         final expanded = Rect.fromLTRB(
-          rect.left - 0.02,
-          rect.top - 0.015,
-          rect.right + 0.02,
-          rect.bottom + 0.015,
+          rect.left - padX * 1.5,
+          rect.top - padY * 1.5,
+          rect.right + padX * 1.5,
+          rect.bottom + padY * 1.5,
         );
         if (expanded.contains(normalizedPoint)) {
           return sentence;
@@ -299,46 +381,36 @@ class PdfTtsController extends ChangeNotifier {
   /// Start speaking immediately from the sentence containing [normalizedPoint].
   Future<bool> startTtsFromPoint(int pageIndex, Offset normalizedPoint) async {
     if (_disposed) return false;
-    final sentences = await getSentencesForPage(pageIndex);
-    if (sentences.isEmpty) return false;
-
-    PdfSentence? matched;
-    for (final sentence in sentences) {
-      for (final rect in sentence.rects) {
-        final expanded = Rect.fromLTRB(
-          rect.left - 0.02,
-          rect.top - 0.015,
-          rect.right + 0.02,
-          rect.bottom + 0.015,
-        );
-        if (expanded.contains(normalizedPoint)) {
-          matched = sentence;
-          break;
-        }
-      }
-      if (matched != null) break;
-    }
-
-    if (matched == null) {
-      // Vertical distance fallback for taps slightly between lines
-      double minDistance = double.infinity;
-      for (final sentence in sentences) {
-        if (sentence.rects.isEmpty) continue;
-        final top = sentence.rects.first.top;
-        final bottom = sentence.rects.last.bottom;
-        final dist = (normalizedPoint.dy < top)
-            ? (top - normalizedPoint.dy)
-            : (normalizedPoint.dy > bottom ? normalizedPoint.dy - bottom : 0.0);
-        if (dist < minDistance && dist < 0.08) {
-          minDistance = dist;
-          matched = sentence;
-        }
-      }
-    }
+    final matched = await hitTestSentence(pageIndex, normalizedPoint);
 
     if (matched != null) {
       _showTtsControls = true;
       await _speakSentence(pageIndex, matched.sentenceIndex);
+      return true;
+    }
+
+    // Distance fallback if tap falls slightly outside glyphs/lines
+    final sentences = await getSentencesForPage(pageIndex);
+    if (sentences.isEmpty) return false;
+
+    PdfSentence? fallbackSentence;
+    double minDistance = double.infinity;
+    for (final sentence in sentences) {
+      if (sentence.rects.isEmpty) continue;
+      final top = sentence.rects.first.top;
+      final bottom = sentence.rects.last.bottom;
+      final dist = (normalizedPoint.dy < top)
+          ? (top - normalizedPoint.dy)
+          : (normalizedPoint.dy > bottom ? normalizedPoint.dy - bottom : 0.0);
+      if (dist < minDistance && dist < 0.045) {
+        minDistance = dist;
+        fallbackSentence = sentence;
+      }
+    }
+
+    if (fallbackSentence != null) {
+      _showTtsControls = true;
+      await _speakSentence(pageIndex, fallbackSentence.sentenceIndex);
       return true;
     }
 

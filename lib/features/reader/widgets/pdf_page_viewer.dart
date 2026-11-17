@@ -178,50 +178,70 @@ class _PdfPageViewerState extends State<PdfPageViewer> {
   }
 
   /// Resolves the tapped page index and page-local normalized coordinates (0.0 to 1.0)
-  /// using RenderBox.globalToLocal to automatically invert zoom, pan, and scroll offsets.
+  /// using RenderBox.globalToLocal on pageImageKeys to test the exact page image bounds.
   (int pageIndex, Offset normalizedOffset)? _resolvePageTapCoordinates(Offset globalPos) {
     final activePage = widget.pageController.pageIndex;
-    final pageKeys = widget.pageController.pageKeys;
+    final totalCount = widget.pageController.pageCount;
+    final imageKeys = widget.pageController.pageImageKeys;
+    final containerKeys = widget.pageController.pageKeys;
 
-    // Check active page first
-    if (activePage >= 0 && activePage < pageKeys.length) {
-      final activeKey = pageKeys[activePage];
-      final activeContext = activeKey.currentContext;
-      if (activeContext != null) {
-        final box = activeContext.findRenderObject() as RenderBox?;
-        if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
-          final local = box.globalToLocal(globalPos);
-          final rect = Offset.zero & box.size;
-          if (rect.contains(local)) {
-            final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
-            final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
-            return (activePage, Offset(xNorm, yNorm));
-          }
-        }
-      }
-    }
-
-    // In continuous mode, check other mounted pages
-    for (int i = 0; i < pageKeys.length; i++) {
-      if (i == activePage) continue;
-      final ctx = pageKeys[i].currentContext;
-      if (ctx == null) continue;
-      final box = ctx.findRenderObject() as RenderBox?;
-      if (box == null || !box.hasSize || box.size.width <= 0 || box.size.height <= 0) continue;
+    (int, Offset)? testKey(int index, GlobalKey key) {
+      final context = key.currentContext;
+      if (context == null) return null;
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize || box.size.width <= 0 || box.size.height <= 0) return null;
       final local = box.globalToLocal(globalPos);
       final rect = Offset.zero & box.size;
       if (rect.contains(local)) {
         final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);
         final yNorm = (local.dy / box.size.height).clamp(0.0, 1.0);
-        return (i, Offset(xNorm, yNorm));
+        return (index, Offset(xNorm, yNorm));
+      }
+      return null;
+    }
+
+    // 1. Build priority candidate list: activePage, activePage - 1, activePage + 1
+    final candidates = <int>[];
+    if (activePage >= 0 && activePage < totalCount) {
+      candidates.add(activePage);
+    }
+    if (activePage - 1 >= 0 && activePage - 1 < totalCount) {
+      candidates.add(activePage - 1);
+    }
+    if (activePage + 1 < totalCount) {
+      candidates.add(activePage + 1);
+    }
+
+    // Test candidate pages using pageImageKeys
+    for (final page in candidates) {
+      if (page >= 0 && page < imageKeys.length) {
+        final hit = testKey(page, imageKeys[page]);
+        if (hit != null) return hit;
       }
     }
 
-    // Fallback: active page with clamp
-    if (activePage >= 0 && activePage < pageKeys.length) {
-      final activeContext = pageKeys[activePage].currentContext;
-      if (activeContext != null) {
-        final box = activeContext.findRenderObject() as RenderBox?;
+    // In continuous mode, test any remaining mounted pageImageKeys
+    for (int i = 0; i < imageKeys.length; i++) {
+      if (candidates.contains(i)) continue;
+      final hit = testKey(i, imageKeys[i]);
+      if (hit != null) return hit;
+    }
+
+    // Fallback: test containerKeys for candidate pages (in case image is loading)
+    for (final page in candidates) {
+      if (page >= 0 && page < containerKeys.length) {
+        final hit = testKey(page, containerKeys[page]);
+        if (hit != null) return hit;
+      }
+    }
+
+    // Final fallback: activePage clamped
+    if (activePage >= 0) {
+      final key = (activePage < imageKeys.length)
+          ? imageKeys[activePage]
+          : (activePage < containerKeys.length ? containerKeys[activePage] : null);
+      if (key != null && key.currentContext != null) {
+        final box = key.currentContext!.findRenderObject() as RenderBox?;
         if (box != null && box.hasSize && box.size.width > 0 && box.size.height > 0) {
           final local = box.globalToLocal(globalPos);
           final xNorm = (local.dx / box.size.width).clamp(0.0, 1.0);

@@ -4,11 +4,28 @@ use crate::timed;
 use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::mem::ManuallyDrop;
 use std::num::NonZeroUsize;
 use lru::LruCache;
 
 pub static GLOBAL_RENDER_EPOCH: AtomicU64 = AtomicU64::new(0);
+pub static ACTIVE_VISUAL_RENDERS: AtomicUsize = AtomicUsize::new(0);
+
+struct ActiveVisualRenderGuard;
+
+impl ActiveVisualRenderGuard {
+    fn new() -> Self {
+        ACTIVE_VISUAL_RENDERS.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for ActiveVisualRenderGuard {
+    fn drop(&mut self) {
+        ACTIVE_VISUAL_RENDERS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PdfOutlineItem {
@@ -148,9 +165,69 @@ pub(crate) fn load_pdf_document<'a>(pdfium: &'a Pdfium, path: &str) -> Result<Pd
         .map_err(|e| map_pdfium_load_error(path, e))
 }
 
+const IN_MEMORY_PDF_MAX_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
+
+struct SharedPdfDocument {
+    document: ManuallyDrop<PdfDocument<'static>>,
+    _buffer: Option<Arc<Vec<u8>>>,
+}
+
+impl Drop for SharedPdfDocument {
+    fn drop(&mut self) {
+        unsafe {
+            ManuallyDrop::drop(&mut self.document);
+        }
+    }
+}
+
+impl std::ops::Deref for SharedPdfDocument {
+    type Target = PdfDocument<'static>;
+    fn deref(&self) -> &Self::Target {
+        &self.document
+    }
+}
+
+fn load_shared_pdf_document(pdfium: &'static Pdfium, path: &str) -> Result<SharedPdfDocument> {
+    ensure_pdf_header(path)?;
+
+    let metadata = std::fs::metadata(path).ok();
+    let file_size = metadata.map(|m| m.len()).unwrap_or(u64::MAX);
+
+    if file_size < IN_MEMORY_PDF_MAX_BYTES {
+        if let Ok(mut file) = File::open(path) {
+            let mut buffer = Vec::with_capacity(file_size as usize);
+            if file.read_to_end(&mut buffer).is_ok() {
+                let buffer_arc = Arc::new(buffer);
+                let slice: &'static [u8] = unsafe {
+                    std::slice::from_raw_parts(buffer_arc.as_ptr(), buffer_arc.len())
+                };
+                match pdfium.load_pdf_from_byte_slice(slice, None) {
+                    Ok(doc) => {
+                        return Ok(SharedPdfDocument {
+                            document: ManuallyDrop::new(doc),
+                            _buffer: Some(buffer_arc),
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ In-memory PDF load failed ({:?}), falling back to file load", e);
+                    }
+                }
+            }
+        }
+    }
+
+    let doc = pdfium
+        .load_pdf_from_file(path, None)
+        .map_err(|e| map_pdfium_load_error(path, e))?;
+    Ok(SharedPdfDocument {
+        document: ManuallyDrop::new(doc),
+        _buffer: None,
+    })
+}
+
 #[derive(Clone)]
 struct DocumentEntry {
-    document: Arc<PdfDocument<'static>>,
+    document: Arc<SharedPdfDocument>,
     lock: Arc<Mutex<()>>,
 }
 
@@ -184,7 +261,7 @@ where
         if let Some(existing) = cache.get(path) {
             existing.clone()
         } else {
-            let loaded_doc = Arc::new(load_pdf_document(get_pdfium(), path)?);
+            let loaded_doc = Arc::new(load_shared_pdf_document(get_pdfium(), path)?);
             let new_entry = DocumentEntry {
                 document: loaded_doc,
                 lock: Arc::new(Mutex::new(())),
@@ -347,6 +424,7 @@ pub fn render_pdf_page(
     height: u32,
     expected_epoch: u32,
 ) -> Result<PdfPageRenderResult> {
+    let _visual_guard = ActiveVisualRenderGuard::new();
     timed!("render_pdf_page", {
         with_document(&path, |document| {
             // STEP 1: Immediately upon acquiring lock, check if superseded!
@@ -406,6 +484,10 @@ pub fn render_pdf_page(
 pub fn extract_sanitized_page_text(path: String, page_index: u32) -> Result<SanitizedPdfText> {
     timed!("extract_sanitized_page_text", {
         with_document(&path, |doc| {
+            if ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+            }
+
             let page = doc.pages().get(page_index as u16)?;
             let text = page.text()?;
             let chars = text.chars();
@@ -418,6 +500,10 @@ pub fn extract_sanitized_page_text(path: String, page_index: u32) -> Result<Sani
             let mut prev_char: Option<char> = None;
 
             while i < total {
+                if i % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                    return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+                }
+
                 let ch = chars.get(i).ok().and_then(|c| c.unicode_char()).unwrap_or(' ');
 
                 // Guarded De-Hyphenation Check
@@ -571,6 +657,10 @@ pub fn extract_pdf_page_text_bounds(
 ) -> Result<Vec<PdfTextRect>> {
     timed!("extract_pdf_page_text_bounds", {
         with_document(&path, |document| {
+            if ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+            }
+
             let page = document.pages().get(page_index as u16)?;
             let text = page.text()?;
             let chars = text.chars();
@@ -599,6 +689,10 @@ pub fn extract_pdf_page_text_bounds(
 
             let mut rects = Vec::new();
             for i in start..end {
+                if (i - start) % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                    return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+                }
+
                 let ch = match chars.get(i) {
                     Ok(ch) => ch,
                     Err(_) => continue,
@@ -612,7 +706,7 @@ pub fn extract_pdf_page_text_bounds(
                     continue;
                 }
 
-                let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
+                let bounds = ch.tight_bounds();
                 let Ok(bounds) = bounds else { continue };
                 let mut left = (bounds.left().value - page_left) / width;
                 let mut right = (bounds.right().value - page_left) / width;
@@ -646,6 +740,10 @@ pub fn extract_all_page_character_bounds(
 ) -> Result<Vec<PdfTextRect>> {
     timed!("extract_all_page_character_bounds", {
         with_document(&path, |document| {
+            if ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+            }
+
             let page = document.pages().get(page_index as u16)?;
             let text = page.text()?;
             let chars = text.chars();
@@ -668,6 +766,10 @@ pub fn extract_all_page_character_bounds(
             let mut rects = Vec::with_capacity(total);
             
             for i in 0..total {
+                if i % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                    return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
+                }
+
                 let ch = match chars.get(i) {
                     Ok(ch) => ch,
                     Err(_) => {
@@ -686,7 +788,7 @@ pub fn extract_all_page_character_bounds(
                     continue;
                 }
 
-                let bounds = ch.loose_bounds().or_else(|_| ch.tight_bounds());
+                let bounds = ch.tight_bounds();
                 let Ok(bounds) = bounds else {
                     rects.push(PdfTextRect { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 });
                     continue;

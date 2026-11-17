@@ -1,0 +1,5 @@
+- Precision Page Anchoring: Deterministic viewport top alignment for continuous PDF reading modes.
+- Modular Plain Text (TXT) Reader: Automatic encoding detection (chardetng) and markdown rendering.
+- PDFium Outline TOC: Fast native C++ bookmark extraction and hierarchical table of contents.
+- Direct Raw RGBA Textures & LRU Cache: High-performance rendering pipeline with synchronous visual render priority.
+- Synchronized PDF TTS: Real-time word glyph and sentence tracking.
