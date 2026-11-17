@@ -187,7 +187,7 @@ class _BookCoverState extends State<BookCover> {
     }
 
     if (isEInk) {
-      return Container(
+      content = Container(
         height: widget.height,
         width: widget.width,
         decoration: BoxDecoration(
@@ -199,7 +199,77 @@ class _BookCoverState extends State<BookCover> {
       );
     }
 
+    bool isSelectionMode = false;
+    bool isSelected = false;
+    try {
+      final libState = context.watch<LibraryState?>();
+      if (libState != null) {
+        isSelectionMode = libState.isSelectionMode;
+        isSelected = libState.isBookSelected(widget.book.id);
+      }
+    } catch (_) {}
+
+    if (isSelectionMode) {
+      final isMini = (widget.height != null && widget.height! < 80);
+      content = Stack(
+        fit: StackFit.passthrough,
+        children: [
+          content,
+          if (isSelected)
+            Positioned.fill(
+              child: Container(
+                color: isEInk
+                    ? const Color(0xFF1A1A18).withValues(alpha: 0.15)
+                    : Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+              ),
+            ),
+          Positioned(
+            top: isMini ? 2 : 6,
+            right: isMini ? 2 : 6,
+            child: _buildSelectionBadge(context, isSelected: isSelected, isEInk: isEInk, isMini: isMini),
+          ),
+        ],
+      );
+    }
+
     return content;
+  }
+
+  Widget _buildSelectionBadge(BuildContext context, {required bool isSelected, required bool isEInk, bool isMini = false}) {
+    final theme = Theme.of(context);
+    final size = isMini ? 16.0 : 22.0;
+    final iconSize = isMini ? 11.0 : 15.0;
+
+    if (isEInk) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1A1A18) : const Color(0xFFEAE6DF),
+          borderRadius: BorderRadius.circular(2),
+          border: Border.all(color: const Color(0xFF1A1A18), width: 1.5),
+        ),
+        child: isSelected
+            ? Icon(Icons.check, size: iconSize, color: const Color(0xFFEAE6DF))
+            : null,
+      );
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: isSelected ? theme.colorScheme.primary : Colors.black.withValues(alpha: 0.45),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected ? theme.colorScheme.onPrimary : Colors.white.withValues(alpha: 0.9),
+          width: 1.5,
+        ),
+      ),
+      child: isSelected
+          ? Icon(Icons.check, size: iconSize, color: theme.colorScheme.onPrimary)
+          : null,
+    );
   }
 
   Widget _buildPlaceholder(BuildContext context, {bool isEInk = false}) {

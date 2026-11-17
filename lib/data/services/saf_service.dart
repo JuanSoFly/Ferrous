@@ -1,6 +1,7 @@
 ﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/core/errors/exceptions.dart';
 
@@ -91,6 +92,88 @@ class SafBookRef {
 /// to properly handle Android 10+ scoped storage requirements.
 class SafService {
   static const _channel = MethodChannel('com.juansofly.ferrous/saf');
+
+  /// Opens the system document picker and scans or imports individual ebook files based on [mode].
+  ///
+  /// Returns a list of book references for either linked (URI) or imported (file path) files.
+  /// Returns empty list if user cancels or no supported files found.
+  Future<List<SafBookRef>> pickFiles({required SafStorageMode mode}) async {
+    if (Platform.isAndroid) {
+      try {
+        final result = await _channel.invokeMethod<List<dynamic>>('pickFiles', {
+          'mode': mode.name,
+        });
+        final list = result ?? const [];
+        return list
+            .map((item) => SafBookRef.fromMap(Map<dynamic, dynamic>.from(item as Map)))
+            .toList();
+      } on PlatformException catch (e) {
+        throw SafException('Failed to pick files: ${e.message}');
+      }
+    } else {
+      // Non-Android desktop fallback
+      try {
+        final result = await FilePicker.platform.pickFiles(
+          allowMultiple: true,
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'epub', 'cbz', 'cbr', 'docx', 'txt', 'mobi', 'azw', 'azw3'],
+        );
+        if (result == null || result.files.isEmpty) return [];
+
+        return result.files.where((f) => f.path != null).map((f) {
+          final file = File(f.path!);
+          final name = f.name;
+          final ext = f.extension ?? '';
+          return SafBookRef(
+            sourceType: mode == SafStorageMode.imported ? BookSourceType.imported : BookSourceType.linked,
+            filePath: file.path,
+            sourceUri: null,
+            displayName: name,
+            format: ext.toLowerCase(),
+            size: f.size,
+            lastModified: file.existsSync() ? file.lastModifiedSync().millisecondsSinceEpoch : null,
+          );
+        }).toList();
+      } catch (e) {
+        throw SafException('Failed to pick files: $e');
+      }
+    }
+  }
+
+  /// Releases a persisted single-document URI grant on Android.
+  Future<void> releasePersistedUri(String uri) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('releasePersistedUri', {'uri': uri});
+    } on PlatformException catch (e) {
+      debugPrint('Failed to release persisted URI: ${e.message}');
+    } catch (_) {}
+  }
+
+  /// Deletes an external document via DocumentsContract on Android.
+  Future<bool> deleteExternalDocument(String uri) async {
+    if (!Platform.isAndroid) {
+      try {
+        final file = File(uri);
+        if (await file.exists()) {
+          await file.delete();
+          return true;
+        }
+        return false;
+      } catch (_) {
+        return false;
+      }
+    }
+    try {
+      final result = await _channel.invokeMethod<bool>('deleteExternalDocument', {'uri': uri});
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('Failed to delete external document: ${e.message}');
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Opens the SAF folder picker and scans or imports ebook files based on [mode].
   ///

@@ -50,42 +50,59 @@ class BookRepository extends ChangeNotifier {
   }
 
   Future<void> deleteBook(String id, {bool deleteFile = false}) async {
-    final book = getBook(id);
-    if (book != null) {
-      if (deleteFile && book.filePath.isNotEmpty) {
-        try {
-          final file = File(book.filePath);
-          if (await file.exists()) {
-            await file.delete();
-          }
-        } catch (e) {
-          debugPrint('Error deleting book file at ${book.filePath}: $e');
-        }
-      }
+    await deleteBooks([id], deleteFiles: deleteFile);
+  }
 
-      final coverPath = book.coverPath;
-      if (coverPath != null && coverPath.isNotEmpty) {
-        try {
-          final coverFile = File(coverPath);
-          if (await coverFile.exists()) {
-            await coverFile.delete();
-          }
-        } catch (e) {
-          debugPrint('Error deleting cover file at $coverPath: $e');
-        }
-      }
+  Future<void> deleteBooks(Iterable<String> ids, {bool deleteFiles = false}) async {
+    final idSet = ids.toSet();
+    if (idSet.isEmpty) return;
 
-      try {
-        final appDir = await getApplicationDocumentsDirectory();
-        final defaultCover = File('${appDir.path}/covers/$id.png');
-        if (await defaultCover.exists()) {
-          await defaultCover.delete();
+    String? appDirPath;
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      appDirPath = appDir.path;
+    } catch (_) {}
+
+    for (final id in idSet) {
+      final book = getBook(id);
+      if (book != null) {
+        if (deleteFiles && book.filePath.isNotEmpty) {
+          try {
+            final file = File(book.filePath);
+            if (await file.exists()) {
+              await file.delete();
+            }
+          } catch (e) {
+            debugPrint('Error deleting book file at ${book.filePath}: $e');
+          }
         }
-      } catch (e) {
-        debugPrint('Error deleting default cover for $id: $e');
+
+        final coverPath = book.coverPath;
+        if (coverPath != null && coverPath.isNotEmpty) {
+          try {
+            final coverFile = File(coverPath);
+            if (await coverFile.exists()) {
+              await coverFile.delete();
+            }
+          } catch (e) {
+            debugPrint('Error deleting cover file at $coverPath: $e');
+          }
+        }
+
+        if (appDirPath != null) {
+          try {
+            final defaultCover = File('$appDirPath/covers/$id.png');
+            if (await defaultCover.exists()) {
+              await defaultCover.delete();
+            }
+          } catch (e) {
+            debugPrint('Error deleting default cover for $id: $e');
+          }
+        }
       }
     }
-    await box.delete(id);
+
+    await box.deleteAll(idSet);
     notifyListeners();
   }
 
@@ -146,15 +163,19 @@ class BookRepository extends ChangeNotifier {
   }
 
   bool bookExists({String? filePath, String? sourceUri}) {
-    return box.values.any((book) {
-      if (sourceUri != null && sourceUri.isNotEmpty) {
-        if (book.sourceUri == sourceUri) return true;
+    return findBookByPathOrUri(filePath: filePath, sourceUri: sourceUri) != null;
+  }
+
+  Book? findBookByPathOrUri({String? filePath, String? sourceUri}) {
+    for (final book in box.values) {
+      if (sourceUri != null && sourceUri.isNotEmpty && book.sourceUri == sourceUri) {
+        return book;
       }
-      if (filePath != null && filePath.isNotEmpty) {
-        if (book.filePath == filePath) return true;
+      if (filePath != null && filePath.isNotEmpty && book.filePath == filePath) {
+        return book;
       }
-      return false;
-    });
+    }
+    return null;
   }
 
   static final Semaphore _coverSemaphore = Semaphore(1);

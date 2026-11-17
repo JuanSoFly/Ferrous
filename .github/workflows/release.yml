@@ -61,6 +61,16 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Validate tag matches pubspec.yaml version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PUBSPEC_VERSION=$(awk -F'[ +]' '/^version:/ {print $2}' pubspec.yaml | tr -d '[:space:]')
+          if [ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]; then
+            echo "ERROR: Git tag ($TAG_VERSION) does not match pubspec.yaml version ($PUBSPEC_VERSION)"
+            exit 1
+          fi
+          echo "Verified: Git tag ($TAG_VERSION) matches pubspec.yaml ($PUBSPEC_VERSION)"
+
       # ===== Rust Setup =====
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

@@ -43,8 +43,15 @@ class AnnotationRepository extends ChangeNotifier {
   }
 
   Future<void> deleteAnnotationsForBook(String bookId) async {
+    await deleteAnnotationsForBooks([bookId]);
+  }
+
+  Future<void> deleteAnnotationsForBooks(Iterable<String> bookIds) async {
+    final idSet = bookIds.toSet();
+    if (idSet.isEmpty) return;
+
     final idsToDelete = box.values
-        .where((a) => a.bookId == bookId)
+        .where((a) => idSet.contains(a.bookId))
         .map((a) => a.id)
         .toList();
     if (idsToDelete.isNotEmpty) {

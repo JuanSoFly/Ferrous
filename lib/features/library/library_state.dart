@@ -98,6 +98,9 @@ class LibraryState {
   final bool filterUnread;
   final Set<String> bookIdsInCollections;
 
+  final bool isSelectionMode;
+  final Set<String> selectedBookIds;
+
   // Memoization cache
   final List<Book>? _cachedFilteredBooks;
   final String? _cachedQuery;
@@ -120,12 +123,20 @@ class LibraryState {
     this.filterNoCollection = false,
     this.filterUnread = false,
     this.bookIdsInCollections = const {},
+    this.isSelectionMode = false,
+    this.selectedBookIds = const {},
     List<Book>? cachedFilteredBooks,
     String? cachedQuery,
     List<Book>? cachedSourceBooks,
   })  : _cachedFilteredBooks = cachedFilteredBooks,
         _cachedQuery = cachedQuery,
         _cachedSourceBooks = cachedSourceBooks;
+
+  int get selectedCount => selectedBookIds.length;
+  bool isBookSelected(String id) => selectedBookIds.contains(id);
+  bool get isAllSelected =>
+      filteredBooks.isNotEmpty &&
+      filteredBooks.every((book) => selectedBookIds.contains(book.id));
 
   LibraryState copyWith({
     bool? isLoading,
@@ -145,6 +156,8 @@ class LibraryState {
     bool? filterNoCollection,
     bool? filterUnread,
     Set<String>? bookIdsInCollections,
+    bool? isSelectionMode,
+    Set<String>? selectedBookIds,
   }) {
     final newBooks = books ?? this.books;
     final newQuery = searchQuery ?? this.searchQuery;
@@ -156,6 +169,8 @@ class LibraryState {
     final newFilterNoCollection = filterNoCollection ?? this.filterNoCollection;
     final newFilterUnread = filterUnread ?? this.filterUnread;
     final newBookIdsInCollections = bookIdsInCollections ?? this.bookIdsInCollections;
+    final newIsSelectionMode = isSelectionMode ?? this.isSelectionMode;
+    final newSelectedBookIds = selectedBookIds ?? this.selectedBookIds;
 
     // Preserve cache if underlying data hasn't changed
     final booksChanged = newBooks != this.books;
@@ -195,6 +210,8 @@ class LibraryState {
       filterNoCollection: newFilterNoCollection,
       filterUnread: newFilterUnread,
       bookIdsInCollections: newBookIdsInCollections,
+      isSelectionMode: newIsSelectionMode,
+      selectedBookIds: newSelectedBookIds,
       cachedFilteredBooks: changed ? null : _cachedFilteredBooks,
       cachedQuery: changed ? null : _cachedQuery,
       cachedSourceBooks: changed ? null : _cachedSourceBooks,
@@ -273,6 +290,13 @@ class LibraryState {
     return sortedList;
   }
 }
+
+typedef ImportResult = ({
+  Book? singleBookToOpen,
+  int addedCount,
+  int duplicateCount,
+  bool isCancelled,
+});
 
 class LibraryController extends StateNotifier<LibraryState> {
   final BookRepository _bookRepository;
@@ -362,7 +386,7 @@ class LibraryController extends StateNotifier<LibraryState> {
   void setSearchQuery(String query) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 200), () {
-      state = state.copyWith(searchQuery: query);
+      state = state.copyWith(searchQuery: query, selectedBookIds: const {});
     });
   }
 
@@ -382,11 +406,11 @@ class LibraryController extends StateNotifier<LibraryState> {
     } else {
       newFormats.add(normalized);
     }
-    state = state.copyWith(selectedFormats: newFormats);
+    state = state.copyWith(selectedFormats: newFormats, selectedBookIds: const {});
   }
 
   void clearFormatFilters() {
-    state = state.copyWith(selectedFormats: const {});
+    state = state.copyWith(selectedFormats: const {}, selectedBookIds: const {});
   }
 
   void applyFilters({
@@ -402,6 +426,7 @@ class LibraryController extends StateNotifier<LibraryState> {
       filterNoCollection: filterNoCollection,
       filterUnread: filterUnread,
       bookIdsInCollections: bookIdsInCollections,
+      selectedBookIds: const {},
     );
   }
 
@@ -411,7 +436,88 @@ class LibraryController extends StateNotifier<LibraryState> {
       filterNoAuthor: false,
       filterNoCollection: false,
       filterUnread: false,
+      selectedBookIds: const {},
     );
+  }
+
+  void enterSelectionMode([String? initialBookId]) {
+    clearSplitPending();
+    final initialSet = initialBookId != null ? {initialBookId} : <String>{};
+    state = state.copyWith(
+      isSelectionMode: true,
+      selectedBookIds: initialSet,
+    );
+  }
+
+  void exitSelectionMode() {
+    state = state.copyWith(
+      isSelectionMode: false,
+      selectedBookIds: const {},
+    );
+  }
+
+  void toggleBookSelection(String bookId) {
+    final current = Set<String>.from(state.selectedBookIds);
+    if (current.contains(bookId)) {
+      current.remove(bookId);
+    } else {
+      current.add(bookId);
+    }
+    state = state.copyWith(selectedBookIds: current);
+  }
+
+  void selectAll() {
+    final allVisibleIds = state.filteredBooks.map((b) => b.id).toSet();
+    state = state.copyWith(selectedBookIds: allVisibleIds);
+  }
+
+  void deselectAll() {
+    state = state.copyWith(selectedBookIds: const {});
+  }
+
+  Future<void> deleteSelectedBooks({bool deletePhysicalFiles = false}) async {
+    final targetIds = Set<String>.from(state.selectedBookIds);
+    if (targetIds.isEmpty) {
+      exitSelectionMode();
+      return;
+    }
+
+    if (state.splitPendingBook != null && targetIds.contains(state.splitPendingBook!.id)) {
+      clearSplitPending();
+    }
+
+    // 1. Delete annotations
+    if (_annotationRepository != null) {
+      await _annotationRepository.deleteAnnotationsForBooks(targetIds);
+    }
+
+    // 2. Remove from collections
+    if (_collectionRepository != null) {
+      await _collectionRepository.removeBooksFromAllCollections(targetIds);
+    }
+
+    // 3. For linked books: delete external file if requested BEFORE releasing persistable grant
+    for (final id in targetIds) {
+      final book = _bookRepository.getBook(id);
+      if (book != null && book.sourceType == BookSourceType.linked && book.sourceUri != null && book.sourceUri!.isNotEmpty) {
+        if (deletePhysicalFiles) {
+          await _safService.deleteExternalDocument(book.sourceUri!);
+        }
+        await _safService.releasePersistedUri(book.sourceUri!);
+      }
+    }
+
+    // 4. Batch delete books and internal files
+    await _bookRepository.deleteBooks(targetIds, deleteFiles: deletePhysicalFiles);
+
+    // Update collection IDs cache
+    if (state.bookIdsInCollections.isNotEmpty) {
+      final updatedIds = Set<String>.from(state.bookIdsInCollections)..removeAll(targetIds);
+      state = state.copyWith(bookIdsInCollections: updatedIds);
+    }
+
+    exitSelectionMode();
+    loadBooks();
   }
 
   void setSplitPendingBook(Book book) {
@@ -546,33 +652,144 @@ class LibraryController extends StateNotifier<LibraryState> {
     }
   }
 
+  Future<ImportResult> pickAndImportFiles({
+    required SafStorageMode mode,
+    bool openIfSingle = true,
+  }) async {
+    try {
+      state = state.copyWith(
+        isLoading: true,
+        error: null,
+        statusMessage: 'Opening file picker...',
+      );
+
+      final refs = await _safService.pickFiles(mode: mode);
+
+      if (refs.isEmpty) {
+        state = state.copyWith(isLoading: false, statusMessage: null);
+        return (singleBookToOpen: null, addedCount: 0, duplicateCount: 0, isCancelled: true);
+      }
+
+      if (refs.length == 1 && openIfSingle) {
+        final res = await _resolveOrAddBookRef(refs.first);
+        loadBooks();
+        state = state.copyWith(isLoading: false, statusMessage: null);
+        return (
+          singleBookToOpen: res.book,
+          addedCount: res.isNew ? 1 : 0,
+          duplicateCount: res.isNew ? 0 : 1,
+          isCancelled: false,
+        );
+      }
+
+      state = state.copyWith(
+        statusMessage: mode == SafStorageMode.linked
+            ? 'Linking ${refs.length} books...'
+            : 'Importing ${refs.length} books...',
+      );
+
+      int added = 0;
+      int duplicates = 0;
+      for (final ref in refs) {
+        final res = await _resolveOrAddBookRef(ref);
+        if (res.isNew) {
+          added++;
+        } else {
+          duplicates++;
+        }
+      }
+
+      loadBooks();
+      state = state.copyWith(
+        isLoading: false,
+        statusMessage: added > 0 ? 'Added $added new books' : 'No new books added',
+      );
+
+      if (added > 0) {
+        _generateCoversInBackground();
+      }
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          state = state.copyWith(statusMessage: null);
+        }
+      });
+
+      return (
+        singleBookToOpen: null,
+        addedCount: added,
+        duplicateCount: duplicates,
+        isCancelled: false,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        statusMessage: null,
+      );
+      return (singleBookToOpen: null, addedCount: 0, duplicateCount: 0, isCancelled: true);
+    }
+  }
+
+  Future<void> generateCoverForBook(String bookId) async {
+    try {
+      final book = _bookRepository.getBook(bookId);
+      if (book == null) return;
+      final appDir = await _getAppDocumentsDirectory();
+      final coversDir = '$appDir/covers';
+      await _ensureDirectoryExists(coversDir);
+      await _bookRepository.generateCovers(coversDir);
+      loadBooks();
+    } catch (_) {}
+  }
+
+  Future<({Book book, bool isNew})> _resolveOrAddBookRef(SafBookRef ref) async {
+    final existing = _bookRepository.findBookByPathOrUri(
+      filePath: ref.filePath,
+      sourceUri: ref.sourceUri,
+    );
+    if (existing != null) {
+      if (ref.sourceType == BookSourceType.imported &&
+          ref.filePath != null &&
+          ref.filePath != existing.filePath) {
+        try {
+          final redundantFile = File(ref.filePath!);
+          if (await redundantFile.exists()) {
+            await redundantFile.delete();
+          }
+        } catch (e) {
+          debugPrint('Failed to delete redundant duplicate copy: $e');
+        }
+      }
+      return (book: existing, isNew: false);
+    }
+
+    final title = _titleFromDisplayName(ref.displayName);
+    final format = ref.format.isNotEmpty ? ref.format : _formatFromName(ref.displayName);
+    final newBook = Book(
+      id: const Uuid().v4(),
+      title: title,
+      author: 'Unknown Author',
+      filePath: ref.filePath ?? '',
+      format: format.toLowerCase(),
+      sourceType: ref.sourceType,
+      sourceUri: ref.sourceUri,
+      fileSize: ref.size,
+      fileLastModified: ref.lastModified != null 
+          ? DateTime.fromMillisecondsSinceEpoch(ref.lastModified!) 
+          : null,
+    );
+    await _bookRepository.addBook(newBook);
+    return (book: newBook, isNew: true);
+  }
+
   Future<int> _addBooksFromRefs(List<SafBookRef> refs) async {
     int addedCount = 0;
     for (final ref in refs) {
-      if (_bookRepository.bookExists(
-        filePath: ref.filePath,
-        sourceUri: ref.sourceUri,
-      )) {
-        continue;
+      final res = await _resolveOrAddBookRef(ref);
+      if (res.isNew) {
+        addedCount++;
       }
-
-      final title = _titleFromDisplayName(ref.displayName);
-      final format = ref.format.isNotEmpty ? ref.format : _formatFromName(ref.displayName);
-      final newBook = Book(
-        id: const Uuid().v4(),
-        title: title,
-        author: 'Unknown Author',
-        filePath: ref.filePath ?? '',
-        format: format.toLowerCase(),
-        sourceType: ref.sourceType,
-        sourceUri: ref.sourceUri,
-        fileSize: ref.size,
-        fileLastModified: ref.lastModified != null 
-            ? DateTime.fromMillisecondsSinceEpoch(ref.lastModified!) 
-            : null,
-      );
-      await _bookRepository.addBook(newBook);
-      addedCount++;
     }
     return addedCount;
   }

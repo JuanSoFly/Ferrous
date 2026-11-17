@@ -1,3 +1,16 @@
+## [1.4.3-alpha.1] - 2026-11-17
+
+### Single & Multi-File Direct Import with Auto-Launch
+- **Direct Standalone Document Import**: Added ability to pick and import individual ebook files via `ACTION_OPEN_DOCUMENT` rather than requiring whole-directory grants.
+- **Immediate Reader Launch**: Opening a single file automatically transitions into `ReaderScreen` without manual shelf navigation, while multi-file selections batch import with progress summaries.
+- **SAF Running Quota & Permission Management**: Dynamically monitors Android 128/512 persisted URI grant limits during multi-file selection with automated fallback to internal storage copying, and releases document-level grants upon deletion.
+- **Import Deduplication & Orphan File Prevention**: Reuses existing book entities for repeated imports and cleans up redundant temporary internal storage copies.
+
+### Bookshelf Multi-Select Mode & High-Performance Batch Deletion
+- **Contextual Selection Mode**: Added multi-select mode across all 8 bookshelf view modes and high-contrast E-Ink themes, accessible via long-press or the library menu.
+- **Selection Action Bar & Back Navigation**: Integrated contextual app bar with Select All / Deselect All, dynamic selection counts, `PopScope` hardware back gesture handling, and single-book "More Options" menu access for compact grid cards.
+- **Atomic Batch Deletion Pipeline**: Implemented bulk deletions in `BookRepository`, `CollectionRepository`, and `AnnotationRepository` with sequenced external document deletion, grant release, and a single UI notification pass.
+
 ## [1.4.2] - 2026-11-17
 
 ### Continuous PDF Scrolling & Viewport Anchoring

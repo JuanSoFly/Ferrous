@@ -58,10 +58,18 @@ class CollectionRepository extends ChangeNotifier {
   }
 
   Future<void> removeBookFromAllCollections(String bookId) async {
+    await removeBooksFromAllCollections([bookId]);
+  }
+
+  Future<void> removeBooksFromAllCollections(Iterable<String> bookIds) async {
+    final idSet = bookIds.toSet();
+    if (idSet.isEmpty) return;
+
     bool changed = false;
     for (final collection in box.values) {
-      if (collection.bookIds.contains(bookId)) {
-        collection.bookIds.remove(bookId);
+      final initialCount = collection.bookIds.length;
+      collection.bookIds.removeWhere((id) => idSet.contains(id));
+      if (collection.bookIds.length != initialCount) {
         await collection.save();
         changed = true;
       }

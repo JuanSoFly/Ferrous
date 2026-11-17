@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -26,6 +29,7 @@ class SafHandler(private val activity: MainActivity) {
     companion object {
         const val CHANNEL = "com.juansofly.ferrous/saf"
         const val REQUEST_CODE_OPEN_FOLDER = 1001
+        const val REQUEST_CODE_OPEN_FILE = 1002
         
         private val SUPPORTED_EXTENSIONS = listOf("pdf", "epub", "cbz", "cbr", "docx", "txt", "mobi", "azw", "azw3")
         private const val PREFS_NAME = "saf_prefs"
@@ -51,6 +55,41 @@ class SafHandler(private val activity: MainActivity) {
                 pendingPickMode = if (mode == MODE_IMPORTED) MODE_IMPORTED else MODE_LINKED
                 pendingResult = result
                 openFolderPicker()
+            }
+            "pickFiles" -> {
+                val mode = call.argument<String>("mode")
+                pendingPickMode = if (mode == MODE_IMPORTED) MODE_IMPORTED else MODE_LINKED
+                pendingResult = result
+                openFilePicker()
+            }
+            "releasePersistedUri" -> {
+                val uriString = call.argument<String>("uri")
+                if (uriString != null) {
+                    releasePersistableUriPermission(uriString)
+                    result.success(true)
+                } else {
+                    result.error("INVALID_ARGS", "URI required", null)
+                }
+            }
+            "deleteExternalDocument" -> {
+                val uriString = call.argument<String>("uri")
+                if (uriString != null) {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val uri = Uri.parse(uriString)
+                            val deleted = DocumentsContract.deleteDocument(activity.contentResolver, uri)
+                            withContext(Dispatchers.Main) {
+                                result.success(deleted)
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                result.error("DELETE_DOC_ERROR", e.message, null)
+                            }
+                        }
+                    }
+                } else {
+                    result.error("INVALID_ARGS", "URI required", null)
+                }
             }
             "rescanFolders" -> {
                 scope.launch {
@@ -204,47 +243,254 @@ class SafHandler(private val activity: MainActivity) {
         }
         activity.startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
     }
+
+    /**
+     * Opens the system document picker using ACTION_OPEN_DOCUMENT.
+     */
+    private fun openFilePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/pdf",
+                    "application/epub+zip",
+                    "text/plain",
+                    "application/x-mobipocket-ebook",
+                    "application/vnd.amazon.ebook",
+                    "application/octet-stream"
+                )
+            )
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        activity.startActivityForResult(intent, REQUEST_CODE_OPEN_FILE)
+    }
     
     /**
-     * Called from MainActivity.onActivityResult() to process the folder selection.
+     * Called from MainActivity.onActivityResult() to process folder or file selection.
      */
     fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode != REQUEST_CODE_OPEN_FOLDER) return
+        if (requestCode != REQUEST_CODE_OPEN_FOLDER && requestCode != REQUEST_CODE_OPEN_FILE) return
         
         val result = pendingResult
         pendingResult = null
         
-        if (resultCode != Activity.RESULT_OK || data?.data == null) {
+        if (resultCode != Activity.RESULT_OK || data == null) {
             result?.success(emptyList<Map<String, Any?>>())
             return
         }
-        
-        val treeUri = data.data!!
-        
-        // Persist the permission so we can access this folder in the future
-        try {
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or 
-                           Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            activity.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
-            savePersistedUri(treeUri, pendingPickMode)
-        } catch (e: Exception) {
-            result?.error("PERMISSION_ERROR", "Failed to persist permission: ${e.message}", null)
-            return
-        }
-        
-        val mode = pendingPickMode
 
-        // Scan or copy files in background
-        scope.launch {
-            try {
-                val books = when (mode) {
-                    MODE_IMPORTED -> copyFilesFromUri(treeUri)
-                    else -> scanFilesFromUri(treeUri)
-                }
-                result?.success(books)
-            } catch (e: Exception) {
-                result?.error("SCAN_ERROR", "Failed to scan files: ${e.message}", null)
+        if (requestCode == REQUEST_CODE_OPEN_FOLDER) {
+            val treeUri = data.data
+            if (treeUri == null) {
+                result?.success(emptyList<Map<String, Any?>>())
+                return
             }
+            
+            // Persist the permission so we can access this folder in the future
+            try {
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or 
+                               Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                activity.contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+                savePersistedUri(treeUri, pendingPickMode)
+            } catch (e: Exception) {
+                result?.error("PERMISSION_ERROR", "Failed to persist permission: ${e.message}", null)
+                return
+            }
+            
+            val mode = pendingPickMode
+
+            // Scan or copy files in background
+            scope.launch {
+                try {
+                    val books = when (mode) {
+                        MODE_IMPORTED -> copyFilesFromUri(treeUri)
+                        else -> scanFilesFromUri(treeUri)
+                    }
+                    result?.success(books)
+                } catch (e: Exception) {
+                    result?.error("SCAN_ERROR", "Failed to scan files: ${e.message}", null)
+                }
+            }
+        } else if (requestCode == REQUEST_CODE_OPEN_FILE) {
+            val uris = mutableListOf<Uri>()
+            val clipData = data.clipData
+            if (clipData != null) {
+                for (i in 0 until clipData.itemCount) {
+                    clipData.getItemAt(i)?.uri?.let { uris.add(it) }
+                }
+            } else if (data.data != null) {
+                uris.add(data.data!)
+            }
+
+            if (uris.isEmpty()) {
+                result?.success(emptyList<Map<String, Any?>>())
+                return
+            }
+
+            val mode = pendingPickMode
+            scope.launch {
+                try {
+                    val books = processPickedFileUris(uris, mode)
+                    result?.success(books)
+                } catch (e: Exception) {
+                    result?.error("PICK_FILES_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Processes individually picked file URIs with quota tracking and fallback.
+     */
+    private suspend fun processPickedFileUris(
+        uris: List<Uri>,
+        requestedMode: String
+    ): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
+        val resultBooks = mutableListOf<Map<String, Any?>>()
+        val maxPersistedUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) 500 else 120
+        var currentCount = activity.contentResolver.persistedUriPermissions.size
+
+        for (uri in uris) {
+            try {
+                val meta = getUriMetadata(uri)
+                val displayName = meta.first ?: "document"
+                val extension = displayName.substringAfterLast('.', "").lowercase()
+
+                if (extension !in SUPPORTED_EXTENSIONS) {
+                    continue
+                }
+
+                var effectiveMode = requestedMode
+                if (effectiveMode == MODE_LINKED && currentCount >= maxPersistedUris) {
+                    effectiveMode = MODE_IMPORTED
+                }
+
+                if (effectiveMode == MODE_LINKED) {
+                    try {
+                        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        activity.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                        savePersistedUri(uri, MODE_LINKED)
+                        currentCount++
+
+                        resultBooks.add(
+                            mapOf(
+                                "sourceType" to MODE_LINKED,
+                                "uri" to uri.toString(),
+                                "displayName" to displayName,
+                                "size" to meta.second,
+                                "lastModified" to meta.third,
+                                "format" to extension,
+                            )
+                        )
+                    } catch (e: SecurityException) {
+                        // Fallback to MODE_IMPORTED if quota or permission fails
+                        val importedRef = copySingleDocumentToBooks(uri, displayName, extension)
+                        if (importedRef != null) {
+                            resultBooks.add(importedRef)
+                        }
+                    }
+                } else {
+                    val importedRef = copySingleDocumentToBooks(uri, displayName, extension)
+                    if (importedRef != null) {
+                        resultBooks.add(importedRef)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        resultBooks
+    }
+
+    private fun getUriMetadata(uri: Uri): Triple<String?, Long, Long> {
+        var name: String? = null
+        var size: Long = 0L
+        var mtime: Long = 0L
+        try {
+            activity.contentResolver.query(
+                uri,
+                arrayOf(
+                    OpenableColumns.DISPLAY_NAME,
+                    OpenableColumns.SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                ),
+                null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    val mtimeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                    if (nameIdx != -1) name = cursor.getString(nameIdx)
+                    if (sizeIdx != -1) size = cursor.getLong(sizeIdx)
+                    if (mtimeIdx != -1) mtime = cursor.getLong(mtimeIdx)
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (name == null) {
+            try {
+                val doc = DocumentFile.fromSingleUri(activity, uri)
+                name = doc?.name
+                if (size == 0L) size = doc?.length() ?: 0L
+                if (mtime == 0L) mtime = doc?.lastModified() ?: 0L
+            } catch (_: Exception) {}
+        }
+        return Triple(name, size, mtime)
+    }
+
+    private fun copySingleDocumentToBooks(
+        uri: Uri,
+        displayName: String,
+        extension: String
+    ): Map<String, Any?>? {
+        try {
+            val destDir = getBooksDirectory()
+            val finalDest = getUniqueFile(destDir, displayName)
+            val tempFile = File(destDir, "${finalDest.name}.tmp_${System.currentTimeMillis()}")
+            activity.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (tempFile.length() == 0L) {
+                tempFile.delete()
+                return null
+            }
+            tempFile.copyTo(finalDest, overwrite = true)
+            tempFile.delete()
+
+            return mapOf(
+                "sourceType" to MODE_IMPORTED,
+                "filePath" to finalDest.absolutePath,
+                "sourceUri" to uri.toString(),
+                "displayName" to displayName,
+                "size" to finalDest.length(),
+                "lastModified" to finalDest.lastModified(),
+                "format" to extension,
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    fun releasePersistableUriPermission(uriString: String) {
+        try {
+            val uri = Uri.parse(uriString)
+            if (DocumentsContract.isTreeUri(uri)) return
+            val hasDirectGrant = activity.contentResolver.persistedUriPermissions.any { it.uri == uri }
+            if (hasDirectGrant) {
+                removePersistedUri(uri)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
     

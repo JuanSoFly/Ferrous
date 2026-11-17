@@ -20,6 +20,7 @@ import 'package:ferrous/data/services/saf_service.dart';
 import 'package:ferrous/core/models/book_format.dart';
 import 'package:ferrous/core/constants/app_constants.dart';
 import 'package:ferrous/features/library/widgets/book_view_items.dart';
+import 'package:ferrous/features/reader/reader_screen.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 
 class LibraryScreen extends StatelessWidget {
@@ -90,19 +91,27 @@ class _LibraryViewState extends State<_LibraryView> {
             : (dimensionConfig.isSerif ? 'Search catalog...' : 'Search library...'));
 
     return PopScope(
-      canPop: !hasActiveSearch,
+      canPop: !hasActiveSearch && !state.isSelectionMode,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
-          _searchController.clear();
-          controller.setSearchQuery('');
-          FocusScope.of(context).unfocus();
-          setState(() {});
+          if (state.isSelectionMode) {
+            controller.exitSelectionMode();
+            return;
+          }
+          if (hasActiveSearch) {
+            _searchController.clear();
+            controller.setSearchQuery('');
+            FocusScope.of(context).unfocus();
+            setState(() {});
+          }
         }
       },
       child: DefaultTabController(
         length: 2,
         child: Scaffold(
-        appBar: AppBar(
+        appBar: state.isSelectionMode
+            ? _buildSelectionAppBar(context, state, controller, isEInk, theme)
+            : AppBar(
           titleSpacing: 16,
           title: Container(
             height: 44,
@@ -188,6 +197,13 @@ class _LibraryViewState extends State<_LibraryView> {
                   ? null
                   : () => controller.rescanFolders(),
               tooltip: "Rescan Folders",
+            ),
+            IconButton(
+              icon: const Icon(Icons.note_add_outlined),
+              onPressed: state.isLoading
+                  ? null
+                  : () => _importFilesAction(context, controller),
+              tooltip: "Import File(s)",
             ),
             IconButton(
               icon: Icon(DimensionIcons.addFolder(dimensionConfig.iconStyle)),
@@ -316,23 +332,38 @@ class _LibraryViewState extends State<_LibraryView> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Add a folder to scan for supported books.',
+              'Add files or a folder to scan for supported books.',
               style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: const Text("Select Folder"),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () async {
-                final mode = await _promptStorageMode(context);
-                if (mode != null && context.mounted) {
-                  controller.pickAndScanDirectory(mode);
-                }
-              },
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.note_add_outlined),
+                  label: const Text("Import File"),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _importFilesAction(context, controller),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text("Add Folder"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    final mode = await _promptStorageMode(context);
+                    if (mode != null && context.mounted) {
+                      controller.pickAndScanDirectory(mode);
+                    }
+                  },
+                ),
+              ],
             )
           ],
         ),
@@ -1552,7 +1583,7 @@ class _LibraryViewState extends State<_LibraryView> {
           config: config,
           splitPendingBook: state.splitPendingBook,
           onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
-          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.handleLongPress(context, book, controller),
         );
       }
       if (config.cardStyle == DimensionCardStyle.bentoShowcase) {
@@ -1561,7 +1592,7 @@ class _LibraryViewState extends State<_LibraryView> {
           config: config,
           splitPendingBook: state.splitPendingBook,
           onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
-          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.handleLongPress(context, book, controller),
         );
       }
       if (config.cardStyle == DimensionCardStyle.indexSpines) {
@@ -1570,7 +1601,7 @@ class _LibraryViewState extends State<_LibraryView> {
           config: config,
           splitPendingBook: state.splitPendingBook,
           onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
-          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.handleLongPress(context, book, controller),
         );
       }
       if (config.cardStyle == DimensionCardStyle.compactList) {
@@ -1579,7 +1610,7 @@ class _LibraryViewState extends State<_LibraryView> {
           config: config,
           splitPendingBook: state.splitPendingBook,
           onTap: (book) => BookItemActionHandler.handleTap(context, book, controller),
-          onLongPress: (book) => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+          onLongPress: (book) => BookItemActionHandler.handleLongPress(context, book, controller),
         );
       }
     }
@@ -1721,6 +1752,325 @@ class _LibraryViewState extends State<_LibraryView> {
             ),
           ),
         );
+    }
+  }
+
+  PreferredSizeWidget _buildSelectionAppBar(
+    BuildContext context,
+    LibraryState state,
+    LibraryController controller,
+    bool isEInk,
+    ThemeData theme,
+  ) {
+    final count = state.selectedCount;
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: controller.exitSelectionMode,
+        tooltip: "Cancel Selection",
+      ),
+      title: Text(
+        '$count selected',
+        style: isEInk
+            ? GoogleFonts.robotoSlab(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1A1A18),
+              )
+            : theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+      ),
+      actions: [
+        if (count == 1)
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            tooltip: "More Options",
+            onPressed: () {
+              final selectedId = state.selectedBookIds.first;
+              final selectedBook = state.filteredBooks.firstWhere((b) => b.id == selectedId);
+              controller.exitSelectionMode();
+              BookItemActionHandler.showBookOptionsMenu(context, selectedBook, controller);
+            },
+          ),
+        IconButton(
+          icon: Icon(state.isAllSelected ? Icons.deselect : Icons.select_all),
+          tooltip: state.isAllSelected ? "Deselect All" : "Select All",
+          onPressed: state.isAllSelected ? controller.deselectAll : controller.selectAll,
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.delete_outline,
+            color: count > 0 ? theme.colorScheme.error : null,
+          ),
+          tooltip: "Delete Selected",
+          onPressed: count > 0 ? () => _confirmBatchDeleteBooks(context, state, controller) : null,
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
+  Future<void> _importFilesAction(BuildContext context, LibraryController controller) async {
+    final mode = await _promptStorageMode(context);
+    if (mode != null && context.mounted) {
+      final result = await controller.pickAndImportFiles(mode: mode, openIfSingle: true);
+      if (!context.mounted || result.isCancelled) return;
+
+      if (result.singleBookToOpen != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ReaderScreen(book: result.singleBookToOpen!)),
+        ).then((_) {
+          if (context.mounted) {
+            controller.loadBooks();
+            controller.generateCoverForBook(result.singleBookToOpen!.id);
+          }
+        });
+      } else {
+        final message = result.duplicateCount > 0
+            ? 'Imported ${result.addedCount} books (${result.duplicateCount} already in library)'
+            : 'Imported ${result.addedCount} books';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    }
+  }
+
+  Future<void> _confirmBatchDeleteBooks(
+    BuildContext context,
+    LibraryState state,
+    LibraryController controller,
+  ) async {
+    final count = state.selectedCount;
+    if (count == 0) return;
+
+    final theme = Theme.of(context);
+    final currentTheme = context.read<AppTheme>();
+    final isEInk = currentTheme == AppTheme.eInk;
+
+    final selectedBooks = state.books.where((b) => state.selectedBookIds.contains(b.id)).toList();
+    final hasImportedBooks = selectedBooks.any((b) => b.sourceType == BookSourceType.imported && b.filePath.isNotEmpty);
+    final hasLinkedBooks = selectedBooks.any((b) => b.sourceType == BookSourceType.linked && b.sourceUri != null && b.sourceUri!.isNotEmpty);
+
+    bool deletePhysicalFiles = hasImportedBooks;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: isEInk ? const Color(0xFF1A1A18).withValues(alpha: 0.14) : null,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            if (isEInk) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEAE6DF),
+                        borderRadius: BorderRadius.all(Radius.circular(2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0xFF1A1A18),
+                            offset: Offset(4, 4),
+                            blurRadius: 0,
+                          ),
+                        ],
+                        border: Border.fromBorderSide(
+                          BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE0DCD3),
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
+                                ),
+                                child: const Icon(Icons.delete_outline, color: Color(0xFF1A1A18), size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Delete $count Books',
+                                  style: GoogleFonts.robotoSlab(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                    color: const Color(0xFF1A1A18),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Are you sure you want to remove $count selected books from your library?',
+                            style: GoogleFonts.robotoSlab(
+                              color: const Color(0xFF1A1A18),
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
+                          ),
+                          if (hasImportedBooks || hasLinkedBooks) ...[
+                            const SizedBox(height: 16),
+                            InkWell(
+                              onTap: () {
+                                setDialogState(() {
+                                  deletePhysicalFiles = !deletePhysicalFiles;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(2),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        color: deletePhysicalFiles ? const Color(0xFF1A1A18) : const Color(0xFFEAE6DF),
+                                        borderRadius: BorderRadius.circular(2),
+                                        border: Border.all(color: const Color(0xFF1A1A18), width: 1.5),
+                                      ),
+                                      child: deletePhysicalFiles
+                                          ? const Icon(Icons.check, size: 15, color: Color(0xFFEAE6DF))
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Also delete files from device',
+                                        style: GoogleFonts.robotoSlab(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: const Color(0xFF1A1A18),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                                child: Text(
+                                  'Cancel',
+                                  style: GoogleFonts.robotoSlab(
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF1A1A18),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1A1A18),
+                                  foregroundColor: const Color(0xFFEAE6DF),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+                                ),
+                                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+              title: Text('Delete $count Books?'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Are you sure you want to remove $count selected books from your library?'),
+                  if (hasImportedBooks || hasLinkedBooks) ...[
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: () {
+                        setDialogState(() {
+                          deletePhysicalFiles = !deletePhysicalFiles;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: deletePhysicalFiles,
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  deletePhysicalFiles = val ?? false;
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            const Expanded(
+                              child: Text(
+                                'Also delete files from device',
+                                style: TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.error,
+                    foregroundColor: theme.colorScheme.onError,
+                  ),
+                  onPressed: () => Navigator.of(dialogCtx).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true && context.mounted) {
+      await controller.deleteSelectedBooks(deletePhysicalFiles: deletePhysicalFiles);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed $count books from library'),
+            action: SnackBarAction(
+              label: 'Dismiss',
+              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+            ),
+          ),
+        );
+      }
     }
   }
 }

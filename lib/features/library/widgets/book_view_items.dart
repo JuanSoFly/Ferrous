@@ -21,6 +21,12 @@ class BookItemActionHandler {
 
   static void handleTap(BuildContext context, Book book, LibraryController controller) {
     final state = context.read<LibraryState>();
+    if (state.isSelectionMode) {
+      HapticFeedback.selectionClick();
+      controller.toggleBookSelection(book.id);
+      return;
+    }
+
     final hasPendingSplit = state.splitPendingBook != null;
     final isSplitPendingBook = state.splitPendingBook?.id == book.id;
 
@@ -44,6 +50,17 @@ class BookItemActionHandler {
         if (!context.mounted) return;
         controller.loadBooks();
       });
+    }
+  }
+
+  static void handleLongPress(BuildContext context, Book book, LibraryController controller) {
+    final state = context.read<LibraryState>();
+    if (!state.isSelectionMode) {
+      HapticFeedback.mediumImpact();
+      controller.enterSelectionMode(book.id);
+    } else {
+      HapticFeedback.selectionClick();
+      controller.toggleBookSelection(book.id);
     }
   }
 
@@ -404,7 +421,7 @@ class BookExtraLargeCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -535,7 +552,7 @@ class BookLargeCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -648,7 +665,7 @@ class BookMediumCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -747,7 +764,7 @@ class BookSmallCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -819,7 +836,7 @@ class BookListItem extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1002,7 +1019,7 @@ class BookDetailsItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.sm),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1131,7 +1148,7 @@ class BookTileItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.md),
         child: Padding(
           padding: const EdgeInsets.all(8.0),
@@ -1258,7 +1275,7 @@ class BookContentItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => BookItemActionHandler.handleTap(context, book, controller),
-        onLongPress: () => BookItemActionHandler.showBookOptionsMenu(context, book, controller),
+        onLongPress: () => BookItemActionHandler.handleLongPress(context, book, controller),
         borderRadius: BorderRadius.circular(isEInk ? 2 : AppRadius.lg),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
