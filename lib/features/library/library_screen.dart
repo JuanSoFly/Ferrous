@@ -16,12 +16,12 @@ import 'package:ferrous/features/collections/collections_tab.dart';
 import 'package:ferrous/data/repositories/collection_repository.dart';
 import 'package:ferrous/data/repositories/annotation_repository.dart';
 import 'package:ferrous/features/library/widgets/book_cover_shimmer.dart';
-import 'package:ferrous/data/services/saf_service.dart';
 import 'package:ferrous/core/models/book_format.dart';
 import 'package:ferrous/core/constants/app_constants.dart';
 import 'package:ferrous/features/library/widgets/book_view_items.dart';
 import 'package:ferrous/features/reader/reader_screen.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:ferrous/core/widgets/storage_mode_dialog.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -203,14 +203,17 @@ class _LibraryViewState extends State<_LibraryView> {
               onPressed: state.isLoading
                   ? null
                   : () => _importFilesAction(context, controller),
-              tooltip: "Import File(s)",
+              tooltip: "Add Books",
             ),
             IconButton(
               icon: Icon(DimensionIcons.addFolder(dimensionConfig.iconStyle)),
               onPressed: state.isLoading
                   ? null
                   : () async {
-                      final mode = await _promptStorageMode(context);
+                      final mode = await StorageModeDialog.show(
+                        context,
+                        targetType: StorageTargetType.folder,
+                      );
                       if (mode != null && context.mounted) {
                         controller.pickAndScanDirectory(mode);
                       }
@@ -341,7 +344,7 @@ class _LibraryViewState extends State<_LibraryView> {
               children: [
                 ElevatedButton.icon(
                   icon: const Icon(Icons.note_add_outlined),
-                  label: const Text("Import File"),
+                  label: const Text("Add Books"),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -357,7 +360,10 @@ class _LibraryViewState extends State<_LibraryView> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
-                    final mode = await _promptStorageMode(context);
+                    final mode = await StorageModeDialog.show(
+                      context,
+                      targetType: StorageTargetType.folder,
+                    );
                     if (mode != null && context.mounted) {
                       controller.pickAndScanDirectory(mode);
                     }
@@ -593,51 +599,6 @@ class _LibraryViewState extends State<_LibraryView> {
     );
   }
 
-  Future<SafStorageMode?> _promptStorageMode(BuildContext context) {
-    final theme = Theme.of(context);
-    return showDialog<SafStorageMode>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-          title: const Text('Add Folder'),
-          content: const Text(
-            'Choose how to add books from this folder. '
-            'Link keeps files in place and saves storage.',
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actionsAlignment: MainAxisAlignment.spaceBetween,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-            ),
-            Row(
-              children: [
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(SafStorageMode.imported),
-                  child: const Text('Import'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(SafStorageMode.linked),
-                  child: const Text('Link'),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   Widget _buildSortFilterBar(BuildContext context, LibraryState state, LibraryController controller) {
     final theme = Theme.of(context);
@@ -1813,7 +1774,10 @@ class _LibraryViewState extends State<_LibraryView> {
   }
 
   Future<void> _importFilesAction(BuildContext context, LibraryController controller) async {
-    final mode = await _promptStorageMode(context);
+    final mode = await StorageModeDialog.show(
+      context,
+      targetType: StorageTargetType.books,
+    );
     if (mode != null && context.mounted) {
       final result = await controller.pickAndImportFiles(mode: mode, openIfSingle: true);
       if (!context.mounted || result.isCancelled) return;
