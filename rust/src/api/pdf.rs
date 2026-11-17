@@ -500,7 +500,7 @@ pub fn extract_sanitized_page_text(path: String, page_index: u32) -> Result<Sani
             let mut prev_char: Option<char> = None;
 
             while i < total {
-                if i % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                if i.is_multiple_of(50) && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
                     return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
                 }
 
@@ -689,7 +689,7 @@ pub fn extract_pdf_page_text_bounds(
 
             let mut rects = Vec::new();
             for i in start..end {
-                if (i - start) % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                if (i - start).is_multiple_of(50) && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
                     return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
                 }
 
@@ -766,7 +766,7 @@ pub fn extract_all_page_character_bounds(
             let mut rects = Vec::with_capacity(total);
             
             for i in 0..total {
-                if i % 50 == 0 && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
+                if i.is_multiple_of(50) && ACTIVE_VISUAL_RENDERS.load(Ordering::Acquire) > 0 {
                     return Err(anyhow!("PREEMPTED_BY_VISUAL_RENDER"));
                 }
 
