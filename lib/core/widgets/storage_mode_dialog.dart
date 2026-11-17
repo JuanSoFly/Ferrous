@@ -220,13 +220,14 @@ class _StorageModeDialogState extends State<StorageModeDialog> {
     final isSelected = _selectedMode == mode;
 
     return InkWell(
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      hoverColor: Colors.transparent,
       onTap: () {
-        HapticFeedback.selectionClick();
-        setState(() => _selectedMode = mode);
-      },
-      onDoubleTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.of(context).pop(mode);
+        if (_selectedMode != mode) {
+          HapticFeedback.selectionClick();
+          setState(() => _selectedMode = mode);
+        }
       },
       borderRadius: BorderRadius.circular(2),
       child: Container(
@@ -478,12 +479,10 @@ class _StorageModeDialogState extends State<StorageModeDialog> {
 
     return InkWell(
       onTap: () {
-        HapticFeedback.selectionClick();
-        setState(() => _selectedMode = mode);
-      },
-      onDoubleTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.of(context).pop(mode);
+        if (_selectedMode != mode) {
+          HapticFeedback.selectionClick();
+          setState(() => _selectedMode = mode);
+        }
       },
       borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
