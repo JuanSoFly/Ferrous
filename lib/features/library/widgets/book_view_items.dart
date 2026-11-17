@@ -7,7 +7,7 @@ import 'package:ferrous/features/settings/app_themes.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/core/models/library_location.dart';
 import 'package:ferrous/core/widgets/delete_book_dialog.dart';
-import 'package:ferrous/data/repositories/collection_repository.dart';
+import 'package:ferrous/core/widgets/add_to_collection_dialog.dart';
 import 'package:ferrous/features/library/library_state.dart';
 import 'package:ferrous/features/library/widgets/book_cover.dart';
 import 'package:ferrous/features/library/widgets/kindle_book_action_sheet.dart';
@@ -104,7 +104,7 @@ class BookItemActionHandler {
                   },
                   onAddToCollection: () {
                     Navigator.pop(ctx);
-                    _showAddToCollectionDialog(context, book, isEInk: true);
+                    showAddToCollectionDialog(context, bookIds: [book.id]);
                   },
                   onDeleteBook: () {
                     Navigator.pop(ctx);
@@ -179,7 +179,7 @@ class BookItemActionHandler {
                 title: const Text('Add to Collection'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _showAddToCollectionDialog(context, book, isEInk: false);
+                  showAddToCollectionDialog(context, bookIds: [book.id]);
                 },
               ),
               ListTile(
@@ -223,109 +223,6 @@ class BookItemActionHandler {
         );
       }
     }
-  }
-
-  static Future<void> _showAddToCollectionDialog(BuildContext context, Book book, {bool isEInk = false}) async {
-    final collectionRepo = context.read<CollectionRepository>();
-    final collections = collectionRepo.getAllCollections();
-    final theme = Theme.of(context);
-
-    if (collections.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No collections created yet')),
-      );
-      return;
-    }
-
-    await showDialog(
-      context: context,
-      barrierColor: isEInk ? const Color(0xFF1A1A18).withValues(alpha: 0.14) : null,
-      builder: (context) => SimpleDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(isEInk ? 2 : 20),
-          side: isEInk ? const BorderSide(color: Color(0xFF1A1A18), width: 1.5) : BorderSide.none,
-        ),
-        backgroundColor: isEInk ? const Color(0xFFEAE6DF) : null,
-        elevation: isEInk ? 0 : null,
-        title: Text(
-          'Add to Collection',
-          style: isEInk
-              ? GoogleFonts.robotoSlab(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: const Color(0xFF1A1A18),
-                )
-              : null,
-        ),
-        children: collections.asMap().entries.map((entry) {
-          final i = entry.key;
-          final collection = entry.value;
-          final isInCollection = collection.bookIds.contains(book.id);
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isEInk && i > 0)
-                const Divider(height: 1, thickness: 1, color: Color(0xFF9E9A90)),
-              SimpleDialogOption(
-                onPressed: () async {
-                  if (isInCollection) {
-                    Navigator.pop(context);
-                    return;
-                  }
-                  await collectionRepo.addBookToCollection(collection.id, book.id);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Added to ${collection.name}')),
-                    );
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6.0),
-                  child: Row(
-                    children: [
-                      if (isEInk)
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: isInCollection ? const Color(0xFF1A1A18) : const Color(0xFFEAE6DF),
-                            borderRadius: BorderRadius.circular(2),
-                            border: Border.all(color: const Color(0xFF1A1A18), width: 1.5),
-                          ),
-                          child: isInCollection
-                              ? const Icon(Icons.check, size: 15, color: Color(0xFFEAE6DF))
-                              : null,
-                        )
-                      else
-                        Icon(
-                          isInCollection ? Icons.check_box : Icons.check_box_outline_blank,
-                          color: isInCollection ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                        ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          collection.name,
-                          style: isEInk
-                              ? GoogleFonts.robotoSlab(
-                                  fontSize: 14,
-                                  fontWeight: isInCollection ? FontWeight.bold : FontWeight.w500,
-                                  color: const Color(0xFF1A1A18),
-                                )
-                              : TextStyle(
-                                  fontWeight: isInCollection ? FontWeight.bold : FontWeight.normal,
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
   }
 
   static String formatDate(DateTime dt) {

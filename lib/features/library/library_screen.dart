@@ -22,6 +22,7 @@ import 'package:ferrous/features/library/widgets/book_view_items.dart';
 import 'package:ferrous/features/reader/reader_screen.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 import 'package:ferrous/core/widgets/storage_mode_dialog.dart';
+import 'package:ferrous/core/widgets/add_to_collection_dialog.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -1755,6 +1756,19 @@ class _LibraryViewState extends State<_LibraryView> {
               BookItemActionHandler.showBookOptionsMenu(context, selectedBook, controller);
             },
           ),
+        IconButton(
+          icon: const Icon(Icons.bookmark_add_outlined),
+          tooltip: "Add to Collection",
+          onPressed: count > 0
+              ? () {
+                  showAddToCollectionDialog(
+                    context,
+                    bookIds: state.selectedBookIds,
+                    onCompleted: controller.exitSelectionMode,
+                  );
+                }
+              : null,
+        ),
         IconButton(
           icon: Icon(state.isAllSelected ? Icons.deselect : Icons.select_all),
           tooltip: state.isAllSelected ? "Deselect All" : "Select All",

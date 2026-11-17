@@ -23,7 +23,7 @@ class CollectionRepository extends ChangeNotifier {
     return box.values.toList();
   }
 
-  Future<void> createCollection(String name) async {
+  Future<Collection> createCollection(String name) async {
     final collection = Collection(
       id: const Uuid().v4(),
       name: name,
@@ -32,6 +32,7 @@ class CollectionRepository extends ChangeNotifier {
     );
     await box.put(collection.id, collection);
     notifyListeners();
+    return collection;
   }
 
   Future<void> deleteCollection(String id) async {
@@ -39,13 +40,26 @@ class CollectionRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addBookToCollection(String collectionId, String bookId) async {
+  Future<int> addBooksToCollection(String collectionId, Iterable<String> bookIds) async {
     final collection = box.get(collectionId);
-    if (collection != null && !collection.bookIds.contains(bookId)) {
-      collection.bookIds.add(bookId);
+    if (collection == null) return 0;
+
+    int addedCount = 0;
+    for (final bookId in bookIds) {
+      if (!collection.bookIds.contains(bookId)) {
+        collection.bookIds.add(bookId);
+        addedCount++;
+      }
+    }
+    if (addedCount > 0) {
       await collection.save();
       notifyListeners();
     }
+    return addedCount;
+  }
+
+  Future<void> addBookToCollection(String collectionId, String bookId) async {
+    await addBooksToCollection(collectionId, [bookId]);
   }
 
   Future<void> removeBookFromCollection(String collectionId, String bookId) async {
