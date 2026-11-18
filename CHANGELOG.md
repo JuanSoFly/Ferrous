@@ -1,6 +1,7 @@
 ## [1.4.3-alpha.3] - 2026-11-18
 
 ### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+- **Relative Font-Size Normalization**: Normalized relative `em` and `%` font sizes in publisher stylesheets directly against base `fontSize` (in px) across `EpubContentViewer` and `MobiContentViewer`, preventing nested inheritance double-scaling in `flutter_html`, and added `fontSize` to chunk cache keys.
 - **CSS AST Term & Expression Unpacking**: Enhanced `CssRuleResolver` to unpack compound expressions and resolve `PercentageTerm`, `EmTerm`, `RemTerm`, and `LengthTerm` (`pt`/`px`) directly for accurate margins, padding, and font scaling.
 - **Orphan Page Content Preservation**: Updated `SafeScreenPaginator` to merge trailing near-empty chapter slice HTML directly into the preceding page instead of dropping it, eliminating content loss.
 - **Paginator Budget & Strut Cleanups**: Removed restrictive `StrutStyle` overrides and synthetic budget height inflation, measuring exact block heights and snapping splits to visible hyphens (`-`, `‐`, `—`).

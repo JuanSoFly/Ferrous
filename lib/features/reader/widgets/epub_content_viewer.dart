@@ -41,6 +41,23 @@ class EpubContentViewer extends StatefulWidget {
     this.pageSlice,
   });
 
+  /// Applies dynamic publisher styles, normalizing relative em/% font sizes
+  /// against [fontSize] to prevent nested-inheritance double scaling in flutter_html.
+  static String applyDynamicStyles(
+    String html, {
+    required bool usePublisherStyles,
+    required double paragraphSpacing,
+    String? textAlign,
+    double? fontSize,
+  }) =>
+      _EpubContentViewerState._applyDynamicStyles(
+        html,
+        usePublisherStyles: usePublisherStyles,
+        paragraphSpacing: paragraphSpacing,
+        textAlign: textAlign,
+        fontSize: fontSize,
+      );
+
   @override
   State<EpubContentViewer> createState() => _EpubContentViewerState();
 }
@@ -55,6 +72,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     required bool usePublisherStyles,
     required double paragraphSpacing,
     String? textAlign,
+    double? fontSize,
   }) {
     final spacingPx = paragraphSpacing.toStringAsFixed(1);
     final alignRule = (textAlign != null && textAlign.isNotEmpty)
@@ -85,7 +103,24 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       if (!usePublisherStyles) {
         return '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
       }
-      final existingStyles = m.group(1) ?? '';
+      var existingStyles = m.group(1) ?? '';
+      if (fontSize != null && fontSize > 0) {
+        existingStyles = existingStyles.replaceAllMapped(
+          RegExp(r'font-size\s*:\s*([0-9.]+)\s*em\b', caseSensitive: false),
+          (match) {
+            final emVal = double.tryParse(match.group(1)!) ?? 1.0;
+            final pxVal = (emVal * fontSize).toStringAsFixed(2);
+            return 'font-size: ${pxVal}px';
+          },
+        ).replaceAllMapped(
+          RegExp(r'font-size\s*:\s*([0-9.]+)\s*%\b', caseSensitive: false),
+          (match) {
+            final pctVal = double.tryParse(match.group(1)!) ?? 100.0;
+            final pxVal = (pctVal / 100.0 * fontSize).toStringAsFixed(2);
+            return 'font-size: ${pxVal}px';
+          },
+        );
+      }
       return '<style type="text/css" id="epub-publisher-styles">$baseRule\n$existingStyles</style>';
     });
   }
@@ -98,6 +133,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     required bool usePublisherStyles,
     required double paragraphSpacing,
     String? textAlign,
+    required double fontSize,
     required List<Annotation> annotations,
   }) {
     if (widget.pageSlice != null) {
@@ -106,6 +142,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         usePublisherStyles: usePublisherStyles,
         paragraphSpacing: paragraphSpacing,
         textAlign: textAlign,
+        fontSize: fontSize,
       );
     }
 
@@ -114,7 +151,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
     final alignSig = textAlign ?? 'default';
-    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$alignSig:$annotationSig';
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$fontSize:$alignSig:$annotationSig';
 
     final cached = _chunkCache[key];
     if (cached != null) return cached;
@@ -126,6 +163,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       usePublisherStyles: usePublisherStyles,
       paragraphSpacing: paragraphSpacing,
       textAlign: textAlign,
+      fontSize: fontSize,
     );
 
     // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
@@ -181,6 +219,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         usePublisherStyles: themeConfig.usePublisherStyles,
         paragraphSpacing: themeConfig.paragraphSpacing,
         textAlign: themeConfig.textAlign,
+        fontSize: themeConfig.fontSize,
         annotations: annotations,
       );
       displayChunks.add(formatted);
@@ -754,6 +793,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
               usePublisherStyles: themeConfig.usePublisherStyles,
               paragraphSpacing: themeConfig.paragraphSpacing,
               textAlign: themeConfig.textAlign,
+              fontSize: themeConfig.fontSize,
               annotations: chapterAnnotations,
             ));
           }
