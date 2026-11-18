@@ -1,6 +1,10 @@
 ## [1.4.3-alpha.3] - 2026-11-18
 
 ### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+- **CSS AST Term & Expression Unpacking**: Enhanced `CssRuleResolver` to unpack compound expressions and resolve `PercentageTerm`, `EmTerm`, `RemTerm`, and `LengthTerm` (`pt`/`px`) directly for accurate margins, padding, and font scaling.
+- **Orphan Page Content Preservation**: Updated `SafeScreenPaginator` to merge trailing near-empty chapter slice HTML directly into the preceding page instead of dropping it, eliminating content loss.
+- **Paginator Budget & Strut Cleanups**: Removed restrictive `StrutStyle` overrides and synthetic budget height inflation, measuring exact block heights and snapping splits to visible hyphens (`-`, `‐`, `—`).
+- **Soft Hyphen Stripping & Word Severing Fix**: Simplified `smartHyphenateText` to sanitize soft hyphens (`\u00AD`) without aggressive algorithmic word breaking, preventing words from severing mid-syllable without visible hyphens.
 - **Relative Em Margin & Padding Resolution**: Added support for `em` units in `CssRuleResolver` for lateral margins and padding, dynamically computing insets against `effectiveFontSize` for responsive publisher formatting.
 - **Honorific Abbreviation Protection**: Integrated `_abbreviationEndingRegex` in `HtmlDefragmenter` for honorifics (`Mr.`, `Mrs.`, `Dr.`, `Prof.`, etc.) to prevent improper sentence splitting and merging.
 - **System Text Scaling Isolation**: Enforced `TextScaler.noScaling` across `SafeScreenPaginator`, `EpubContentViewer`, and `MobiContentViewer`, preventing double-scaling discrepancies from device OS text size settings.

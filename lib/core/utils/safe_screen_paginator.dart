@@ -192,12 +192,6 @@ class SafeScreenPaginator {
       textAlign: textAlign,
       textScaler: TextScaler.noScaling,
       locale: Locale(primaryLang),
-      strutStyle: StrutStyle(
-        fontFamily: baseStyle.fontFamily,
-        fontSize: fontSize,
-        height: lineHeight,
-        forceStrutHeight: false,
-      ),
     );
 
     final indentWidth = ReaderTypographyMetrics.computeIndentWidth(fontSize);
@@ -520,7 +514,7 @@ class SafeScreenPaginator {
 
         for (int partIdx = 0; partIdx < splitParts.length; partIdx++) {
           final part = splitParts[partIdx];
-          if (currentHeight + part.height > maxPageHeight && currentHeight > 0) {
+          if (partIdx > 0 || (currentHeight + part.height > maxPageHeight && currentHeight > 0)) {
             flushPage();
           }
           currentBuffer.write(part.html);
@@ -616,7 +610,7 @@ class SafeScreenPaginator {
       }
     }
 
-    // Drop 90% blank footer pages with < 25 chars and no media
+    // Drop 90% blank footer pages with < 25 chars and no media, merging their content into the previous page
     if (pages.length > 1) {
       final lastSlice = pages.last;
       final lastDoc = html_parser.parse(lastSlice.html);
@@ -625,8 +619,13 @@ class SafeScreenPaginator {
       if (!hasMedia && lastText.length < 25) {
         final prevSlice = pages[pages.length - 2];
         pages.removeLast();
+        final lastBodyInner = lastDoc.body?.innerHtml ?? '';
+        final mergedHtml = prevSlice.html.replaceFirst(
+          '</body>',
+          '$lastBodyInner</body>',
+        );
         pages[pages.length - 1] = PageSlice(
-          html: prevSlice.html,
+          html: mergedHtml,
           startCharOffset: prevSlice.startCharOffset,
           endCharOffset: lastSlice.endCharOffset,
           pageIndex: prevSlice.pageIndex,
@@ -883,8 +882,7 @@ class SafeScreenPaginator {
         final int charLength = rawText.length - currentOffset;
         parts.add(_BlockPart(
           html: partHtml,
-          // Consume full currentBudget so the page flushes before the next block
-          height: math.max(heightTextOnly, currentBudget),
+          height: heightTextOnly,
           charLength: charLength,
         ));
         break;
@@ -892,7 +890,7 @@ class SafeScreenPaginator {
 
       // 3. Remaining text exceeds currentBudget. Find word boundaries in remainingText
       final wordBoundaries = <int>[];
-      final splitRegex = RegExp(r'\s+|\u00AD');
+      final splitRegex = RegExp(r'\s+|(?<=[-\u2010\u2014])');
       for (final m in splitRegex.allMatches(remainingText)) {
         if (m.end > 0 && m.end < remainingText.length) {
           wordBoundaries.add(m.end);
@@ -994,10 +992,7 @@ class SafeScreenPaginator {
 
       parts.add(_BlockPart(
         html: partHtml,
-        // Consume currentBudget on non-final parts so next part always flushes to next page
-        height: chunkEndOffset < rawText.length
-            ? math.max(chunkHeight, currentBudget)
-            : chunkHeight,
+        height: chunkHeight,
         charLength: splitLength,
       ));
 

@@ -455,7 +455,27 @@ class CssRuleResolver {
     css.Expression expr,
     double baseFontSize,
   ) {
-    final text = expr.span?.text.trim().toLowerCase();
+    css.Expression target = expr;
+    if (expr is css.Expressions && expr.expressions.isNotEmpty) {
+      target = expr.expressions.first;
+    }
+
+    if (target is css.PercentageTerm) {
+      final v = target.value;
+      if (v is num) {
+        return (pixels: 0.0, isPercentage: true, percentage: v.toDouble() / 100.0, emValue: null);
+      }
+    }
+
+    if (target is css.EmTerm || target is css.RemTerm) {
+      final v = (target as dynamic).value;
+      if (v is num) {
+        final em = v.toDouble();
+        return (pixels: em * baseFontSize, isPercentage: false, percentage: 0.0, emValue: em);
+      }
+    }
+
+    final text = target.span?.text.trim().toLowerCase();
     if (text == null || text.isEmpty) return null;
 
     final match = RegExp(r'^([+-]?[\d.]+)(em|rem|px|pt|%)?$').firstMatch(text);
@@ -545,7 +565,36 @@ class CssRuleResolver {
   }
 
   static double? _resolveFontSizeScale(css.Expression expr) {
-    final text = expr.span?.text.trim().toLowerCase();
+    css.Expression target = expr;
+    if (expr is css.Expressions && expr.expressions.isNotEmpty) {
+      target = expr.expressions.first;
+    }
+
+    if (target is css.EmTerm) {
+      final v = target.value;
+      if (v is num) return v.toDouble().clamp(0.70, 2.0);
+    }
+    if (target is css.RemTerm) {
+      final v = target.value;
+      if (v is num) return v.toDouble().clamp(0.70, 2.0);
+    }
+    if (target is css.PercentageTerm) {
+      final v = target.value;
+      if (v is num) return (v.toDouble() / 100.0).clamp(0.70, 2.0);
+    }
+    if (target is css.LengthTerm) {
+      final v = target.value;
+      if (v is num) {
+        final spanText = target.span?.text.trim().toLowerCase() ?? '';
+        if (spanText.endsWith('pt')) {
+          return (v.toDouble() * 1.333 / 16.0).clamp(0.70, 2.0);
+        } else {
+          return (v.toDouble() / 16.0).clamp(0.70, 2.0);
+        }
+      }
+    }
+
+    final text = target.span?.text.trim().toLowerCase();
     if (text == null || text.isEmpty) return null;
 
     switch (text) {
@@ -574,6 +623,7 @@ class CssRuleResolver {
         if (unit == 'em' || unit == 'rem') return val.clamp(0.70, 2.0);
         if (unit == 'px') return (val / 16.0).clamp(0.70, 2.0);
         if (unit == 'pt') return (val * 1.333 / 16.0).clamp(0.70, 2.0);
+        if (val >= 0.5 && val <= 3.0) return val.clamp(0.70, 2.0);
       }
     }
 

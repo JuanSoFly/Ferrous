@@ -9,7 +9,6 @@ class HyphenationHelper {
   static const String softHyphen = '\u00AD';
   static const String continuationHyphen = '\u2010';
   static const String indentTag = 'p-indent';
-  static final RegExp _wordRegex = RegExp(r'\p{L}+', unicode: true);
 
   static final Map<String, Hyphenator> _hyphenatorCache = {};
 
@@ -104,12 +103,8 @@ class HyphenationHelper {
         .replaceAll(RegExp(r'[\u00AD\u200B\u2010]|&shy;'), '');
   }
 
-  /// Applies smart hyphenation to text:
-  /// - Only words of length >= 7 are considered.
-  /// - Non-German: skips words with any uppercase character (proper nouns, CamelCase, acronyms).
-  /// - German: allows leading uppercase (nouns), but requires subsequent letters to be lowercase.
-  /// - Words with numbers or symbols are untouched.
-  /// - Inserts \u00AD soft hyphen using Liang's hyphenation algorithm via hyphenatorx.
+  /// Sanitizes text for rendering: strips \u00AD soft hyphens so Flutter does not sever words
+  /// mid-syllable without visible hyphens.
   static String smartHyphenateText(
     String text, {
     bool applyHyphenation = false,
@@ -117,37 +112,7 @@ class HyphenationHelper {
     bool preserveExistingHyphens = false,
   }) {
     if (text.isEmpty) return text;
-
-    final clean = preserveExistingHyphens ? text : stripSoftHyphens(text);
-    if (!applyHyphenation || clean.length < 7) {
-      return clean;
-    }
-
-    final primaryLang = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
-    final h = getHyphenator(primaryLang);
-
-    return clean.replaceAllMapped(_wordRegex, (match) {
-      final word = match[0]!;
-      if (word.length < 7) return word;
-
-      if (primaryLang != 'de') {
-        final isCapitalized = word[0] == word[0].toUpperCase();
-        final remainderIsLower = word.length > 1 && word.substring(1) == word.substring(1).toLowerCase();
-        if (isCapitalized && !remainderIsLower) {
-          return word; // Skip ALL-CAPS (acronyms) and CamelCase
-        }
-      } else {
-        if (word.length > 1 && word.substring(1) != word.substring(1).toLowerCase()) {
-          return word;
-        }
-      }
-
-      try {
-        return h.hyphenateWord(word);
-      } catch (_) {
-        return word;
-      }
-    });
+    return preserveExistingHyphens ? text : stripSoftHyphens(text);
   }
 
   /// Injects `<p-indent></p-indent>` tags into all eligible paragraph elements,
