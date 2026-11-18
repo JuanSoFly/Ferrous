@@ -150,4 +150,12 @@ class ReaderThemeRepository extends ChangeNotifier {
   Future<void> setFontWeight(int weight) async {
     await updateConfig(_config.copyWith(fontWeight: weight));
   }
+
+  Future<void> togglePublisherStyles() async {
+    await updateConfig(_config.copyWith(usePublisherStyles: !_config.usePublisherStyles));
+  }
+
+  Future<void> setPublisherStyles(bool enabled) async {
+    await updateConfig(_config.copyWith(usePublisherStyles: enabled));
+  }
 }

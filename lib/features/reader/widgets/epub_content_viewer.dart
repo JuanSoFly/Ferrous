@@ -21,6 +21,7 @@ import 'package:ferrous/core/utils/reader_typography_metrics.dart';
 import 'package:ferrous/core/utils/safe_screen_paginator.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 
@@ -49,49 +50,84 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
   // Theme changes like font size, font family, margins, etc. do NOT invalidate this cache.
   static final Map<String, String> _chunkCache = {};
 
+  static String _applyDynamicStyles(
+    String html, {
+    required bool usePublisherStyles,
+    required double paragraphSpacing,
+  }) {
+    final baseRule = 'p { margin-top: 0px; margin-bottom: ${paragraphSpacing.toStringAsFixed(1)}px; }';
+    final stylePattern = RegExp(
+      r'<style\b[^>]*\bid=["\x27]epub-publisher-styles["\x27][^>]*>([\s\S]*?)<\/style>',
+      caseSensitive: false,
+    );
+
+    if (!html.contains('id="epub-publisher-styles"') && !html.contains("id='epub-publisher-styles'")) {
+      final injected = '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
+      if (html.contains('</head>')) {
+        return html.replaceFirst('</head>', '$injected</head>');
+      }
+      return '$injected$html';
+    }
+
+    return html.replaceFirstMapped(stylePattern, (m) {
+      if (!usePublisherStyles) {
+        return '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
+      }
+      final existingStyles = m.group(1) ?? '';
+      return '<style type="text/css" id="epub-publisher-styles">$baseRule\n$existingStyles</style>';
+    });
+  }
+
   String _formatChunk(
     String rawChunk,
     int chunkIndex, {
     required bool hyphenation,
     required bool paragraphIndent,
+    required bool usePublisherStyles,
+    required double paragraphSpacing,
     required List<Annotation> annotations,
   }) {
     if (widget.pageSlice != null) {
-      // Leaf slice was already defragmented, indented, and continuation-hyphenated by SafeScreenPaginator.
-      return widget.pageSlice!.html;
+      return _applyDynamicStyles(
+        widget.pageSlice!.html,
+        usePublisherStyles: usePublisherStyles,
+        paragraphSpacing: paragraphSpacing,
+      );
     }
 
     final bookId = widget.chapterController.book.id;
     final annotationSig = annotations.isEmpty
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
-    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$annotationSig';
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$annotationSig';
 
     final cached = _chunkCache[key];
     if (cached != null) return cached;
 
     // Strict Pipeline Order:
-    // 1. Base chunk HTML
-    // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
-    var processed = annotations.isNotEmpty
-        ? AnnotationHighlightHelper.applyHighlights(rawChunk, annotations)
-        : rawChunk;
+    // 1. Base chunk HTML with dynamic styles injected
+    var processed = _applyDynamicStyles(
+      rawChunk,
+      usePublisherStyles: usePublisherStyles,
+      paragraphSpacing: paragraphSpacing,
+    );
 
-    // 3. Process hyphenation and paragraph indentation
-    if (hyphenation || paragraphIndent) {
-      processed = HyphenationHelper.processHtmlAndIndent(
-        processed,
-        applyHyphenation: hyphenation,
-        applyIndent: paragraphIndent,
-      );
-    } else {
-      // Clean strip if hyphenation is false
-      processed = HyphenationHelper.processHtmlAndIndent(
-        processed,
-        applyHyphenation: false,
-        applyIndent: false,
-      );
+    // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
+    if (annotations.isNotEmpty) {
+      processed = AnnotationHighlightHelper.applyHighlights(processed, annotations);
     }
+
+    // 3. Process hyphenation and paragraph indentation with CSS AST rule awareness
+    final cssRules = usePublisherStyles
+        ? widget.chapterController.getCssRulesForChapter(widget.chapterIndex)
+        : const <String, ResolvedCssRule>{};
+
+    processed = HyphenationHelper.processHtmlAndIndent(
+      processed,
+      applyHyphenation: hyphenation,
+      applyIndent: paragraphIndent,
+      cssRules: cssRules,
+    );
 
     if (_chunkCache.length > 500) {
       _chunkCache.remove(_chunkCache.keys.first);
@@ -126,6 +162,8 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         i,
         hyphenation: themeConfig.hyphenation,
         paragraphIndent: themeConfig.paragraphIndent,
+        usePublisherStyles: themeConfig.usePublisherStyles,
+        paragraphSpacing: themeConfig.paragraphSpacing,
         annotations: annotations,
       );
       displayChunks.add(formatted);
@@ -186,9 +224,6 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final isEInk = currentTheme == AppTheme.eInk;
 
     final isPaged = widget.pageSlice != null;
-    final blockMargin = isPaged
-        ? Margins.only(top: 0.0, bottom: themeConfig.paragraphSpacing)
-        : Margins.only(bottom: themeConfig.paragraphSpacing);
     final pagedOnlyMargin = isPaged
         ? Margins.only(top: 0.0, bottom: themeConfig.paragraphSpacing)
         : null;
@@ -258,15 +293,15 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             color: isEInk ? const Color(0xFF1A1A18) : null,
           ),
           "p": Style(
-            margin: blockMargin,
-            textAlign: parseTextAlign(themeConfig.textAlign),
+            margin: null,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
           "div": Style(
-            margin: isPaged ? Margins.zero : blockMargin,
+            margin: null,
             padding: HtmlPaddings.zero,
-            textAlign: parseTextAlign(themeConfig.textAlign),
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -281,6 +316,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h1')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -288,6 +324,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h2')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -295,6 +332,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h3')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -302,6 +340,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h4')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -309,6 +348,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h5')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
@@ -316,10 +356,11 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
             fontSize: FontSize(themeConfig.fontSize * ReaderTypographyMetrics.headingScale('h6')),
             fontWeight: FontWeight.bold,
             margin: pagedOnlyMargin,
+            textAlign: null,
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
-          "blockquote": Style(margin: pagedOnlyMargin, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "blockquote": Style(margin: null, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
           "img": Style(
             width: Width(100, Unit.percent),
@@ -673,10 +714,14 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
               chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);
             }
             if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
+              final cssRules = themeConfig.usePublisherStyles
+                  ? widget.chapterController.getCssRulesForChapter(widget.chapterIndex)
+                  : const <String, ResolvedCssRule>{};
               chunk = HyphenationHelper.processHtmlAndIndent(
                 chunk,
                 applyHyphenation: themeConfig.hyphenation,
                 applyIndent: themeConfig.paragraphIndent,
+                cssRules: cssRules,
               );
             }
             ttsChunks.add(chunk);
@@ -686,6 +731,8 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
               i,
               hyphenation: themeConfig.hyphenation,
               paragraphIndent: themeConfig.paragraphIndent,
+              usePublisherStyles: themeConfig.usePublisherStyles,
+              paragraphSpacing: themeConfig.paragraphSpacing,
               annotations: chapterAnnotations,
             ));
           }

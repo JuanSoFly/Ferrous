@@ -16,6 +16,7 @@ import 'package:ferrous/src/rust/api/covers.dart' as covers_api;
 import 'package:ferrous/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:ferrous/core/services/diagnostic_logger.dart';
 import 'package:ferrous/core/utils/dom_chunker.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'reader_mode_controller.dart';
 
 class MobiChapterInfo {
@@ -32,6 +33,8 @@ class ParsedMobiBook {
   final List<List<SentenceSpan>> sentenceSpans;
   final List<List<String>> chapterChunks;
   final List<List<int>> chapterChunkOffsets;
+  final List<String> chapterCss;
+  final List<Map<String, ResolvedCssRule>> chapterCssRules;
 
   ParsedMobiBook({
     required this.chapters,
@@ -40,6 +43,8 @@ class ParsedMobiBook {
     required this.sentenceSpans,
     this.chapterChunks = const [],
     this.chapterChunkOffsets = const [],
+    this.chapterCss = const [],
+    this.chapterCssRules = const [],
   });
 }
 
@@ -64,6 +69,8 @@ class MobiChapterController extends ChangeNotifier {
   List<List<SentenceSpan>> _allChapterSentenceSpans = const [];
   List<List<String>> _allChapterChunks = const [];
   List<List<int>> _allChapterChunkOffsets = const [];
+  List<String> _allChapterCss = const [];
+  List<Map<String, ResolvedCssRule>> _allChapterCssRules = const [];
   List<GlobalKey> _chapterKeys = const [];
   int _currentChapterIndex = 0;
   String? _currentContent;
@@ -107,6 +114,15 @@ class MobiChapterController extends ChangeNotifier {
   List<String> get allChapterPlainTexts => _allChapterPlainTexts;
   List<List<String>> get allChapterChunks => _allChapterChunks;
   List<List<int>> get allChapterChunkOffsets => _allChapterChunkOffsets;
+  List<String> get allChapterCss => _allChapterCss;
+  List<Map<String, ResolvedCssRule>> get allChapterCssRules => _allChapterCssRules;
+
+  Map<String, ResolvedCssRule> getCssRulesForChapter(int chapterIndex) {
+    if (chapterIndex >= 0 && chapterIndex < _allChapterCssRules.length) {
+      return _allChapterCssRules[chapterIndex];
+    }
+    return const <String, ResolvedCssRule>{};
+  }
   List<GlobalKey> get chapterKeys => _chapterKeys;
   int get currentChapterIndex => _currentChapterIndex;
   String? get currentContent => _currentContent;
@@ -248,6 +264,8 @@ class MobiChapterController extends ChangeNotifier {
         _allChapterSentenceSpans = parsedBook.sentenceSpans;
         _allChapterChunks = parsedBook.chapterChunks;
         _allChapterChunkOffsets = parsedBook.chapterChunkOffsets;
+        _allChapterCss = parsedBook.chapterCss;
+        _allChapterCssRules = parsedBook.chapterCssRules;
         _chapterKeys = allKeys;
         _currentContent = parsedBook.contents[_currentChapterIndex];
         _currentPlainText = parsedBook.plainTexts[_currentChapterIndex];
@@ -266,12 +284,19 @@ class MobiChapterController extends ChangeNotifier {
   }
 
   static ParsedMobiBook _parseMobiIsolated(List<rust_mobi.MobiChapter> rawChapters) {
+    const mobiCss =
+        '.ferrous-attribution { text-align: right; font-style: italic; margin-right: 2em; margin-bottom: 1em; }\n'
+        '.ferrous-blockquote { margin-left: 2em; margin-right: 2em; font-style: italic; }';
+    final mobiRules = CssRuleResolver.parse(mobiCss, baseFontSize: 12.0);
+
     final chapters = <MobiChapterInfo>[];
     final contents = <String>[];
     final plainTexts = <String>[];
     final sentenceSpans = <List<SentenceSpan>>[];
     final chapterChunks = <List<String>>[];
     final chapterChunkOffsets = <List<int>>[];
+    final chapterCss = <String>[];
+    final chapterCssRules = <Map<String, ResolvedCssRule>>[];
     String? previousContent;
 
     for (var i = 0; i < rawChapters.length; i++) {
@@ -294,20 +319,49 @@ class MobiChapterController extends ChangeNotifier {
         }
       }
 
+      // Semantic heuristic pass for MOBI:
+      final body = doc.body ?? doc.documentElement;
+      if (body != null) {
+        for (final el in body.querySelectorAll('p, div, blockquote')) {
+          final tag = el.localName?.toLowerCase() ?? '';
+          if (tag == 'blockquote' || (el.attributes['style'] ?? '').contains('margin-left')) {
+            el.classes.add('ferrous-blockquote');
+          }
+
+          final txt = el.text.trim();
+          if (txt.startsWith('—') || txt.startsWith('–') || txt.startsWith('--')) {
+            // Dialogue-safe check: only mark as attribution if not narrative dialogue
+            final hasQuotes = txt.contains('"') || txt.contains('”') || txt.contains('“') || txt.contains('‘') || txt.contains('’');
+            final isShort = txt.length <= 80;
+            final endsWithPeriod = txt.endsWith('.');
+            if (!hasQuotes && isShort && !endsWithPeriod) {
+              el.classes.add('ferrous-attribution');
+            }
+          }
+        }
+      }
+
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
       final defragmentedHtml = doc.body?.innerHtml ?? content;
-      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
+      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml, cssRules: mobiRules);
+
+      final bodyAttrs = (doc.body != null && doc.body!.attributes.isNotEmpty)
+          ? ' ${doc.body!.attributes.entries.map((e) => '${e.key}="${e.value}"').join(' ')}'
+          : '';
+      final fullDocumentHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style type="text/css" id="epub-publisher-styles">$mobiCss</style></head><body$bodyAttrs>$contentWithIndent</body></html>';
 
       // DOM-Level Chunking to keep GPU textures bounded (<4,096px)
-      final chunkResult = DomChunker.split(contentWithIndent);
+      final chunkResult = DomChunker.split(fullDocumentHtml);
 
       chapters.add(MobiChapterInfo(title: title));
-      contents.add(contentWithIndent);
+      contents.add(fullDocumentHtml);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
       chapterChunks.add(chunkResult.chunks);
       chapterChunkOffsets.add(chunkResult.chunkStartOffsets);
+      chapterCss.add(mobiCss);
+      chapterCssRules.add(mobiRules);
     }
 
     if (chapters.isEmpty && rawChapters.isNotEmpty) {
@@ -317,14 +371,17 @@ class MobiChapterController extends ChangeNotifier {
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
       final defragmentedHtml = doc.body?.innerHtml ?? first.htmlContent;
-      final firstWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
-      final chunkResult = DomChunker.split(firstWithIndent);
+      final firstWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml, cssRules: mobiRules);
+      final fullDocumentHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style type="text/css" id="epub-publisher-styles">$mobiCss</style></head><body>$firstWithIndent</body></html>';
+      final chunkResult = DomChunker.split(fullDocumentHtml);
       chapters.add(MobiChapterInfo(title: first.title));
-      contents.add(firstWithIndent);
+      contents.add(fullDocumentHtml);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
       chapterChunks.add(chunkResult.chunks);
       chapterChunkOffsets.add(chunkResult.chunkStartOffsets);
+      chapterCss.add(mobiCss);
+      chapterCssRules.add(mobiRules);
     }
 
     return ParsedMobiBook(
@@ -334,6 +391,8 @@ class MobiChapterController extends ChangeNotifier {
       sentenceSpans: sentenceSpans,
       chapterChunks: chapterChunks,
       chapterChunkOffsets: chapterChunkOffsets,
+      chapterCss: chapterCss,
+      chapterCssRules: chapterCssRules,
     );
   }
 

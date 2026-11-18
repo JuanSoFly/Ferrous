@@ -573,6 +573,16 @@ class _LayoutSettingsTab extends StatelessWidget {
           value: config.pageMargins,
           onChanged: (_) => repo.togglePageMargins(),
         ),
+
+        _buildSwitchTile(
+          context: context,
+          theme: theme,
+          isEInk: isEInk,
+          title: 'Publisher Styles',
+          subtitle: 'Preserve original book formatting, epigraphs, and headings',
+          value: config.usePublisherStyles,
+          onChanged: (_) => repo.togglePublisherStyles(),
+        ),
       ],
     );
   }

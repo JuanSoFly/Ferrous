@@ -3,6 +3,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:hyphenatorx/hyphenatorx.dart';
 import 'package:hyphenatorx/languages/language_en_us.dart';
 import 'package:ferrous/core/utils/html_defragmenter.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 
 class HyphenationHelper {
   static const String softHyphen = '\u00AD';
@@ -145,34 +146,35 @@ class HyphenationHelper {
     });
   }
 
-  /// Injects `<p-indent></p-indent>` tags into all paragraph elements.
-  static String injectIndentTags(String html) {
+  /// Injects `<p-indent></p-indent>` tags into all eligible paragraph elements,
+  /// skipping elements matching CSS rules with zero indent, margins, or alignments.
+  static String injectIndentTags(String html, {Map<String, ResolvedCssRule>? cssRules}) {
     if (html.isEmpty) return html;
     try {
       final document = html_parser.parse(html);
       HtmlDefragmenter.defragmentDocument(document);
       final body = document.body ?? document.documentElement;
       if (body == null) return html;
-      _injectIndentTagsRecursive(body);
+      _injectIndentTagsRecursive(body, cssRules: cssRules);
       return document.body?.innerHtml ?? html;
     } catch (_) {
       return html;
     }
   }
 
-  static void _injectIndentTagsRecursive(dom.Node node) {
+  static void _injectIndentTagsRecursive(dom.Node node, {Map<String, ResolvedCssRule>? cssRules}) {
     if (node is dom.Element) {
       final tag = node.localName?.toLowerCase();
       if ({'pre', 'code', 'script', 'style', 'tt', 'kbd', 'samp', 'var', 'a'}.contains(tag)) {
         return;
       }
-      if (_isParagraphElement(node)) {
-        _indentParagraph(node);
+      if (_isParagraphElement(node, cssRules: cssRules)) {
+        _indentParagraph(node, cssRules: cssRules);
       }
     }
     if (node.hasChildNodes()) {
       for (final child in List<dom.Node>.from(node.nodes)) {
-        _injectIndentTagsRecursive(child);
+        _injectIndentTagsRecursive(child, cssRules: cssRules);
       }
     }
   }
@@ -216,13 +218,14 @@ class HyphenationHelper {
   /// Single-pass processing on a DOM element (or cloned element):
   /// - Injects or removes paragraph indentation tags (`<p-indent>`)
   /// - Hyphenates or cleans text nodes
-  /// - Traverses children while respecting non-prose tag exclusion rules
+  /// - Traverses children while respecting non-prose tag exclusion rules and CSS AST rules
   static void processElement(
     dom.Element element, {
     bool applyHyphenation = false,
     bool applyIndent = true,
     String languageCode = 'en',
     bool preserveExistingHyphens = false,
+    Map<String, ResolvedCssRule>? cssRules,
   }) {
     _processNodeHyphenateAndIndent(
       element,
@@ -230,6 +233,7 @@ class HyphenationHelper {
       applyIndent: applyIndent,
       languageCode: languageCode,
       preserveExistingHyphens: preserveExistingHyphens,
+      cssRules: cssRules,
     );
   }
 
@@ -240,6 +244,7 @@ class HyphenationHelper {
     bool applyIndent = true,
     String languageCode = 'en',
     bool preserveExistingHyphens = false,
+    Map<String, ResolvedCssRule>? cssRules,
   }) {
     if (!applyHyphenation &&
         !applyIndent &&
@@ -262,6 +267,7 @@ class HyphenationHelper {
           applyIndent: applyIndent,
           languageCode: languageCode,
           preserveExistingHyphens: preserveExistingHyphens,
+          cssRules: cssRules,
         );
       }
       return document.body?.innerHtml ?? html;
@@ -332,6 +338,7 @@ class HyphenationHelper {
     required bool applyIndent,
     String languageCode = 'en',
     bool preserveExistingHyphens = false,
+    Map<String, ResolvedCssRule>? cssRules,
   }) {
     if (node == null) return;
 
@@ -341,9 +348,9 @@ class HyphenationHelper {
         return;
       }
 
-      if (_isParagraphElement(node)) {
+      if (_isParagraphElement(node, cssRules: cssRules)) {
         if (applyIndent) {
-          _indentParagraph(node);
+          _indentParagraph(node, cssRules: cssRules);
         } else {
           _removeIndentFromParagraph(node);
         }
@@ -372,13 +379,14 @@ class HyphenationHelper {
           applyIndent: applyIndent,
           languageCode: languageCode,
           preserveExistingHyphens: preserveExistingHyphens,
+          cssRules: cssRules,
         );
       }
     }
   }
 
   /// Determines whether an element represents a normal reading paragraph.
-  static bool _isParagraphElement(dom.Element el) {
+  static bool _isParagraphElement(dom.Element el, {Map<String, ResolvedCssRule>? cssRules}) {
     final tag = el.localName?.toLowerCase();
     if (tag == null) return false;
 
@@ -391,7 +399,7 @@ class HyphenationHelper {
       return false;
     }
 
-    if (_isAlignedParagraph(el)) {
+    if (_isAlignedParagraph(el, cssRules: cssRules)) {
       return false;
     }
 
@@ -426,11 +434,11 @@ class HyphenationHelper {
   }
 
   /// Checks if a paragraph is explicitly aligned or styled (centered, right-aligned, or a list/choice item).
-  static bool _isAlignedParagraph(dom.Element p) {
+  static bool _isAlignedParagraph(dom.Element p, {Map<String, ResolvedCssRule>? cssRules}) {
     final align = p.attributes['align']?.toLowerCase();
     final style = p.attributes['style']?.toLowerCase();
     final className = p.attributes['class']?.toLowerCase() ?? '';
-    return align == 'center' ||
+    if (align == 'center' ||
         align == 'right' ||
         (style != null &&
             (style.contains('text-align: center') ||
@@ -439,14 +447,64 @@ class HyphenationHelper {
                 style.contains('text-align:right'))) ||
         className.contains('center') ||
         className.contains('choice-item') ||
-        className.contains('list-item');
+        className.contains('list-item')) {
+      return true;
+    }
+
+    if (cssRules != null && cssRules.isNotEmpty) {
+      final rule = CssRuleResolver.resolveRule(p, cssRules);
+      if (rule != null && (rule.textAlign == 'center' || rule.textAlign == 'right')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /// Evaluates whether first-line paragraph indentation should be suppressed:
+  /// 1. Page-continuation fragments (split mid-paragraph across screens)
+  /// 2. MOBI attribution lines (.ferrous-attribution) and blockquotes (.ferrous-blockquote)
+  /// 3. Explicit inline text-indent: 0
+  /// 4. Opening paragraph immediately following a heading or divider (classic editorial rule)
+  /// 5. CSS AST rules with textIndent <= 0, lateral insets > 0 (epigraphs/blockquotes), or non-justify alignments
+  static bool _shouldSuppressIndent(dom.Element p, {Map<String, ResolvedCssRule>? cssRules}) {
+    if (p.classes.contains('page-continuation')) return true;
+    if (p.classes.contains('ferrous-attribution') || p.classes.contains('ferrous-blockquote')) return true;
+
+    final style = p.attributes['style'] ?? '';
+    if (style.contains('text-indent: 0') || style.contains('text-indent:0')) return true;
+
+    // Suppression for first paragraph immediately following a heading (h1-h6) or divider (hr)
+    dom.Element? prev = p.previousElementSibling;
+    if (prev != null) {
+      final prevTag = prev.localName?.toLowerCase() ?? '';
+      if ({'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr'}.contains(prevTag)) {
+        return true;
+      }
+    }
+
+    if (cssRules != null && cssRules.isNotEmpty) {
+      final rule = CssRuleResolver.resolveRule(p, cssRules);
+      if (rule != null) {
+        if (rule.textIndent != null && rule.textIndent! <= 0.0) return true;
+        if ((rule.marginLeft != null && rule.marginLeft! > 0) ||
+            (rule.marginRight != null && rule.marginRight! > 0) ||
+            rule.isMarginLeftPercentage ||
+            rule.isMarginRightPercentage) {
+          return true; // epigraph or blockquote
+        }
+        if (rule.textAlign == 'center' || rule.textAlign == 'right') {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /// Indents a paragraph by inserting a `<p-indent></p-indent>` element as the first child.
-  static void _indentParagraph(dom.Element p) {
-    if (p.classes.contains('page-continuation') ||
-        (p.attributes['style'] ?? '').contains('text-indent: 0') ||
-        (p.attributes['style'] ?? '').contains('text-indent:0')) {
+  static void _indentParagraph(dom.Element p, {Map<String, ResolvedCssRule>? cssRules}) {
+    if (_shouldSuppressIndent(p, cssRules: cssRules)) {
       return;
     }
     if (p.children.isNotEmpty && p.children.first.localName == 'p-indent') {

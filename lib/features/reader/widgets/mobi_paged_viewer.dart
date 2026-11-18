@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:ferrous/core/models/annotation.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/core/utils/safe_screen_paginator.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'package:ferrous/data/models/reader_theme_config.dart';
 import 'package:ferrous/data/repositories/annotation_repository.dart';
 import 'package:ferrous/data/repositories/reader_theme_repository.dart';
@@ -321,6 +322,10 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       }
     }
 
+    final cssRules = themeConfig.usePublisherStyles
+        ? widget.chapterController.getCssRulesForChapter(chapterIndex)
+        : const <String, ResolvedCssRule>{};
+
     return SafeScreenPaginator.paginateChapter(
       bookId: widget.chapterController.book.id,
       chapterIndex: chapterIndex,
@@ -339,6 +344,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
       wordSpacing: themeConfig.wordSpacing,
       textScaler: MediaQuery.textScalerOf(context),
+      cssRules: cssRules,
     );
   }
 

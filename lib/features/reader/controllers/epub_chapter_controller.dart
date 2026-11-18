@@ -18,6 +18,7 @@ import 'package:ferrous/core/utils/html_defragmenter.dart';
 import 'package:ferrous/core/services/diagnostic_logger.dart';
 import 'package:ferrous/core/utils/dom_chunker.dart';
 import 'package:ferrous/core/utils/xml_html_normalizer.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'reader_mode_controller.dart';
 
 class EpubChapterInfo {
@@ -36,6 +37,8 @@ class ParsedEpubBook {
   final List<String> chapterSourceFiles;
   final List<List<String>> chapterChunks;
   final List<List<int>> chapterChunkOffsets;
+  final List<String> chapterCss;
+  final List<Map<String, ResolvedCssRule>> chapterCssRules;
 
   ParsedEpubBook({
     required this.chapters,
@@ -46,6 +49,8 @@ class ParsedEpubBook {
     this.chapterSourceFiles = const [],
     this.chapterChunks = const [],
     this.chapterChunkOffsets = const [],
+    this.chapterCss = const [],
+    this.chapterCssRules = const [],
   });
 }
 
@@ -76,6 +81,8 @@ class EpubChapterController extends ChangeNotifier {
   List<List<SentenceSpan>> _allChapterSentenceSpans = const [];
   List<List<String>> _allChapterChunks = const [];
   List<List<int>> _allChapterChunkOffsets = const [];
+  List<String> _allChapterCss = const [];
+  List<Map<String, ResolvedCssRule>> _allChapterCssRules = const [];
   List<GlobalKey> _chapterKeys = const [];
   int _currentChapterIndex = 0;
   String? _currentContent;
@@ -122,6 +129,15 @@ class EpubChapterController extends ChangeNotifier {
   List<String> get allChapterPlainTexts => _allChapterPlainTexts;
   List<List<String>> get allChapterChunks => _allChapterChunks;
   List<List<int>> get allChapterChunkOffsets => _allChapterChunkOffsets;
+  List<String> get allChapterCss => _allChapterCss;
+  List<Map<String, ResolvedCssRule>> get allChapterCssRules => _allChapterCssRules;
+
+  Map<String, ResolvedCssRule> getCssRulesForChapter(int chapterIndex) {
+    if (chapterIndex >= 0 && chapterIndex < _allChapterCssRules.length) {
+      return _allChapterCssRules[chapterIndex];
+    }
+    return const <String, ResolvedCssRule>{};
+  }
   Map<String, int> get anchorToChapterIndex => _anchorToChapterIndex;
   List<String> get chapterSourceFiles => _chapterSourceFiles;
   List<GlobalKey> get chapterKeys => _chapterKeys;
@@ -233,6 +249,8 @@ class EpubChapterController extends ChangeNotifier {
         _allChapterSentenceSpans = parsedBook.sentenceSpans;
         _allChapterChunks = parsedBook.chapterChunks;
         _allChapterChunkOffsets = parsedBook.chapterChunkOffsets;
+        _allChapterCss = parsedBook.chapterCss;
+        _allChapterCssRules = parsedBook.chapterCssRules;
         _anchorToChapterIndex = parsedBook.anchorToChapterIndex;
         _chapterSourceFiles = parsedBook.chapterSourceFiles;
         _chapterKeys = allKeys;
@@ -305,6 +323,7 @@ class EpubChapterController extends ChangeNotifier {
     List<EpubChapter> rawChapters = [];
     Map<String, int> anchorMap = {};
     List<String> sourceFiles = [];
+    List<String> rawChapterCssList = [];
 
     // 1. Primary: Use the spine-based parser which strictly follows the EPUB
     // reading order and eliminates duplicate chapters from TOC subchapters.
@@ -316,6 +335,7 @@ class EpubChapterController extends ChangeNotifier {
       rawChapters = parseResult.chapters;
       anchorMap = parseResult.anchorToChapterIndex;
       sourceFiles = parseResult.chapterSourceFiles;
+      rawChapterCssList = parseResult.chapterCss;
     } catch (e) {
       debugPrint('Spine parser failed: $e. Falling back to epubx...');
     }
@@ -332,6 +352,11 @@ class EpubChapterController extends ChangeNotifier {
 
     if (rawChapters.isEmpty) {
       throw Exception('No chapters found in EPUB');
+    }
+
+    final chapterToCss = <EpubChapter, String>{};
+    for (var i = 0; i < rawChapters.length; i++) {
+      chapterToCss[rawChapters[i]] = i < rawChapterCssList.length ? rawChapterCssList[i] : '';
     }
 
     // 3. Final deduplication safety pass: ensure no consecutive chapters have identical content (never drop image chapters).
@@ -357,12 +382,16 @@ class EpubChapterController extends ChangeNotifier {
     final sentenceSpans = <List<SentenceSpan>>[];
     final chapterChunks = <List<String>>[];
     final chapterChunkOffsets = <List<int>>[];
+    final chapterCss = <String>[];
+    final chapterCssRules = <Map<String, ResolvedCssRule>>[];
 
     for (var i = 0; i < finalChapters.length; i++) {
       final rawChapter = finalChapters[i];
       var title = rawChapter.Title?.trim();
       final rawContent = rawChapter.HtmlContent ?? '';
       final content = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(rawContent);
+      final cssStr = chapterToCss[rawChapter] ?? '';
+      final rules = CssRuleResolver.parse(cssStr, baseFontSize: 12.0);
       
       final doc = html_parser.parse(content);
       HtmlDefragmenter.defragmentDocument(doc);
@@ -378,17 +407,27 @@ class EpubChapterController extends ChangeNotifier {
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
       final defragmentedHtml = doc.body?.innerHtml ?? content;
-      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml);
+      final contentWithIndent = HyphenationHelper.injectIndentTags(defragmentedHtml, cssRules: rules);
+
+      final bodyAttrs = (doc.body != null && doc.body!.attributes.isNotEmpty)
+          ? ' ${doc.body!.attributes.entries.map((e) => '${e.key}="${e.value}"').join(' ')}'
+          : '';
+      final headContent = (cssStr.isNotEmpty)
+          ? '<head><meta charset="utf-8"><style type="text/css" id="epub-publisher-styles">$cssStr</style></head>'
+          : '<head><meta charset="utf-8"></head>';
+      final fullDocumentHtml = '<!DOCTYPE html><html>$headContent<body$bodyAttrs>$contentWithIndent</body></html>';
 
       // DOM-Level Chunking to keep GPU textures bounded (<4,096px)
-      final chunkResult = DomChunker.split(contentWithIndent);
+      final chunkResult = DomChunker.split(fullDocumentHtml);
 
       chapters.add(EpubChapterInfo(title: title));
-      contents.add(contentWithIndent);
+      contents.add(fullDocumentHtml);
       plainTexts.add(plainText);
       sentenceSpans.add(spans);
       chapterChunks.add(chunkResult.chunks);
       chapterChunkOffsets.add(chunkResult.chunkStartOffsets);
+      chapterCss.add(cssStr);
+      chapterCssRules.add(rules);
     }
 
     return ParsedEpubBook(
@@ -400,6 +439,8 @@ class EpubChapterController extends ChangeNotifier {
       chapterSourceFiles: sourceFiles,
       chapterChunks: chapterChunks,
       chapterChunkOffsets: chapterChunkOffsets,
+      chapterCss: chapterCss,
+      chapterCssRules: chapterCssRules,
     );
   }
 

@@ -26,11 +26,13 @@ class EpubFallbackResult {
   final List<EpubChapter> chapters;
   final Map<String, int> anchorToChapterIndex;
   final List<String> chapterSourceFiles;
+  final List<String> chapterCss;
 
   const EpubFallbackResult({
     required this.chapters,
     required this.anchorToChapterIndex,
     required this.chapterSourceFiles,
+    this.chapterCss = const [],
   });
 }
 
@@ -153,6 +155,7 @@ class EpubFallbackParser {
     final chapters = <EpubChapter>[];
     final anchorToChapterIndex = <String, int>{};
     final chapterSourceFiles = <String>[];
+    final chapterCssList = <String>[];
     final seenPaths = <String>{};
     var spineIndex = 1;
 
@@ -180,7 +183,15 @@ class EpubFallbackParser {
         cacheDirectory: cacheDirectory,
       );
 
-      final skeleton = _extractSkeleton(processedHtml);
+      final chapterCss = _resolveAndPruneChapterCss(
+        html: processedHtml,
+        chapterPath: resolvedPath,
+        contentDir: contentDir,
+        manifest: manifest,
+        filesByLowerPath: filesByLowerPath,
+      );
+
+      final skeleton = _extractSkeleton(processedHtml, chapterCss);
 
       // Find all TOC anchors pointing into this file
       final fileTocAnchors = tocAnchors.where((a) => a.targetPath == lowerPath).toList();
@@ -263,6 +274,7 @@ class EpubFallbackParser {
               ..HtmlContent = frontHtml
               ..SubChapters = const <EpubChapter>[]);
             chapterSourceFiles.add(resolvedPath);
+            chapterCssList.add(chapterCss);
           }
         }
 
@@ -307,6 +319,7 @@ class EpubFallbackParser {
             ..HtmlContent = fullChapterHtml
             ..SubChapters = const <EpubChapter>[]);
           chapterSourceFiles.add(resolvedPath);
+          chapterCssList.add(chapterCss);
         }
       } else {
         // Standalone spine item (1 file = 1 chapter, or no sub-anchors)
@@ -331,6 +344,7 @@ class EpubFallbackParser {
             ..HtmlContent = fullChapterHtml
             ..SubChapters = const <EpubChapter>[]);
           chapterSourceFiles.add(resolvedPath);
+          chapterCssList.add(chapterCss);
         }
       }
 
@@ -341,6 +355,7 @@ class EpubFallbackParser {
       chapters: chapters,
       anchorToChapterIndex: anchorToChapterIndex,
       chapterSourceFiles: chapterSourceFiles,
+      chapterCss: chapterCssList,
     );
   }
 
@@ -498,11 +513,14 @@ class EpubFallbackParser {
     );
   }
 
-  static _HtmlSkeleton _extractSkeleton(String html) {
+  static _HtmlSkeleton _extractSkeleton(String html, [String? chapterCss]) {
     final bodyStartMatch = RegExp(r'<body(?:\s+[^>]*)?>', caseSensitive: false).firstMatch(html);
     if (bodyStartMatch == null) {
+      final cssTag = (chapterCss != null && chapterCss.isNotEmpty)
+          ? '<style type="text/css" id="epub-publisher-styles">\n$chapterCss\n</style>'
+          : '';
       return _HtmlSkeleton(
-        headPart: '<!DOCTYPE html><html><head><meta charset="utf-8"></head>',
+        headPart: '<!DOCTYPE html><html><head><meta charset="utf-8">$cssTag</head>',
         bodyOpenTag: '<body>',
         bodyCloseTag: '</body></html>',
         bodyContentStart: 0,
@@ -510,7 +528,7 @@ class EpubFallbackParser {
       );
     }
 
-    final headPart = html.substring(0, bodyStartMatch.start);
+    var headPart = html.substring(0, bodyStartMatch.start);
     final bodyOpenTag = bodyStartMatch.group(0)!;
     final bodyContentStart = bodyStartMatch.end;
 
@@ -518,8 +536,22 @@ class EpubFallbackParser {
     final bodyContentEnd = bodyEndMatch != null ? bodyEndMatch.start : html.length;
     final bodyCloseTag = bodyEndMatch != null ? html.substring(bodyEndMatch.start) : '</body></html>';
 
+    if (headPart.isEmpty) {
+      headPart = '<!DOCTYPE html><html><head><meta charset="utf-8"></head>';
+    }
+
+    if (chapterCss != null && chapterCss.isNotEmpty) {
+      final styleBlock = '<style type="text/css" id="epub-publisher-styles">\n$chapterCss\n</style>';
+      final closeHeadIdx = headPart.toLowerCase().lastIndexOf('</head>');
+      if (closeHeadIdx != -1) {
+        headPart = '${headPart.substring(0, closeHeadIdx)}\n$styleBlock\n${headPart.substring(closeHeadIdx)}';
+      } else {
+        headPart = '$headPart\n$styleBlock';
+      }
+    }
+
     return _HtmlSkeleton(
-      headPart: headPart.isNotEmpty ? headPart : '<!DOCTYPE html><html><head><meta charset="utf-8"></head>',
+      headPart: headPart,
       bodyOpenTag: bodyOpenTag,
       bodyCloseTag: bodyCloseTag.isNotEmpty ? bodyCloseTag : '</body></html>',
       bodyContentStart: bodyContentStart,
@@ -996,6 +1028,143 @@ class EpubFallbackParser {
         lower.endsWith('.webp') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.svg');
+  }
+
+  static String _resolveAndPruneChapterCss({
+    required String html,
+    required String chapterPath,
+    required String contentDir,
+    required Map<String, _ManifestItem> manifest,
+    required Map<String, ArchiveFile> filesByLowerPath,
+  }) {
+    if (html.isEmpty) return '';
+
+    final cssBuffer = StringBuffer();
+    final chapterDir = _directoryOf(chapterPath);
+
+    // 1. Extract linked stylesheets: <link ... href="..." ...>
+    final linkMatches = RegExp(r'<link[^>]+>', caseSensitive: false).allMatches(html);
+    bool foundLinked = false;
+    for (final m in linkMatches) {
+      final tag = m.group(0)!;
+      final isRelStylesheet = RegExp(r'''rel=['"](?:[^'"]*\s+)?stylesheet(?:\s+[^'"]*)?['"]''', caseSensitive: false).hasMatch(tag);
+      if (!isRelStylesheet) continue;
+
+      final hrefMatch = RegExp(r'''href=['"]([^'"]+)['"]''', caseSensitive: false).firstMatch(tag);
+      if (hrefMatch == null) continue;
+      final href = hrefMatch.group(1)!.trim();
+      if (href.isEmpty) continue;
+
+      final resolvedHref = _resolveHref(chapterDir, href);
+      final file = _findFile(filesByLowerPath, resolvedHref);
+      if (file != null) {
+        foundLinked = true;
+        cssBuffer.writeln(_decodeText(file));
+      }
+    }
+
+    // 2. If no linked stylesheet found, fallback to manifest CSS files
+    if (!foundLinked) {
+      for (final item in manifest.values) {
+        if (item.mediaType == 'text/css') {
+          final resolvedHref = _resolveHref(contentDir, item.href);
+          final file = _findFile(filesByLowerPath, resolvedHref);
+          if (file != null) {
+            cssBuffer.writeln(_decodeText(file));
+          }
+        }
+      }
+    }
+
+    // 3. Extract any embedded <style> tags from the chapter HTML
+    final styleMatches = RegExp(r'<style[^>]*>([\s\S]*?)</style>', caseSensitive: false).allMatches(html);
+    for (final m in styleMatches) {
+      final inlineContent = m.group(1)?.trim();
+      if (inlineContent != null && inlineContent.isNotEmpty) {
+        cssBuffer.writeln(inlineContent);
+      }
+    }
+
+    final rawCss = cssBuffer.toString().trim();
+    if (rawCss.isEmpty) return '';
+
+    return _pruneCss(rawCss, html);
+  }
+
+  static String _pruneCss(String rawCss, String html) {
+    // 1. Strip CSS comments: /* ... */
+    var cleaned = rawCss.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+
+    // 2. Strip @page, @media print, @keyframes, remote @font-face
+    cleaned = cleaned.replaceAll(RegExp(r'@page[^{]*\{[^}]*\}', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'@font-face[^{]*\{[^}]*\}', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'@keyframes[^{]*\{[\s\S]*?\}\s*\}', caseSensitive: false), '');
+
+    // 3. Normalize child combinators: 'a > b' -> 'a b'
+    cleaned = cleaned.replaceAll(RegExp(r'\s*>\s*'), ' ');
+
+    // 4. Collect classes and tags present in the chapter HTML
+    final chapterClassSet = <String>{};
+    for (final m in RegExp(r'''class=['"]([^'"]+)['"]''', caseSensitive: false).allMatches(html)) {
+      for (final cls in m.group(1)!.split(RegExp(r'\s+'))) {
+        final trimmed = cls.trim().toLowerCase();
+        if (trimmed.isNotEmpty) chapterClassSet.add(trimmed);
+      }
+    }
+
+    final chapterTagSet = <String>{};
+    for (final m in RegExp(r'<([a-zA-Z0-9]+)', caseSensitive: false).allMatches(html)) {
+      final tag = m.group(1)!.trim().toLowerCase();
+      if (tag.isNotEmpty) chapterTagSet.add(tag);
+    }
+
+    // 5. Parse rules: selector { declarations }
+    final ruleRegex = RegExp(r'([^{]+)\{([^}]+)\}');
+    final prunedBuffer = StringBuffer();
+
+    for (final match in ruleRegex.allMatches(cleaned)) {
+      final selectorBlock = match.group(1)!.trim();
+      final declarationBlock = match.group(2)!.trim();
+
+      if (selectorBlock.startsWith('@')) continue;
+      if (declarationBlock.isEmpty) continue;
+
+      final selectors = selectorBlock.split(',');
+      final keptSelectors = <String>[];
+
+      for (var sel in selectors) {
+        final trimmedSel = sel.trim();
+        if (trimmedSel.isEmpty) continue;
+
+        // Guardrail B: Strip pseudo-classes and pseudo-elements (:first-child, ::first-letter, :hover, etc.)
+        final cleanSel = trimmedSel.replaceAll(RegExp(r':{1,2}[a-zA-Z0-9_-]+(\([^)]*\))?'), '').trim().toLowerCase();
+        if (cleanSel.isEmpty) continue;
+
+        // Check classes in selector (split descendant chains)
+        final classMatches = RegExp(r'\.([a-zA-Z0-9_-]+)').allMatches(cleanSel);
+        if (classMatches.isNotEmpty) {
+          // If selector has classes, verify all classes exist in the chapter
+          final allPresent = classMatches.every((cm) => chapterClassSet.contains(cm.group(1)!));
+          if (allPresent) {
+            keptSelectors.add(trimmedSel);
+          }
+        } else {
+          // Pure tag or tag sequence selector (e.g. 'h1', 'blockquote', 'p')
+          final tagTokens = cleanSel.split(RegExp(r'[\s+~]+')).map((t) => t.trim()).where((t) => t.isNotEmpty);
+          if (tagTokens.isNotEmpty && tagTokens.every((t) => chapterTagSet.contains(t))) {
+            keptSelectors.add(trimmedSel);
+          }
+        }
+      }
+
+      if (keptSelectors.isNotEmpty) {
+        // Collapse internal whitespace in declaration block
+        final minifiedDecl = declarationBlock.replaceAll(RegExp(r'\s+'), ' ');
+        prunedBuffer.writeln('${keptSelectors.join(', ')} { $minifiedDecl }');
+      }
+    }
+
+    return prunedBuffer.toString().trim();
   }
 
   static String _inferTitle(String html, {required String fallback}) {

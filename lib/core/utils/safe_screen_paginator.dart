@@ -10,6 +10,7 @@ import 'package:ferrous/core/utils/reader_typography_metrics.dart';
 import 'package:ferrous/features/reader/annotation_highlight_helper.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/core/utils/xml_html_normalizer.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 
 /// Represents a single screen-fitted slice of an EPUB/MOBI chapter.
 class PageSlice {
@@ -84,6 +85,7 @@ class SafeScreenPaginator {
     double wordSpacing = 0.0,
     TextScaler textScaler = TextScaler.noScaling,
     String languageCode = 'en',
+    Map<String, ResolvedCssRule> cssRules = const {},
   }) {
     if (availableWidth <= 0 || availableHeight <= 0) {
       return [
@@ -102,12 +104,13 @@ class SafeScreenPaginator {
 
     final primaryLang = languageCode.trim().toLowerCase().split(RegExp(r'[-_]')).first;
     final textScale = textScaler.scale(10.0) / 10.0;
+    final cssSig = cssRules.isNotEmpty ? cssRules.length : 0;
     final cacheKey =
         '$bookId:$chapterIndex:${availableWidth.toInt()}x${availableHeight.toInt()}:'
         '${fontSize.toStringAsFixed(1)}:${lineHeight.toStringAsFixed(2)}:'
         '${paragraphSpacing.toStringAsFixed(1)}:${fontFamily ?? "default"}:'
         '${textAlign.name}:${fontWeight.value}:${wordSpacing.toStringAsFixed(2)}:'
-        '$paragraphIndent:$hyphenation:$primaryLang:${textScale.toStringAsFixed(2)}:$annotationSig';
+        '$paragraphIndent:$hyphenation:$primaryLang:${textScale.toStringAsFixed(2)}:$cssSig:$annotationSig';
 
     final cached = _cache[cacheKey];
     if (cached != null && cached.isNotEmpty) {
@@ -211,6 +214,7 @@ class SafeScreenPaginator {
       double extraBottomMargin = 0.0,
       bool isPre = false,
       bool isHeading = false,
+      double layoutWidth = double.infinity,
     }) {
       final sanitized = text.replaceAll(RegExp(r'[ \t\r\f]+'), ' ').trim();
       final normalized = isPre
@@ -244,7 +248,10 @@ class SafeScreenPaginator {
         textPainter.setPlaceholderDimensions(const []);
       }
 
-      textPainter.layout(maxWidth: availableWidth);
+      final effectiveMaxWidth = (layoutWidth.isFinite && layoutWidth > 0)
+          ? layoutWidth
+          : availableWidth;
+      textPainter.layout(maxWidth: effectiveMaxWidth);
       return textPainter.height + extraTopMargin + extraBottomMargin;
     }
 
@@ -370,6 +377,7 @@ class SafeScreenPaginator {
           applyHyphenation: hyphenation && tag != 'pre',
           applyIndent: !isAnonymous && paragraphIndent && tag != 'pre',
           languageCode: primaryLang,
+          cssRules: cssRules,
         );
         targetElement = cloned;
       } else {
@@ -379,13 +387,23 @@ class SafeScreenPaginator {
       final nodeText = _extractMeasurementText(targetElement, isPre: tag == 'pre');
       final textLen = DomTextUtils.extractPlainText(targetElement, preserveSoftHyphens: true).length;
 
+      // Compute lateral insets (with ancestor summation) and vertical margins from CSS AST + inline styles
+      final lateralInsets = cssRules.isNotEmpty
+          ? CssRuleResolver.resolveLateralInsets(targetElement, cssRules, fontSize, availableWidth)
+          : 0.0;
+      final effectiveBlockWidth = math.max(100.0, availableWidth - lateralInsets);
+
+      final verticalMargins = cssRules.isNotEmpty
+          ? CssRuleResolver.resolveVerticalMargins(targetElement, cssRules)
+          : (top: 0.0, bottom: 0.0);
+
       final double blockHeight;
       if (hasImage) {
         blockHeight = maxPageHeight * 0.72;
       } else if (isHeading) {
         final scale = ReaderTypographyMetrics.headingScale(tag);
-        final topMargin = ReaderTypographyMetrics.headingTopMargin(tag, true, fontSize);
-        final bottomMargin = ReaderTypographyMetrics.headingBottomMargin(tag, true, paragraphSpacing);
+        final topMargin = ReaderTypographyMetrics.headingTopMargin(tag, true, fontSize) + verticalMargins.top;
+        final bottomMargin = ReaderTypographyMetrics.headingBottomMargin(tag, true, paragraphSpacing) + verticalMargins.bottom;
         blockHeight = measureTextHeight(
           nodeText,
           fontScale: scale,
@@ -393,16 +411,18 @@ class SafeScreenPaginator {
           extraTopMargin: topMargin,
           extraBottomMargin: bottomMargin,
           isHeading: true,
+          layoutWidth: effectiveBlockWidth,
         );
       } else {
         blockHeight = measureTextHeight(
           nodeText,
           fontScale: 1.0,
           isIndent: !isAnonymous && paragraphIndent && tag == 'p',
-          extraTopMargin: 0.0,
-          extraBottomMargin: paragraphSpacing,
+          extraTopMargin: verticalMargins.top,
+          extraBottomMargin: paragraphSpacing + verticalMargins.bottom,
           isPre: tag == 'pre',
           isHeading: false,
+          layoutWidth: effectiveBlockWidth,
         );
       }
 
@@ -457,9 +477,11 @@ class SafeScreenPaginator {
           measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
             txt,
             isIndent: isIndent && paragraphIndent && !isAnonymous,
-            extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
+            extraTopMargin: isLastPart ? 0.0 : verticalMargins.top,
+            extraBottomMargin: isLastPart ? (paragraphSpacing + verticalMargins.bottom) : 0.0,
             isPre: tag == 'pre',
             isHeading: false,
+            layoutWidth: effectiveBlockWidth,
           ),
           isPre: tag == 'pre',
         );
@@ -474,9 +496,11 @@ class SafeScreenPaginator {
             measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
               txt,
               isIndent: isIndent && paragraphIndent && !isAnonymous,
-              extraBottomMargin: isLastPart ? paragraphSpacing : 0.0,
+              extraTopMargin: isLastPart ? 0.0 : verticalMargins.top,
+              extraBottomMargin: isLastPart ? (paragraphSpacing + verticalMargins.bottom) : 0.0,
               isPre: tag == 'pre',
               isHeading: false,
+              layoutWidth: effectiveBlockWidth,
             ),
             isPre: tag == 'pre',
           );
@@ -768,7 +792,11 @@ class SafeScreenPaginator {
 
     final tag = node.localName ?? 'p';
     final attrs = _serializeAttributes(node, stripId: false);
-    final attrsNoId = _serializeAttributes(node, stripId: true);
+    final attrsNoIdOrClass = _serializeAttributes(node, stripId: true, stripClass: true);
+    final existingClass = node.attributes['class'];
+    final continuationClass = (existingClass != null && existingClass.trim().isNotEmpty)
+        ? '${existingClass.trim()} page-continuation'
+        : 'page-continuation';
 
     final parts = <_BlockPart>[];
     int currentOffset = 0;
@@ -795,7 +823,7 @@ class SafeScreenPaginator {
               );
         final String partHtml = isFirstPart
             ? '<$tag$attrs>$partInnerHtml</$tag>'
-            : '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
+            : '<$tag$attrsNoIdOrClass class="$continuationClass" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
         final int charLength = (rawText.length - currentOffset) + 1;
         parts.add(_BlockPart(
           html: partHtml,
@@ -819,7 +847,7 @@ class SafeScreenPaginator {
               );
         final String partHtml = isFirstPart
             ? '<$tag$attrs>$partInnerHtml</$tag>'
-            : '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
+            : '<$tag$attrsNoIdOrClass class="$continuationClass" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
         final int charLength = (rawText.length - currentOffset) + 1;
         parts.add(_BlockPart(
           html: partHtml,
@@ -929,7 +957,7 @@ class SafeScreenPaginator {
         partHtml = '<$tag$attrs>$partInnerHtml</$tag>';
       } else {
         partHtml =
-            '<$tag$attrsNoId class="page-continuation" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
+            '<$tag$attrsNoIdOrClass class="$continuationClass" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
       }
 
       parts.add(_BlockPart(
@@ -1078,11 +1106,17 @@ class SafeScreenPaginator {
     return buffer.toString();
   }
 
-  static String _serializeAttributes(dom.Element el, {required bool stripId}) {
+  static String _serializeAttributes(
+    dom.Element el, {
+    required bool stripId,
+    bool stripClass = false,
+  }) {
     if (el.attributes.isEmpty) return '';
     final parts = <String>[];
     el.attributes.forEach((key, value) {
-      if (stripId && key.toString().toLowerCase() == 'id') return;
+      final k = key.toString().toLowerCase();
+      if (stripId && k == 'id') return;
+      if (stripClass && k == 'class') return;
       final escapedVal = const HtmlEscape(HtmlEscapeMode.attribute).convert(value);
       parts.add('$key="$escapedVal"');
     });

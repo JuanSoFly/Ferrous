@@ -1,3 +1,19 @@
+## [1.4.3-alpha.3] - 2026-11-18
+
+### Publisher Styles & CSS Rule Resolution (EPUB & MOBI)
+- **CSS Rule Resolver**: Integrated `csslib` and built `CssRuleResolver` AST parser to extract chapter stylesheet rules, supporting element tags, classes, and combined selectors.
+- **Lateral Insets & Ancestor Propagation**: Accurately computes horizontal margins and paddings with recursive ancestor summation for nested elements like blockquotes, epigraphs, and poetry.
+- **Dynamic Text Width & Paginator Layout**: Adapted `SafeScreenPaginator` to measure text height against effective block width (`availableWidth - lateralInsets`), preventing overflow in indented publisher layouts.
+- **Publisher Styles Toggle**: Added a user toggle under Reader Settings (Layout tab) to switch between strict publisher formatting and clean user-defined typography.
+- **Hyphenation & Indent Preservation**: Updated `HyphenationHelper` to honor publisher CSS text indentation and alignment rules dynamically.
+
+### Bookshelf Batch Collection Management
+- **Bulk Collection Assignment**: Added ability in library selection mode to assign or remove multiple selected books to/from collections simultaneously.
+- **Inline Collection Creation**: Implemented quick collection creation directly within the assignment sheet without navigating away.
+
+### UI & Interaction Performance
+- **Zero-Latency Storage Mode Selection**: Eliminated micro-stutters and tap latency across storage mode option cards.
+
 ## [1.4.3-alpha.2] - 2026-11-18
 
 ### PDF Visual Render Preemption & 120Hz Smooth Scrolling
