@@ -131,7 +131,11 @@ class HyphenationHelper {
       if (word.length < 7) return word;
 
       if (primaryLang != 'de') {
-        if (word != word.toLowerCase()) return word;
+        final isCapitalized = word[0] == word[0].toUpperCase();
+        final remainderIsLower = word.length > 1 && word.substring(1) == word.substring(1).toLowerCase();
+        if (isCapitalized && !remainderIsLower) {
+          return word; // Skip ALL-CAPS (acronyms) and CamelCase
+        }
       } else {
         if (word.length > 1 && word.substring(1) != word.substring(1).toLowerCase()) {
           return word;
@@ -295,6 +299,20 @@ class HyphenationHelper {
     );
   }
 
+  static bool _hasExcludedAncestor(dom.Node node) {
+    dom.Node? current = node.parentNode;
+    while (current != null) {
+      if (current is dom.Element) {
+        final tag = current.localName?.toLowerCase();
+        if ({'pre', 'code', 'script', 'style', 'tt', 'kbd', 'samp', 'var'}.contains(tag)) {
+          return true;
+        }
+      }
+      current = current.parentNode;
+    }
+    return false;
+  }
+
   static void _processNode(
     dom.Node? node, {
     bool applyHyphenation = false,
@@ -309,6 +327,7 @@ class HyphenationHelper {
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
+      if (_hasExcludedAncestor(node)) return;
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
         text = smartHyphenateText(
@@ -358,6 +377,7 @@ class HyphenationHelper {
     }
 
     if (node.nodeType == dom.Node.TEXT_NODE) {
+      if (_hasExcludedAncestor(node)) return;
       var text = node.text;
       if (text != null && text.trim().isNotEmpty) {
         text = smartHyphenateText(

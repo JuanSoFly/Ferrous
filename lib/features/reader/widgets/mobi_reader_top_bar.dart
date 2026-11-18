@@ -118,7 +118,7 @@ class MobiReaderTopBar extends StatelessWidget {
                                   : theme.colorScheme.onSurface),
                         ),
                         tooltip: 'More options',
-                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        constraints: const BoxConstraints(minWidth: 220, minHeight: 44),
                         position: PopupMenuPosition.under,
                         shape: isEInk
                             ? const KindlePopupShape()

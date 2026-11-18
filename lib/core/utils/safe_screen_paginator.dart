@@ -142,17 +142,14 @@ class SafeScreenPaginator {
         document.head?.outerHtml ?? '<head><meta charset="utf-8"></head>';
     final bodyAttrs = _serializeAttributes(body, stripId: false);
 
-    // Dynamic canvas bounds: guarantee at least one full line block and guard clamp
+    // Dynamic canvas bounds: snap to whole integer line multiples to prevent half-line glyph slices
     final singleLineHeight = fontSize * lineHeight;
-    final minOneLineBlock = singleLineHeight + paragraphSpacing + 2.0;
-    final rawMaxHeight = math.max(
-      availableHeight - singleLineHeight,
-      minOneLineBlock,
+    final int wholeLineCount = (availableHeight / singleLineHeight).floor();
+    final double snappedMaxHeight = math.max(
+      wholeLineCount * singleLineHeight,
+      singleLineHeight + paragraphSpacing + 2.0,
     );
-    final lowerBound = math.min(100.0, availableHeight);
-    final double maxPageHeight = rawMaxHeight
-        .clamp(lowerBound, math.max(availableHeight, minOneLineBlock))
-        .toDouble();
+    final double maxPageHeight = snappedMaxHeight.clamp(100.0, availableHeight).toDouble();
 
     // Resolve TextStyle matching EpubContentViewer exactly (letterSpacing = wordSpacing)
     TextStyle resolveTextStyle({
@@ -397,6 +394,14 @@ class SafeScreenPaginator {
           ? CssRuleResolver.resolveVerticalMargins(targetElement, cssRules)
           : (top: 0.0, bottom: 0.0);
 
+      // Implementation Detail 1: Synchronize margins with .ferrous-prose
+      final isProse = targetElement.classes.contains('ferrous-prose');
+      final effectiveTopMargin = isProse ? 0.0 : verticalMargins.top;
+      final effectiveBottomMargin = isProse ? paragraphSpacing : (paragraphSpacing + verticalMargins.bottom);
+
+      final resolvedRule = cssRules.isNotEmpty ? CssRuleResolver.resolveRule(targetElement, cssRules) : null;
+      final cssFontScale = resolvedRule?.fontSizeScale ?? 1.0;
+
       final double blockHeight;
       if (hasImage) {
         blockHeight = maxPageHeight * 0.72;
@@ -416,10 +421,10 @@ class SafeScreenPaginator {
       } else {
         blockHeight = measureTextHeight(
           nodeText,
-          fontScale: 1.0,
+          fontScale: cssFontScale,
           isIndent: !isAnonymous && paragraphIndent && tag == 'p',
-          extraTopMargin: verticalMargins.top,
-          extraBottomMargin: paragraphSpacing + verticalMargins.bottom,
+          extraTopMargin: effectiveTopMargin,
+          extraBottomMargin: effectiveBottomMargin,
           isPre: tag == 'pre',
           isHeading: false,
           layoutWidth: effectiveBlockWidth,
@@ -476,9 +481,10 @@ class SafeScreenPaginator {
           singleLineHeight: singleLineHeight,
           measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
             txt,
+            fontScale: cssFontScale,
             isIndent: isIndent && paragraphIndent && !isAnonymous,
-            extraTopMargin: isLastPart ? 0.0 : verticalMargins.top,
-            extraBottomMargin: isLastPart ? (paragraphSpacing + verticalMargins.bottom) : 0.0,
+            extraTopMargin: isLastPart ? 0.0 : effectiveTopMargin,
+            extraBottomMargin: isLastPart ? effectiveBottomMargin : 0.0,
             isPre: tag == 'pre',
             isHeading: false,
             layoutWidth: effectiveBlockWidth,
@@ -495,9 +501,10 @@ class SafeScreenPaginator {
             singleLineHeight: singleLineHeight,
             measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
               txt,
+              fontScale: cssFontScale,
               isIndent: isIndent && paragraphIndent && !isAnonymous,
-              extraTopMargin: isLastPart ? 0.0 : verticalMargins.top,
-              extraBottomMargin: isLastPart ? (paragraphSpacing + verticalMargins.bottom) : 0.0,
+              extraTopMargin: isLastPart ? 0.0 : effectiveTopMargin,
+              extraBottomMargin: isLastPart ? effectiveBottomMargin : 0.0,
               isPre: tag == 'pre',
               isHeading: false,
               layoutWidth: effectiveBlockWidth,
@@ -600,6 +607,24 @@ class SafeScreenPaginator {
             endCharOffset: chapterPlainText.length,
             pageIndex: 0,
           ),
+        );
+      }
+    }
+
+    // Drop 90% blank footer pages with < 25 chars and no media
+    if (pages.length > 1) {
+      final lastSlice = pages.last;
+      final lastDoc = html_parser.parse(lastSlice.html);
+      final lastText = DomTextUtils.extractPlainText(lastDoc.body).trim();
+      final hasMedia = lastDoc.body?.querySelector('img, svg, table, canvas, image') != null;
+      if (!hasMedia && lastText.length < 25) {
+        final prevSlice = pages[pages.length - 2];
+        pages.removeLast();
+        pages[pages.length - 1] = PageSlice(
+          html: prevSlice.html,
+          startCharOffset: prevSlice.startCharOffset,
+          endCharOffset: lastSlice.endCharOffset,
+          pageIndex: prevSlice.pageIndex,
         );
       }
     }
@@ -809,6 +834,8 @@ class SafeScreenPaginator {
         break;
       }
 
+      const int terminalSentinel = 1 << 30;
+
       // 1. Check if all remaining text fits in currentBudget WITH bottom paragraphSpacing
       final remainingHeight = measureText(remainingText, isFirstPart, isLastPart: true);
       if (remainingHeight <= currentBudget) {
@@ -817,14 +844,14 @@ class SafeScreenPaginator {
             : _sliceNodeInnerHtmlForRange(
                 node,
                 currentOffset,
-                rawText.length,
+                terminalSentinel,
                 isPre: isPre,
                 rawTextLength: rawText.length,
               );
         final String partHtml = isFirstPart
             ? '<$tag$attrs>$partInnerHtml</$tag>'
             : '<$tag$attrsNoIdOrClass class="$continuationClass" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
-        final int charLength = (rawText.length - currentOffset) + 1;
+        final int charLength = rawText.length - currentOffset;
         parts.add(_BlockPart(
           html: partHtml,
           height: remainingHeight,
@@ -841,14 +868,14 @@ class SafeScreenPaginator {
             : _sliceNodeInnerHtmlForRange(
                 node,
                 currentOffset,
-                rawText.length,
+                terminalSentinel,
                 isPre: isPre,
                 rawTextLength: rawText.length,
               );
         final String partHtml = isFirstPart
             ? '<$tag$attrs>$partInnerHtml</$tag>'
             : '<$tag$attrsNoIdOrClass class="$continuationClass" style="text-indent: 0px; margin-top: 0px;">$partInnerHtml</$tag>';
-        final int charLength = (rawText.length - currentOffset) + 1;
+        final int charLength = rawText.length - currentOffset;
         parts.add(_BlockPart(
           html: partHtml,
           // Consume full currentBudget so the page flushes before the next block
@@ -998,7 +1025,8 @@ class SafeScreenPaginator {
     if (element.nodes.isEmpty) return '';
 
     final totalLen = rawTextLength ?? _measureNormalizedNodeLength(element, isPre: isPre);
-    if (startOffset == 0 && endOffset >= totalLen) {
+    final bool isTerminalSlice = endOffset >= totalLen || endOffset >= (1 << 29);
+    if (startOffset == 0 && isTerminalSlice) {
       return element.innerHtml;
     }
 
@@ -1015,12 +1043,12 @@ class SafeScreenPaginator {
           nodeStart = nodeEnd;
           continue;
         }
-        if (nodeStart >= endOffset) {
+        if (!isTerminalSlice && nodeStart >= endOffset) {
           break;
         }
 
         final localStart = (startOffset - nodeStart).clamp(0, nodeLen);
-        final localEnd = (endOffset >= totalLen && nodeEnd >= endOffset)
+        final localEnd = isTerminalSlice
             ? nodeLen
             : (endOffset - nodeStart).clamp(localStart, nodeLen);
 
@@ -1080,12 +1108,12 @@ class SafeScreenPaginator {
           nodeStart = nodeEnd;
           continue;
         }
-        if (nodeStart >= endOffset) {
+        if (!isTerminalSlice && nodeStart >= endOffset) {
           break;
         }
 
         final localStart = (startOffset - nodeStart).clamp(0, nodeLen);
-        final localEnd = (endOffset >= totalLen && nodeEnd >= endOffset)
+        final localEnd = isTerminalSlice
             ? nodeLen
             : (endOffset - nodeStart).clamp(localStart, nodeLen);
 
@@ -1093,7 +1121,7 @@ class SafeScreenPaginator {
         final innerSlice = _sliceNodeInnerHtmlForRange(
           child,
           localStart,
-          localEnd,
+          isTerminalSlice ? (1 << 30) : localEnd,
           isPre: childIsPre,
           rawTextLength: nodeLen,
         );

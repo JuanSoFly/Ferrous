@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ferrous/data/repositories/reader_theme_repository.dart';
+import 'package:ferrous/data/models/reader_theme_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ferrous/core/constants/book_textures.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
@@ -228,25 +229,31 @@ class ReaderSettingsSheet extends StatelessWidget {
     final currentTheme = context.watch<AppTheme?>();
     final isEInk = currentTheme == AppTheme.eInk;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.78,
-      decoration: BoxDecoration(
-        color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
-        borderRadius: isEInk
-            ? const BorderRadius.vertical(top: Radius.circular(2))
-            : const BorderRadius.vertical(top: Radius.circular(24)),
-        border: isEInk
-            ? const Border(
-                top: BorderSide(color: Color(0xFF1A1A18), width: 2),
-                left: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
-                right: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
-              )
-            : null,
-      ),
-      child: DefaultTabController(
-        length: 3,
-        child: Column(
-          children: [
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
+            borderRadius: isEInk
+                ? const BorderRadius.vertical(top: Radius.circular(2))
+                : const BorderRadius.vertical(top: Radius.circular(24)),
+            border: isEInk
+                ? const Border(
+                    top: BorderSide(color: Color(0xFF1A1A18), width: 2),
+                    left: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                    right: BorderSide(color: Color(0xFF1A1A18), width: 1.5),
+                  )
+                : null,
+          ),
+          child: DefaultTabController(
+            length: 3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
             if (!isEInk) ...[
               const SizedBox(height: 8),
               Container(
@@ -308,7 +315,9 @@ class ReaderSettingsSheet extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }
 
@@ -490,18 +499,20 @@ class _LayoutSettingsTab extends StatelessWidget {
     final currentTheme = context.watch<AppTheme?>();
     final isEInk = currentTheme == AppTheme.eInk;
 
+    final safeLineHeight = ReaderThemeConfig.sanitizeLineHeight(config.lineHeight);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        _buildSectionTitle(theme, 'Line Spacing', '${(config.lineHeight * 100).round()}%', isEInk: isEInk),
+        _buildSectionTitle(theme, 'Line Spacing', '${safeLineHeight.toStringAsFixed(2)}x', isEInk: isEInk),
         _buildSlider(
           context: context,
           theme: theme,
           isEInk: isEInk,
-          value: config.lineHeight,
-          min: 0.0,
-          max: 2.0,
-          divisions: 20,
+          value: safeLineHeight,
+          min: 1.0,
+          max: 2.2,
+          divisions: 24,
           onChanged: (val) => repo.setLineHeight(val),
         ),
 

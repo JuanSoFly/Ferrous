@@ -433,34 +433,91 @@ class CssRuleResolver {
     return (pixels: px, isPercentage: false, percentage: 0.0);
   }
 
+  /// Rewrites CSS font-size keywords and fixed px/pt declarations into clamped relative em multipliers.
+  static String normalizeCssFontSizes(String declarations) {
+    if (!declarations.toLowerCase().contains('font-size')) return declarations;
+
+    return declarations.replaceAllMapped(
+      RegExp(r'font-size\s*:\s*([^;!}]+)', caseSensitive: false),
+      (match) {
+        final rawVal = match.group(1)!.trim().toLowerCase();
+        final normalized = _convertFontSizeToEm(rawVal);
+        return normalized != null ? 'font-size: $normalized' : match.group(0)!;
+      },
+    );
+  }
+
+  static String? _convertFontSizeToEm(String rawVal) {
+    switch (rawVal) {
+      case 'xx-small':
+        return '0.70em';
+      case 'x-small':
+        return '0.82em';
+      case 'small':
+        return '0.90em';
+      case 'medium':
+        return '1.0em';
+      case 'large':
+        return '1.20em';
+      case 'x-large':
+        return '1.45em';
+      case 'xx-large':
+        return '1.75em';
+    }
+
+    final match = RegExp(r'^([+-]?[\d.]+)(px|pt|em|rem|%)?$').firstMatch(rawVal);
+    if (match != null) {
+      final numVal = double.tryParse(match.group(1)!);
+      final unit = match.group(2) ?? 'px';
+      if (numVal != null) {
+        if (unit == 'px') {
+          final em = (numVal / 16.0).clamp(0.70, 2.0);
+          return '${em.toStringAsFixed(3)}em';
+        } else if (unit == 'pt') {
+          final em = (numVal * 1.333 / 16.0).clamp(0.70, 2.0);
+          return '${em.toStringAsFixed(3)}em';
+        } else if (unit == 'em' || unit == 'rem') {
+          final em = numVal.clamp(0.70, 2.0);
+          return '${em.toStringAsFixed(3)}em';
+        } else if (unit == '%') {
+          final em = (numVal / 100.0).clamp(0.70, 2.0);
+          return '${em.toStringAsFixed(3)}em';
+        }
+      }
+    }
+    return null;
+  }
+
   static double? _resolveFontSizeScale(css.Expression expr) {
     final text = expr.span?.text.trim().toLowerCase();
     if (text == null || text.isEmpty) return null;
 
     switch (text) {
       case 'xx-small':
-        return 0.65;
+        return 0.70;
       case 'x-small':
-        return 0.75;
+        return 0.82;
       case 'small':
-        return 0.85;
+        return 0.90;
       case 'medium':
         return 1.0;
       case 'large':
-        return 1.25;
+        return 1.20;
       case 'x-large':
-        return 1.5;
+        return 1.45;
       case 'xx-large':
-        return 2.0;
+        return 1.75;
     }
 
-    final match = RegExp(r'^([+-]?[\d.]+)(em|rem|%)?$').firstMatch(text);
+    final match = RegExp(r'^([+-]?[\d.]+)(em|rem|%|px|pt)?$').firstMatch(text);
     if (match != null) {
       final val = double.tryParse(match.group(1)!);
       if (val != null) {
         final unit = match.group(2);
-        if (unit == '%') return val / 100.0;
-        if (unit == 'em' || unit == 'rem') return val;
+        if (unit == '%') return (val / 100.0).clamp(0.70, 2.0);
+        if (unit == 'em' || unit == 'rem') return val.clamp(0.70, 2.0);
+        if (unit == 'px') return (val / 16.0).clamp(0.70, 2.0);
+        if (unit == 'pt') return (val * 1.333 / 16.0).clamp(0.70, 2.0);
       }
     }
 

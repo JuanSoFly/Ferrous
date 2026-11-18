@@ -8,6 +8,7 @@ import 'package:ferrous/data/services/book_file_resolver.dart';
 import 'package:ferrous/core/utils/performance.dart';
 import 'package:ferrous/core/utils/sentence_utils.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:html/dom.dart' as dom;
 import 'package:path_provider/path_provider.dart';
 import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
@@ -339,6 +340,7 @@ class MobiChapterController extends ChangeNotifier {
             }
           }
         }
+        _stampProseMarkers(body, mobiRules);
       }
 
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
@@ -368,6 +370,7 @@ class MobiChapterController extends ChangeNotifier {
       final first = rawChapters.first;
       final doc = html_parser.parse(first.htmlContent);
       HtmlDefragmenter.defragmentDocument(doc);
+      _stampProseMarkers(doc.body, mobiRules);
       final plainText = DomTextUtils.extractPlainText(doc.body ?? doc.documentElement);
       final spans = splitIntoSentences(plainText);
       final defragmentedHtml = doc.body?.innerHtml ?? first.htmlContent;
@@ -394,6 +397,62 @@ class MobiChapterController extends ChangeNotifier {
       chapterCss: chapterCss,
       chapterCssRules: chapterCssRules,
     );
+  }
+
+  static void _stampProseMarkers(dom.Element? body, Map<String, ResolvedCssRule> rules) {
+    if (body == null) return;
+
+    bool isNarrativeProse(dom.Element el) {
+      final tag = el.localName?.toLowerCase() ?? '';
+      if ({'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'table', 'blockquote', 'hr', 'img', 'svg'}.contains(tag)) {
+        return false;
+      }
+      if (el.classes.contains('ceps') || el.classes.contains('ferrous-attribution')) return false;
+      if (el.classes.contains('atx1') || el.classes.contains('ctag1') || el.classes.contains('ferrous-epigraph')) return false;
+      if (el.classes.contains('cepiv') || el.classes.contains('ferrous-blockquote')) return false;
+
+      final rule = CssRuleResolver.resolveRule(el, rules);
+      if (rule != null) {
+        if (rule.textAlign == 'right' || rule.textAlign == 'center') return false;
+        if ((rule.marginLeft != null && rule.marginLeft! > 24) ||
+            rule.isMarginLeftPercentage ||
+            (rule.marginRight != null && rule.marginRight! > 24) ||
+            rule.isMarginRightPercentage) {
+          return false;
+        }
+      }
+
+      if (tag == 'p') {
+        final hasOnlyMedia = el.nodes.every((n) =>
+            (n is dom.Element && {'img', 'svg', 'image', 'picture'}.contains(n.localName?.toLowerCase())) ||
+            (n is dom.Text && n.text.trim().isEmpty));
+        return !hasOnlyMedia;
+      }
+
+      if (tag == 'div' || tag == 'section') {
+        final hasBlockChildren = el.children.any((c) {
+          final cTag = c.localName?.toLowerCase() ?? '';
+          return {'p', 'div', 'blockquote', 'table', 'ul', 'ol', 'section', 'article'}.contains(cTag);
+        });
+        if (hasBlockChildren) return false;
+
+        final text = el.text.trim();
+        if (text.isEmpty) return false;
+
+        final hasOnlyMedia = el.nodes.every((n) =>
+            (n is dom.Element && {'img', 'svg', 'image', 'picture'}.contains(n.localName?.toLowerCase())) ||
+            (n is dom.Text && n.text.trim().isEmpty));
+        return !hasOnlyMedia;
+      }
+
+      return false;
+    }
+
+    for (final el in body.querySelectorAll('p, div, section')) {
+      if (isNarrativeProse(el)) {
+        el.classes.add('ferrous-prose');
+      }
+    }
   }
 
   void startModeTransition() {

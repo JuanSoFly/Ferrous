@@ -64,6 +64,11 @@ class ReaderThemeConfig {
     this.usePublisherStyles = true,
   });
 
+  static double sanitizeLineHeight(double? h) {
+    if (h == null || h < 1.0) return 1.4;
+    return h.clamp(1.0, 2.2);
+  }
+
   ReaderThemeConfig copyWith({
     double? fontSize,
     String? fontFamily,
@@ -83,7 +88,7 @@ class ReaderThemeConfig {
     return ReaderThemeConfig(
       fontSize: fontSize ?? this.fontSize,
       fontFamily: fontFamily ?? this.fontFamily,
-      lineHeight: lineHeight ?? this.lineHeight,
+      lineHeight: lineHeight != null ? sanitizeLineHeight(lineHeight) : this.lineHeight,
       paragraphSpacing: paragraphSpacing ?? this.paragraphSpacing,
       textAlign: textAlign ?? this.textAlign,
       pageMargins: pageMargins ?? this.pageMargins,

@@ -6,6 +6,11 @@
 - **Dynamic Text Width & Paginator Layout**: Adapted `SafeScreenPaginator` to measure text height against effective block width (`availableWidth - lateralInsets`), preventing overflow in indented publisher layouts.
 - **Publisher Styles Toggle**: Added a user toggle under Reader Settings (Layout tab) to switch between strict publisher formatting and clean user-defined typography.
 - **Hyphenation & Indent Preservation**: Updated `HyphenationHelper` to honor publisher CSS text indentation and alignment rules dynamically.
+- **Font-Size Normalization**: Normalized CSS keyword and fixed `px`/`pt` font sizes into clamped relative `em` multipliers (0.70em–2.0em) to prevent extreme text sizing from publisher stylesheets.
+- **Line-Snapped Canvas Bounds**: Snapped `SafeScreenPaginator` canvas heights to integer line multiples (`wholeLineCount * singleLineHeight`), eliminating bottom half-line glyph slices across EPUB and MOBI layouts.
+- **Orphan Page Elimination**: Automatically merges or drops trailing near-empty chapter slices (< 25 characters without media) to avoid single-line orphan final pages.
+- **Narrative Prose Detection**: Added `_stampProseMarkers` to distinguish standard body paragraphs from non-narrative elements (headings, epigraphs, blockquotes, media), ensuring reader justification and indent settings apply cleanly without distorting publisher formatting.
+- **Line Height Sanitization & UI Polish**: Added `sanitizeLineHeight` (clamped between 1.0x and 2.2x, default 1.4x), modernized reader settings slider with multiplier labels (`1.40x`), and wrapped settings sheet in `SafeArea` with responsive constraints.
 
 ### Bookshelf Batch Collection Management
 - **Bulk Collection Assignment**: Added ability in library selection mode to assign or remove multiple selected books to/from collections simultaneously.

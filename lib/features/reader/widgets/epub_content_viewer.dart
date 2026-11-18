@@ -54,8 +54,20 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     String html, {
     required bool usePublisherStyles,
     required double paragraphSpacing,
+    String? textAlign,
   }) {
-    final baseRule = 'p { margin-top: 0px; margin-bottom: ${paragraphSpacing.toStringAsFixed(1)}px; }';
+    final spacingPx = paragraphSpacing.toStringAsFixed(1);
+    final alignRule = (textAlign != null && textAlign.isNotEmpty)
+        ? 'text-align: $textAlign !important;'
+        : '';
+    final proseRule = '''
+.ferrous-prose {
+  margin-top: 0px !important;
+  margin-bottom: ${spacingPx}px !important;
+  $alignRule
+}
+''';
+    final baseRule = 'p { margin-top: 0px; margin-bottom: ${spacingPx}px; }\n$proseRule';
     final stylePattern = RegExp(
       r'<style\b[^>]*\bid=["\x27]epub-publisher-styles["\x27][^>]*>([\s\S]*?)<\/style>',
       caseSensitive: false,
@@ -85,6 +97,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     required bool paragraphIndent,
     required bool usePublisherStyles,
     required double paragraphSpacing,
+    String? textAlign,
     required List<Annotation> annotations,
   }) {
     if (widget.pageSlice != null) {
@@ -92,6 +105,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         widget.pageSlice!.html,
         usePublisherStyles: usePublisherStyles,
         paragraphSpacing: paragraphSpacing,
+        textAlign: textAlign,
       );
     }
 
@@ -99,7 +113,8 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
     final annotationSig = annotations.isEmpty
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
-    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$annotationSig';
+    final alignSig = textAlign ?? 'default';
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$alignSig:$annotationSig';
 
     final cached = _chunkCache[key];
     if (cached != null) return cached;
@@ -110,6 +125,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
       rawChunk,
       usePublisherStyles: usePublisherStyles,
       paragraphSpacing: paragraphSpacing,
+      textAlign: textAlign,
     );
 
     // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
@@ -164,6 +180,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
         paragraphIndent: themeConfig.paragraphIndent,
         usePublisherStyles: themeConfig.usePublisherStyles,
         paragraphSpacing: themeConfig.paragraphSpacing,
+        textAlign: themeConfig.textAlign,
         annotations: annotations,
       );
       displayChunks.add(formatted);
@@ -733,6 +750,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
               paragraphIndent: themeConfig.paragraphIndent,
               usePublisherStyles: themeConfig.usePublisherStyles,
               paragraphSpacing: themeConfig.paragraphSpacing,
+              textAlign: themeConfig.textAlign,
               annotations: chapterAnnotations,
             ));
           }

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:xml/xml.dart' as xml;
 import 'package:ferrous/core/utils/xml_html_normalizer.dart';
+import 'package:ferrous/core/utils/css_rule_resolver.dart';
 
 class EpubTocAnchor {
   final String title;
@@ -1158,8 +1159,10 @@ class EpubFallbackParser {
       }
 
       if (keptSelectors.isNotEmpty) {
+        // Normalize font-size keywords and fixed px/pt declarations into relative em
+        final normalizedDecl = CssRuleResolver.normalizeCssFontSizes(declarationBlock);
         // Collapse internal whitespace in declaration block
-        final minifiedDecl = declarationBlock.replaceAll(RegExp(r'\s+'), ' ');
+        final minifiedDecl = normalizedDecl.replaceAll(RegExp(r'\s+'), ' ');
         prunedBuffer.writeln('${keptSelectors.join(', ')} { $minifiedDecl }');
       }
     }

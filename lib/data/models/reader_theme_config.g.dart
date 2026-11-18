@@ -19,7 +19,7 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
     return ReaderThemeConfig(
       fontSize: fields[0] as double? ?? 12.0,
       fontFamily: fields[1] as String? ?? 'Merriweather',
-      lineHeight: fields[2] as double? ?? 1.5,
+      lineHeight: ReaderThemeConfig.sanitizeLineHeight(fields[2] as double?),
       paragraphSpacing: fields[3] as double? ?? 4.0,
       textAlign: fields[4] as String? ?? 'justify',
       pageMargins: fields[5] as bool? ?? true,
