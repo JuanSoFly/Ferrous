@@ -12,6 +12,10 @@ class ResolvedCssRule {
   final double? paddingLeft;
   final double? paddingRight;
   final double? fontSizeScale;
+  final double? marginLeftEm;
+  final double? marginRightEm;
+  final double? paddingLeftEm;
+  final double? paddingRightEm;
   final bool isMarginLeftPercentage;
   final bool isMarginRightPercentage;
   final double? marginLeftPercentage;
@@ -31,6 +35,10 @@ class ResolvedCssRule {
     this.paddingLeft,
     this.paddingRight,
     this.fontSizeScale,
+    this.marginLeftEm,
+    this.marginRightEm,
+    this.paddingLeftEm,
+    this.paddingRightEm,
     this.isMarginLeftPercentage = false,
     this.isMarginRightPercentage = false,
     this.marginLeftPercentage,
@@ -52,6 +60,10 @@ class ResolvedCssRule {
       paddingLeft: other.paddingLeft ?? paddingLeft,
       paddingRight: other.paddingRight ?? paddingRight,
       fontSizeScale: other.fontSizeScale ?? fontSizeScale,
+      marginLeftEm: other.marginLeftEm ?? marginLeftEm,
+      marginRightEm: other.marginRightEm ?? marginRightEm,
+      paddingLeftEm: other.paddingLeftEm ?? paddingLeftEm,
+      paddingRightEm: other.paddingRightEm ?? paddingRightEm,
       isMarginLeftPercentage: other.isMarginLeftPercentage || isMarginLeftPercentage,
       isMarginRightPercentage: other.isMarginRightPercentage || isMarginRightPercentage,
       marginLeftPercentage: other.marginLeftPercentage ?? marginLeftPercentage,
@@ -87,6 +99,10 @@ class CssRuleResolver {
         double? paddingLeft;
         double? paddingRight;
         double? fontSizeScale;
+        double? marginLeftEm;
+        double? marginRightEm;
+        double? paddingLeftEm;
+        double? paddingRightEm;
         bool isMarginLeftPercentage = false;
         bool isMarginRightPercentage = false;
         double? marginLeftPercentage;
@@ -123,6 +139,7 @@ class CssRuleResolver {
                   marginLeftPercentage = val.percentage;
                 } else {
                   marginLeft = val.pixels;
+                  marginLeftEm = val.emValue;
                 }
               }
               break;
@@ -135,6 +152,7 @@ class CssRuleResolver {
                   marginRightPercentage = val.percentage;
                 } else {
                   marginRight = val.pixels;
+                  marginRightEm = val.emValue;
                 }
               }
               break;
@@ -157,6 +175,7 @@ class CssRuleResolver {
                   paddingLeftPercentage = val.percentage;
                 } else {
                   paddingLeft = val.pixels;
+                  paddingLeftEm = val.emValue;
                 }
               }
               break;
@@ -169,6 +188,7 @@ class CssRuleResolver {
                   paddingRightPercentage = val.percentage;
                 } else {
                   paddingRight = val.pixels;
+                  paddingRightEm = val.emValue;
                 }
               }
               break;
@@ -190,6 +210,10 @@ class CssRuleResolver {
           paddingLeft: paddingLeft,
           paddingRight: paddingRight,
           fontSizeScale: fontSizeScale,
+          marginLeftEm: marginLeftEm,
+          marginRightEm: marginRightEm,
+          paddingLeftEm: paddingLeftEm,
+          paddingRightEm: paddingRightEm,
           isMarginLeftPercentage: isMarginLeftPercentage,
           isMarginRightPercentage: isMarginRightPercentage,
           marginLeftPercentage: marginLeftPercentage,
@@ -311,22 +335,33 @@ class CssRuleResolver {
 
       final rule = resolveRule(curr, rules);
       if (rule != null) {
-        double left = rule.marginLeft ?? 0.0;
+        final fontScale = rule.fontSizeScale ?? 1.0;
+        final effectiveFontSize = fontSize * fontScale;
+
+        double left = rule.marginLeftEm != null
+            ? rule.marginLeftEm! * effectiveFontSize
+            : (rule.marginLeft ?? 0.0);
         if (rule.isMarginLeftPercentage && rule.marginLeftPercentage != null) {
           left = rule.marginLeftPercentage! * availableWidth;
         }
 
-        double right = rule.marginRight ?? 0.0;
+        double right = rule.marginRightEm != null
+            ? rule.marginRightEm! * effectiveFontSize
+            : (rule.marginRight ?? 0.0);
         if (rule.isMarginRightPercentage && rule.marginRightPercentage != null) {
           right = rule.marginRightPercentage! * availableWidth;
         }
 
-        double padLeft = rule.paddingLeft ?? 0.0;
+        double padLeft = rule.paddingLeftEm != null
+            ? rule.paddingLeftEm! * effectiveFontSize
+            : (rule.paddingLeft ?? 0.0);
         if (rule.isPaddingLeftPercentage && rule.paddingLeftPercentage != null) {
           padLeft = rule.paddingLeftPercentage! * availableWidth;
         }
 
-        double padRight = rule.paddingRight ?? 0.0;
+        double padRight = rule.paddingRightEm != null
+            ? rule.paddingRightEm! * effectiveFontSize
+            : (rule.paddingRight ?? 0.0);
         if (rule.isPaddingRightPercentage && rule.paddingRightPercentage != null) {
           padRight = rule.paddingRightPercentage! * availableWidth;
         }
@@ -360,6 +395,8 @@ class CssRuleResolver {
     String? textAlign;
     double? marginLeft;
     double? marginRight;
+    double? marginLeftEm;
+    double? marginRightEm;
     double? textIndent;
 
     if (lower.contains('text-align: center') || lower.contains('text-align:center')) {
@@ -383,8 +420,23 @@ class CssRuleResolver {
       if (num != null) {
         if (unit == 'em' || unit == 'rem') {
           marginLeft = num * 12.0;
+          marginLeftEm = num;
         } else if (unit == 'px') {
           marginLeft = num;
+        }
+      }
+    }
+
+    final mrMatch = RegExp(r'margin-right\s*:\s*([\d.]+)(em|px|rem|%)').firstMatch(lower);
+    if (mrMatch != null) {
+      final num = double.tryParse(mrMatch.group(1)!);
+      final unit = mrMatch.group(2)!;
+      if (num != null) {
+        if (unit == 'em' || unit == 'rem') {
+          marginRight = num * 12.0;
+          marginRightEm = num;
+        } else if (unit == 'px') {
+          marginRight = num;
         }
       }
     }
@@ -393,11 +445,13 @@ class CssRuleResolver {
       textAlign: textAlign,
       marginLeft: marginLeft,
       marginRight: marginRight,
+      marginLeftEm: marginLeftEm,
+      marginRightEm: marginRightEm,
       textIndent: textIndent,
     );
   }
 
-  static ({double pixels, bool isPercentage, double percentage})? _resolveLengthOrPercent(
+  static ({double pixels, bool isPercentage, double percentage, double? emValue})? _resolveLengthOrPercent(
     css.Expression expr,
     double baseFontSize,
   ) {
@@ -412,13 +466,15 @@ class CssRuleResolver {
 
     final unit = match.group(2) ?? 'px';
     if (unit == '%') {
-      return (pixels: 0.0, isPercentage: true, percentage: val / 100.0);
+      return (pixels: 0.0, isPercentage: true, percentage: val / 100.0, emValue: null);
     }
 
     double px = val;
+    double? emValue;
     switch (unit) {
       case 'em':
       case 'rem':
+        emValue = val;
         px = val * baseFontSize;
         break;
       case 'pt':
@@ -430,7 +486,7 @@ class CssRuleResolver {
         break;
     }
 
-    return (pixels: px, isPercentage: false, percentage: 0.0);
+    return (pixels: px, isPercentage: false, percentage: 0.0, emValue: emValue);
   }
 
   /// Rewrites CSS font-size keywords and fixed px/pt declarations into clamped relative em multipliers.

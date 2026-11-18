@@ -259,11 +259,13 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
           for (int i = 0; i < chunks.length; i++)
             RepaintBoundary(
               key: ValueKey('mobi_chunk_rb_${widget.chapterIndex}_$i'),
-              child: Html(
-                key: ValueKey('mobi-html-chunk-${widget.chapterIndex}-$i'),
-                data: chunks[i],
-                extensions: extensions,
-                style: {
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+                child: Html(
+                  key: ValueKey('mobi-html-chunk-${widget.chapterIndex}-$i'),
+                  data: chunks[i],
+                  extensions: extensions,
+                  style: {
                   "html": Style(
                     padding: HtmlPaddings.zero,
                     margin: Margins.zero,
@@ -390,6 +392,7 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
                 },
               ),
             ),
+          ),
         ],
       ),
     );

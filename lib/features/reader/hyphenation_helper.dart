@@ -160,6 +160,14 @@ class HyphenationHelper {
       final body = document.body ?? document.documentElement;
       if (body == null) return html;
       _injectIndentTagsRecursive(body, cssRules: cssRules);
+      if (document.head != null && (html.contains('<head') || html.contains('<style') || document.head!.nodes.isNotEmpty)) {
+        final headHtml = document.head!.outerHtml;
+        final bodyAttrs = (body.attributes.isNotEmpty)
+            ? ' ${body.attributes.entries.map((e) => '${e.key}="${e.value}"').join(' ')}'
+            : '';
+        final bodyInner = body.innerHtml;
+        return '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>$bodyInner</body></html>';
+      }
       return document.body?.innerHtml ?? html;
     } catch (_) {
       return html;
@@ -192,13 +200,23 @@ class HyphenationHelper {
   }) {
     try {
       final document = html_parser.parse(html);
+      final body = document.body ?? document.documentElement;
+      if (body == null) return html;
       _processNode(
-        document.body,
+        body,
         applyHyphenation: applyHyphenation,
         languageCode: languageCode,
         preserveExistingHyphens: preserveExistingHyphens,
       );
-      return document.body?.innerHtml ?? html;
+      if (document.head != null && (html.contains('<head') || html.contains('<style') || document.head!.nodes.isNotEmpty)) {
+        final headHtml = document.head!.outerHtml;
+        final bodyAttrs = (body.attributes.isNotEmpty)
+            ? ' ${body.attributes.entries.map((e) => '${e.key}="${e.value}"').join(' ')}'
+            : '';
+        final bodyInner = body.innerHtml;
+        return '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>$bodyInner</body></html>';
+      }
+      return body.innerHtml;
     } catch (_) {
       return html;
     }
@@ -264,17 +282,24 @@ class HyphenationHelper {
         HtmlDefragmenter.defragmentDocument(document);
       }
       final body = document.body ?? document.documentElement;
-      if (body != null) {
-        _processNodeHyphenateAndIndent(
-          body,
-          applyHyphenation: applyHyphenation,
-          applyIndent: applyIndent,
-          languageCode: languageCode,
-          preserveExistingHyphens: preserveExistingHyphens,
-          cssRules: cssRules,
-        );
+      if (body == null) return html;
+      _processNodeHyphenateAndIndent(
+        body,
+        applyHyphenation: applyHyphenation,
+        applyIndent: applyIndent,
+        languageCode: languageCode,
+        preserveExistingHyphens: preserveExistingHyphens,
+        cssRules: cssRules,
+      );
+      if (document.head != null && (html.contains('<head') || html.contains('<style') || document.head!.nodes.isNotEmpty)) {
+        final headHtml = document.head!.outerHtml;
+        final bodyAttrs = (body.attributes.isNotEmpty)
+            ? ' ${body.attributes.entries.map((e) => '${e.key}="${e.value}"').join(' ')}'
+            : '';
+        final bodyInner = body.innerHtml;
+        return '<!DOCTYPE html><html>$headHtml<body$bodyAttrs>$bodyInner</body></html>';
       }
-      return document.body?.innerHtml ?? html;
+      return body.innerHtml;
     } catch (_) {
       return html;
     }

@@ -5,6 +5,10 @@ import 'package:html/parser.dart' as html_parser;
 /// PDF/OCR conversions inappropriately split sentences into multiple `<p>` elements.
 class HtmlDefragmenter {
   static final RegExp _terminalPunctuationRegex = RegExp(r'[.!?…][’”"\s\x27]*$');
+  static final RegExp _abbreviationEndingRegex = RegExp(
+    r'\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Capt|Col|Gen|Rev)\.[’”"\s\x27]*$',
+    caseSensitive: true,
+  );
   static final RegExp _ellipsisEndingRegex = RegExp(r'(?:\.\s*\.\s*\.|…)[’”"\s\x27]*$');
   static final RegExp _dashOrColonEndingRegex = RegExp(r'[:—–][’”"\s\x27]*$');
   static final RegExp _commaEndingRegex = RegExp(r',[’”"\s\x27]*$');
@@ -228,6 +232,16 @@ class HtmlDefragmenter {
     final isParentheticalCitation = _parentheticalCitationRegex.hasMatch(p2Text);
 
     // Terminal punctuation check:
+    // Check if ending period is actually part of an honorific / abbreviation (e.g. "Mr.", "Dr.")
+    final isAbbr = _abbreviationEndingRegex.hasMatch(p1Text);
+    if (isAbbr) {
+      // Honorific abbreviations do not end sentences: allow merge if p2 is a capitalized name or lowercase continuation
+      if (RegExp(r'^\s*[‘“"\x27]?[A-Z]').hasMatch(p2Text) || isLowercaseContinuation) {
+        return true;
+      }
+      return false;
+    }
+
     // . ! ? … can only merge if p1 ends with an ellipsis AND p2 starts lowercase (Break 1)
     if (_terminalPunctuationRegex.hasMatch(p1Text)) {
       final isEllipsis = _ellipsisEndingRegex.hasMatch(p1Text);

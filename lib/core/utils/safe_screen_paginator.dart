@@ -142,9 +142,12 @@ class SafeScreenPaginator {
         document.head?.outerHtml ?? '<head><meta charset="utf-8"></head>';
     final bodyAttrs = _serializeAttributes(body, stripId: false);
 
-    // Dynamic canvas bounds: snap to whole integer line multiples to prevent half-line glyph slices
+    // Dynamic canvas bounds: snap to whole integer line multiples with 1 safety line reserve to prevent bottom-line half-glyph slicing
     final singleLineHeight = fontSize * lineHeight;
-    final int wholeLineCount = (availableHeight / singleLineHeight).floor();
+    final int wholeLineCount = math.max(
+      1,
+      ((availableHeight - singleLineHeight) / singleLineHeight).floor(),
+    );
     final double snappedMaxHeight = math.max(
       wholeLineCount * singleLineHeight,
       singleLineHeight + paragraphSpacing + 2.0,
@@ -187,7 +190,7 @@ class SafeScreenPaginator {
     final textPainter = TextPainter(
       textDirection: TextDirection.ltr,
       textAlign: textAlign,
-      textScaler: textScaler,
+      textScaler: TextScaler.noScaling,
       locale: Locale(primaryLang),
       strutStyle: StrutStyle(
         fontFamily: baseStyle.fontFamily,
@@ -419,10 +422,11 @@ class SafeScreenPaginator {
           layoutWidth: effectiveBlockWidth,
         );
       } else {
+        final bool hasIndent = !isAnonymous && paragraphIndent && targetElement.querySelector('p-indent') != null;
         blockHeight = measureTextHeight(
           nodeText,
           fontScale: cssFontScale,
-          isIndent: !isAnonymous && paragraphIndent && tag == 'p',
+          isIndent: hasIndent,
           extraTopMargin: effectiveTopMargin,
           extraBottomMargin: effectiveBottomMargin,
           isPre: tag == 'pre',
@@ -474,6 +478,7 @@ class SafeScreenPaginator {
           remainingHeight = maxPageHeight;
         }
 
+        final bool hasIndent = !isAnonymous && paragraphIndent && targetElement.querySelector('p-indent') != null;
         var splitParts = _splitBlockAcrossPages(
           node: targetElement,
           firstBudget: remainingHeight,
@@ -482,7 +487,7 @@ class SafeScreenPaginator {
           measureText: (txt, isIndent, {required bool isLastPart}) => measureTextHeight(
             txt,
             fontScale: cssFontScale,
-            isIndent: isIndent && paragraphIndent && !isAnonymous,
+            isIndent: isIndent && hasIndent,
             extraTopMargin: isLastPart ? 0.0 : effectiveTopMargin,
             extraBottomMargin: isLastPart ? effectiveBottomMargin : 0.0,
             isPre: tag == 'pre',
@@ -941,21 +946,21 @@ class SafeScreenPaginator {
           ? 0.0
           : measureText(remainder, false, isLastPart: false);
 
-      if (remainder.isNotEmpty && remainderTextHeight < (singleLineHeight * 1.5)) {
+      if (remainder.isNotEmpty && remainderTextHeight < (singleLineHeight * 1.3)) {
         if (bestIndex > 1) {
           final pulledBackIndex = _findSplitPointLeavingAtLeastTwoLines(
             wordBoundaries,
             bestIndex,
             remainingText,
-            singleLineHeight * 1.6,
+            singleLineHeight * 1.3,
             measureText,
           );
           final pulledBackLength = wordBoundaries[pulledBackIndex];
           final pulledBackText = remainingText.substring(0, pulledBackLength).trim();
           final pulledBackHeight = measureText(pulledBackText, isFirstPart, isLastPart: false);
 
-          // Ensure pulling back still leaves at least 2 lines on the current page
-          if (pulledBackHeight >= singleLineHeight * 1.5) {
+          // Ensure pulling back still leaves at least 1.3 lines on the current page
+          if (pulledBackHeight >= singleLineHeight * 1.3) {
             bestIndex = pulledBackIndex;
             splitLength = pulledBackLength;
           } else if (isFirstPart && currentBudget < maxPageHeight) {

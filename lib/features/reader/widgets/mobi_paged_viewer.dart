@@ -343,7 +343,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
       textAlign: parseTextAlign(themeConfig.textAlign),
       fontWeight: FontWeight.values[(themeConfig.fontWeight ~/ 100).clamp(0, 8)],
       wordSpacing: themeConfig.wordSpacing,
-      textScaler: MediaQuery.textScalerOf(context),
+      textScaler: TextScaler.noScaling,
       cssRules: cssRules,
     );
   }

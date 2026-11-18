@@ -1,6 +1,11 @@
 ## [1.4.3-alpha.3] - 2026-11-18
 
-### Publisher Styles & CSS Rule Resolution (EPUB & MOBI)
+### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+- **Relative Em Margin & Padding Resolution**: Added support for `em` units in `CssRuleResolver` for lateral margins and padding, dynamically computing insets against `effectiveFontSize` for responsive publisher formatting.
+- **Honorific Abbreviation Protection**: Integrated `_abbreviationEndingRegex` in `HtmlDefragmenter` for honorifics (`Mr.`, `Mrs.`, `Dr.`, `Prof.`, etc.) to prevent improper sentence splitting and merging.
+- **System Text Scaling Isolation**: Enforced `TextScaler.noScaling` across `SafeScreenPaginator`, `EpubContentViewer`, and `MobiContentViewer`, preventing double-scaling discrepancies from device OS text size settings.
+- **Bottom Glyph Slicing Safety Reserve**: Snapped `SafeScreenPaginator` canvas bounds with a single-line safety reserve to completely eliminate half-glyph bottom clipping.
+- **Document Metadata & Style Preservation**: Maintained `<head>`, `<style>`, and DOCTYPE structure in `HyphenationHelper` to ensure publisher stylesheets remain intact after hyphenation.
 - **CSS Rule Resolver**: Integrated `csslib` and built `CssRuleResolver` AST parser to extract chapter stylesheet rules, supporting element tags, classes, and combined selectors.
 - **Lateral Insets & Ancestor Propagation**: Accurately computes horizontal margins and paddings with recursive ancestor summation for nested elements like blockquotes, epigraphs, and poetry.
 - **Dynamic Text Width & Paginator Layout**: Adapted `SafeScreenPaginator` to measure text height against effective block width (`availableWidth - lateralInsets`), preventing overflow in indented publisher layouts.

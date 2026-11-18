@@ -260,11 +260,13 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
           for (int i = 0; i < chunks.length; i++)
             RepaintBoundary(
               key: ValueKey('chunk_rb_${widget.chapterIndex}_$i'),
-              child: Html(
-                key: ValueKey('chapter-html-chunk-${widget.chapterIndex}-$i'),
-                data: chunks[i],
-                extensions: extensions,
-                onLinkTap: (url, attributes, element) {
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+                child: Html(
+                  key: ValueKey('chapter-html-chunk-${widget.chapterIndex}-$i'),
+                  data: chunks[i],
+                  extensions: extensions,
+                  onLinkTap: (url, attributes, element) {
                   if (url == null || url.trim().isEmpty) return;
                   final trimmed = url.trim();
                   if (trimmed.startsWith('http://') ||
@@ -406,6 +408,7 @@ class _EpubContentViewerState extends State<EpubContentViewer> {
                 },
               ),
             ),
+          ),
         ],
       ),
     );
