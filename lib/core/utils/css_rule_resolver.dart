@@ -1,21 +1,32 @@
 import 'package:csslib/parser.dart' as cssparser;
 import 'package:csslib/visitor.dart' as css;
+import 'package:flutter/painting.dart';
 import 'package:html/dom.dart' as dom;
 
 class ResolvedCssRule {
   final double? textIndent;
   final String? textAlign;
+  final FontWeight? fontWeight;
+  final FontStyle? fontStyle;
   final double? marginLeft;
   final double? marginRight;
   final double? marginTop;
   final double? marginBottom;
   final double? paddingLeft;
   final double? paddingRight;
+  final double? paddingTop;
+  final double? paddingBottom;
   final double? fontSizeScale;
   final double? marginLeftEm;
   final double? marginRightEm;
+  final double? marginTopEm;
+  final double? marginBottomEm;
   final double? paddingLeftEm;
   final double? paddingRightEm;
+  final double? paddingTopEm;
+  final double? paddingBottomEm;
+  final bool hasExplicitTopMargin;
+  final bool hasExplicitBottomMargin;
   final bool isMarginLeftPercentage;
   final bool isMarginRightPercentage;
   final double? marginLeftPercentage;
@@ -28,17 +39,27 @@ class ResolvedCssRule {
   const ResolvedCssRule({
     this.textIndent,
     this.textAlign,
+    this.fontWeight,
+    this.fontStyle,
     this.marginLeft,
     this.marginRight,
     this.marginTop,
     this.marginBottom,
     this.paddingLeft,
     this.paddingRight,
+    this.paddingTop,
+    this.paddingBottom,
     this.fontSizeScale,
     this.marginLeftEm,
     this.marginRightEm,
+    this.marginTopEm,
+    this.marginBottomEm,
     this.paddingLeftEm,
     this.paddingRightEm,
+    this.paddingTopEm,
+    this.paddingBottomEm,
+    this.hasExplicitTopMargin = false,
+    this.hasExplicitBottomMargin = false,
     this.isMarginLeftPercentage = false,
     this.isMarginRightPercentage = false,
     this.marginLeftPercentage,
@@ -53,17 +74,27 @@ class ResolvedCssRule {
     return ResolvedCssRule(
       textIndent: other.textIndent ?? textIndent,
       textAlign: other.textAlign ?? textAlign,
+      fontWeight: other.fontWeight ?? fontWeight,
+      fontStyle: other.fontStyle ?? fontStyle,
       marginLeft: other.marginLeft ?? marginLeft,
       marginRight: other.marginRight ?? marginRight,
       marginTop: other.marginTop ?? marginTop,
       marginBottom: other.marginBottom ?? marginBottom,
       paddingLeft: other.paddingLeft ?? paddingLeft,
       paddingRight: other.paddingRight ?? paddingRight,
+      paddingTop: other.paddingTop ?? paddingTop,
+      paddingBottom: other.paddingBottom ?? paddingBottom,
       fontSizeScale: other.fontSizeScale ?? fontSizeScale,
       marginLeftEm: other.marginLeftEm ?? marginLeftEm,
       marginRightEm: other.marginRightEm ?? marginRightEm,
+      marginTopEm: other.marginTopEm ?? marginTopEm,
+      marginBottomEm: other.marginBottomEm ?? marginBottomEm,
       paddingLeftEm: other.paddingLeftEm ?? paddingLeftEm,
       paddingRightEm: other.paddingRightEm ?? paddingRightEm,
+      paddingTopEm: other.paddingTopEm ?? paddingTopEm,
+      paddingBottomEm: other.paddingBottomEm ?? paddingBottomEm,
+      hasExplicitTopMargin: other.hasExplicitTopMargin || hasExplicitTopMargin,
+      hasExplicitBottomMargin: other.hasExplicitBottomMargin || hasExplicitBottomMargin,
       isMarginLeftPercentage: other.isMarginLeftPercentage || isMarginLeftPercentage,
       isMarginRightPercentage: other.isMarginRightPercentage || isMarginRightPercentage,
       marginLeftPercentage: other.marginLeftPercentage ?? marginLeftPercentage,
@@ -92,17 +123,27 @@ class CssRuleResolver {
         final ruleSet = topLevel;
         double? textIndent;
         String? textAlign;
+        FontWeight? fontWeight;
+        FontStyle? fontStyle;
         double? marginLeft;
         double? marginRight;
         double? marginTop;
         double? marginBottom;
         double? paddingLeft;
         double? paddingRight;
+        double? paddingTop;
+        double? paddingBottom;
         double? fontSizeScale;
         double? marginLeftEm;
         double? marginRightEm;
+        double? marginTopEm;
+        double? marginBottomEm;
         double? paddingLeftEm;
         double? paddingRightEm;
+        double? paddingTopEm;
+        double? paddingBottomEm;
+        bool hasExplicitTopMargin = false;
+        bool hasExplicitBottomMargin = false;
         bool isMarginLeftPercentage = false;
         bool isMarginRightPercentage = false;
         double? marginLeftPercentage;
@@ -129,6 +170,68 @@ class CssRuleResolver {
             case 'text-indent':
               final val = _resolveLengthOrPercent(expr, baseFontSize);
               if (val != null) textIndent = val.pixels;
+              break;
+
+            case 'margin':
+              final box = _resolveBoxTerms(expr, baseFontSize);
+              if (box.top != null) {
+                marginTop = box.top!.pixels;
+                marginTopEm = box.top!.emValue;
+                hasExplicitTopMargin = true;
+              }
+              if (box.bottom != null) {
+                marginBottom = box.bottom!.pixels;
+                marginBottomEm = box.bottom!.emValue;
+                hasExplicitBottomMargin = true;
+              }
+              if (box.left != null) {
+                if (box.left!.isPercentage) {
+                  isMarginLeftPercentage = true;
+                  marginLeftPercentage = box.left!.percentage;
+                } else {
+                  marginLeft = box.left!.pixels;
+                  marginLeftEm = box.left!.emValue;
+                }
+              }
+              if (box.right != null) {
+                if (box.right!.isPercentage) {
+                  isMarginRightPercentage = true;
+                  marginRightPercentage = box.right!.percentage;
+                } else {
+                  marginRight = box.right!.pixels;
+                  marginRightEm = box.right!.emValue;
+                }
+              }
+              break;
+
+            case 'padding':
+              final box = _resolveBoxTerms(expr, baseFontSize);
+              if (box.top != null) {
+                paddingTop = box.top!.pixels;
+                paddingTopEm = box.top!.emValue;
+              }
+              if (box.bottom != null) {
+                paddingBottom = box.bottom!.pixels;
+                paddingBottomEm = box.bottom!.emValue;
+              }
+              if (box.left != null) {
+                if (box.left!.isPercentage) {
+                  isPaddingLeftPercentage = true;
+                  paddingLeftPercentage = box.left!.percentage;
+                } else {
+                  paddingLeft = box.left!.pixels;
+                  paddingLeftEm = box.left!.emValue;
+                }
+              }
+              if (box.right != null) {
+                if (box.right!.isPercentage) {
+                  isPaddingRightPercentage = true;
+                  paddingRightPercentage = box.right!.percentage;
+                } else {
+                  paddingRight = box.right!.pixels;
+                  paddingRightEm = box.right!.emValue;
+                }
+              }
               break;
 
             case 'margin-left':
@@ -159,12 +262,20 @@ class CssRuleResolver {
 
             case 'margin-top':
               final val = _resolveLengthOrPercent(expr, baseFontSize);
-              if (val != null && !val.isPercentage) marginTop = val.pixels;
+              if (val != null && !val.isPercentage) {
+                marginTop = val.pixels;
+                marginTopEm = val.emValue;
+                hasExplicitTopMargin = true;
+              }
               break;
 
             case 'margin-bottom':
               final val = _resolveLengthOrPercent(expr, baseFontSize);
-              if (val != null && !val.isPercentage) marginBottom = val.pixels;
+              if (val != null && !val.isPercentage) {
+                marginBottom = val.pixels;
+                marginBottomEm = val.emValue;
+                hasExplicitBottomMargin = true;
+              }
               break;
 
             case 'padding-left':
@@ -193,9 +304,35 @@ class CssRuleResolver {
               }
               break;
 
+            case 'padding-top':
+              final val = _resolveLengthOrPercent(expr, baseFontSize);
+              if (val != null && !val.isPercentage) {
+                paddingTop = val.pixels;
+                paddingTopEm = val.emValue;
+              }
+              break;
+
+            case 'padding-bottom':
+              final val = _resolveLengthOrPercent(expr, baseFontSize);
+              if (val != null && !val.isPercentage) {
+                paddingBottom = val.pixels;
+                paddingBottomEm = val.emValue;
+              }
+              break;
+
             case 'font-size':
               final scale = _resolveFontSizeScale(expr);
               if (scale != null) fontSizeScale = scale;
+              break;
+
+            case 'font-weight':
+              final w = _resolveFontWeight(expr);
+              if (w != null) fontWeight = w;
+              break;
+
+            case 'font-style':
+              final s = _resolveFontStyle(expr);
+              if (s != null) fontStyle = s;
               break;
           }
         }
@@ -203,17 +340,27 @@ class CssRuleResolver {
         final parsedRule = ResolvedCssRule(
           textIndent: textIndent,
           textAlign: textAlign,
+          fontWeight: fontWeight,
+          fontStyle: fontStyle,
           marginLeft: marginLeft,
           marginRight: marginRight,
           marginTop: marginTop,
           marginBottom: marginBottom,
           paddingLeft: paddingLeft,
           paddingRight: paddingRight,
+          paddingTop: paddingTop,
+          paddingBottom: paddingBottom,
           fontSizeScale: fontSizeScale,
           marginLeftEm: marginLeftEm,
           marginRightEm: marginRightEm,
+          marginTopEm: marginTopEm,
+          marginBottomEm: marginBottomEm,
           paddingLeftEm: paddingLeftEm,
           paddingRightEm: paddingRightEm,
+          paddingTopEm: paddingTopEm,
+          paddingBottomEm: paddingBottomEm,
+          hasExplicitTopMargin: hasExplicitTopMargin,
+          hasExplicitBottomMargin: hasExplicitBottomMargin,
           isMarginLeftPercentage: isMarginLeftPercentage,
           isMarginRightPercentage: isMarginRightPercentage,
           marginLeftPercentage: marginLeftPercentage,
@@ -325,13 +472,16 @@ class CssRuleResolver {
     dom.Element el,
     Map<String, ResolvedCssRule> rules,
     double fontSize,
-    double availableWidth,
-  ) {
+    double availableWidth, {
+    List<dom.Element>? ancestors,
+  }) {
     double total = 0.0;
+    final visited = <dom.Element>{};
     dom.Element? curr = el;
     while (curr != null) {
       final tag = curr.localName?.toLowerCase();
       if (tag == 'body' || tag == 'html') break;
+      visited.add(curr);
 
       final rule = resolveRule(curr, rules);
       if (rule != null) {
@@ -371,19 +521,79 @@ class CssRuleResolver {
       curr = curr.parent;
     }
 
+    if (ancestors != null) {
+      for (final anc in ancestors.reversed) {
+        if (visited.contains(anc)) continue;
+        final tag = anc.localName?.toLowerCase();
+        if (tag == 'body' || tag == 'html') continue;
+        visited.add(anc);
+
+        final rule = resolveRule(anc, rules);
+        if (rule != null) {
+          final fontScale = rule.fontSizeScale ?? 1.0;
+          final effectiveFontSize = fontSize * fontScale;
+
+          double left = rule.marginLeftEm != null
+              ? rule.marginLeftEm! * effectiveFontSize
+              : (rule.marginLeft ?? 0.0);
+          if (rule.isMarginLeftPercentage && rule.marginLeftPercentage != null) {
+            left = rule.marginLeftPercentage! * availableWidth;
+          }
+
+          double right = rule.marginRightEm != null
+              ? rule.marginRightEm! * effectiveFontSize
+              : (rule.marginRight ?? 0.0);
+          if (rule.isMarginRightPercentage && rule.marginRightPercentage != null) {
+            right = rule.marginRightPercentage! * availableWidth;
+          }
+
+          double padLeft = rule.paddingLeftEm != null
+              ? rule.paddingLeftEm! * effectiveFontSize
+              : (rule.paddingLeft ?? 0.0);
+          if (rule.isPaddingLeftPercentage && rule.paddingLeftPercentage != null) {
+            padLeft = rule.paddingLeftPercentage! * availableWidth;
+          }
+
+          double padRight = rule.paddingRightEm != null
+              ? rule.paddingRightEm! * effectiveFontSize
+              : (rule.paddingRight ?? 0.0);
+          if (rule.isPaddingRightPercentage && rule.paddingRightPercentage != null) {
+            padRight = rule.paddingRightPercentage! * availableWidth;
+          }
+
+          total += (left + right + padLeft + padRight);
+        }
+      }
+    }
+
     return total;
   }
 
   /// Resolves vertical margins (top and bottom) for a block element.
-  static ({double top, double bottom}) resolveVerticalMargins(
+  static ({double top, double bottom, bool hasExplicitTop, bool hasExplicitBottom}) resolveVerticalMargins(
     dom.Element el,
-    Map<String, ResolvedCssRule> rules,
-  ) {
+    Map<String, ResolvedCssRule> rules, {
+    double baseFontSize = 12.0,
+  }) {
     final rule = resolveRule(el, rules);
-    if (rule == null) return (top: 0.0, bottom: 0.0);
+    if (rule == null) {
+      return (top: 0.0, bottom: 0.0, hasExplicitTop: false, hasExplicitBottom: false);
+    }
+    final fontScale = rule.fontSizeScale ?? 1.0;
+    final effectiveFontSize = baseFontSize * fontScale;
+
+    double top = rule.marginTopEm != null
+        ? rule.marginTopEm! * effectiveFontSize
+        : (rule.marginTop ?? 0.0);
+    double bottom = rule.marginBottomEm != null
+        ? rule.marginBottomEm! * effectiveFontSize
+        : (rule.marginBottom ?? 0.0);
+
     return (
-      top: rule.marginTop ?? 0.0,
-      bottom: rule.marginBottom ?? 0.0,
+      top: top,
+      bottom: bottom,
+      hasExplicitTop: rule.hasExplicitTopMargin,
+      hasExplicitBottom: rule.hasExplicitBottomMargin,
     );
   }
 
@@ -393,11 +603,23 @@ class CssRuleResolver {
 
     final lower = style.toLowerCase();
     String? textAlign;
+    FontWeight? fontWeight;
+    FontStyle? fontStyle;
     double? marginLeft;
     double? marginRight;
     double? marginLeftEm;
     double? marginRightEm;
+    double? marginTop;
+    double? marginBottom;
+    double? marginTopEm;
+    double? marginBottomEm;
+    double? paddingTop;
+    double? paddingBottom;
+    double? paddingLeft;
+    double? paddingRight;
     double? textIndent;
+    bool hasExplicitTopMargin = false;
+    bool hasExplicitBottomMargin = false;
 
     if (lower.contains('text-align: center') || lower.contains('text-align:center')) {
       textAlign = 'center';
@@ -411,6 +633,38 @@ class CssRuleResolver {
 
     if (lower.contains('text-indent: 0') || lower.contains('text-indent:0')) {
       textIndent = 0.0;
+    }
+
+    // Check margin-top
+    final mtMatch = RegExp(r'margin-top\s*:\s*([\d.]+)(em|px|rem|pt|%)?').firstMatch(lower);
+    if (mtMatch != null) {
+      final num = double.tryParse(mtMatch.group(1)!);
+      final unit = mtMatch.group(2) ?? 'px';
+      if (num != null) {
+        hasExplicitTopMargin = true;
+        if (unit == 'em' || unit == 'rem') {
+          marginTopEm = num;
+          marginTop = num * 12.0;
+        } else {
+          marginTop = num;
+        }
+      }
+    }
+
+    // Check margin-bottom
+    final mbMatch = RegExp(r'margin-bottom\s*:\s*([\d.]+)(em|px|rem|pt|%)?').firstMatch(lower);
+    if (mbMatch != null) {
+      final num = double.tryParse(mbMatch.group(1)!);
+      final unit = mbMatch.group(2) ?? 'px';
+      if (num != null) {
+        hasExplicitBottomMargin = true;
+        if (unit == 'em' || unit == 'rem') {
+          marginBottomEm = num;
+          marginBottom = num * 12.0;
+        } else {
+          marginBottom = num;
+        }
+      }
     }
 
     final mlMatch = RegExp(r'margin-left\s*:\s*([\d.]+)(em|px|rem|%)').firstMatch(lower);
@@ -441,14 +695,92 @@ class CssRuleResolver {
       }
     }
 
+    if (lower.contains('font-weight: bold') ||
+        lower.contains('font-weight:bold') ||
+        lower.contains('font-weight: 700') ||
+        lower.contains('font-weight:700')) {
+      fontWeight = FontWeight.bold;
+    } else if (lower.contains('font-weight: normal') ||
+        lower.contains('font-weight:normal') ||
+        lower.contains('font-weight: 400') ||
+        lower.contains('font-weight:400')) {
+      fontWeight = FontWeight.normal;
+    }
+
+    if (lower.contains('font-style: italic') ||
+        lower.contains('font-style:italic') ||
+        lower.contains('font-style: oblique') ||
+        lower.contains('font-style:oblique')) {
+      fontStyle = FontStyle.italic;
+    } else if (lower.contains('font-style: normal') ||
+        lower.contains('font-style:normal')) {
+      fontStyle = FontStyle.normal;
+    }
+
     return ResolvedCssRule(
       textAlign: textAlign,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
       marginLeft: marginLeft,
       marginRight: marginRight,
+      marginTop: marginTop,
+      marginBottom: marginBottom,
+      marginTopEm: marginTopEm,
+      marginBottomEm: marginBottomEm,
+      paddingLeft: paddingLeft,
+      paddingRight: paddingRight,
+      paddingTop: paddingTop,
+      paddingBottom: paddingBottom,
       marginLeftEm: marginLeftEm,
       marginRightEm: marginRightEm,
       textIndent: textIndent,
+      hasExplicitTopMargin: hasExplicitTopMargin,
+      hasExplicitBottomMargin: hasExplicitBottomMargin,
     );
+  }
+
+  static ({
+    ({double pixels, bool isPercentage, double percentage, double? emValue})? top,
+    ({double pixels, bool isPercentage, double percentage, double? emValue})? right,
+    ({double pixels, bool isPercentage, double percentage, double? emValue})? bottom,
+    ({double pixels, bool isPercentage, double percentage, double? emValue})? left,
+  }) _resolveBoxTerms(css.Expression expr, double baseFontSize) {
+    List<css.Expression> terms = [];
+    if (expr is css.Expressions) {
+      terms = expr.expressions;
+    } else {
+      terms = [expr];
+    }
+
+    final resolved = <({double pixels, bool isPercentage, double percentage, double? emValue})>[];
+    for (final t in terms) {
+      final r = _resolveLengthOrPercent(t, baseFontSize);
+      if (r != null) resolved.add(r);
+    }
+
+    if (resolved.isEmpty) {
+      return (top: null, right: null, bottom: null, left: null);
+    }
+
+    if (resolved.length == 1) {
+      final v = resolved[0];
+      return (top: v, right: v, bottom: v, left: v);
+    } else if (resolved.length == 2) {
+      final tb = resolved[0];
+      final lr = resolved[1];
+      return (top: tb, right: lr, bottom: tb, left: lr);
+    } else if (resolved.length == 3) {
+      final t = resolved[0];
+      final lr = resolved[1];
+      final b = resolved[2];
+      return (top: t, right: lr, bottom: b, left: lr);
+    } else {
+      final t = resolved[0];
+      final r = resolved[1];
+      final b = resolved[2];
+      final l = resolved[3];
+      return (top: t, right: r, bottom: b, left: l);
+    }
   }
 
   static ({double pixels, bool isPercentage, double percentage, double? emValue})? _resolveLengthOrPercent(
@@ -627,6 +959,38 @@ class CssRuleResolver {
       }
     }
 
+    return null;
+  }
+
+  static FontWeight? _resolveFontWeight(css.Expression expr) {
+    css.Expression target = expr;
+    if (expr is css.Expressions && expr.expressions.isNotEmpty) {
+      target = expr.expressions.first;
+    }
+    final text = target.span?.text.trim().toLowerCase();
+    if (text == null || text.isEmpty) return null;
+    if (text == 'bold' || text == 'bolder' || text == '700' || text == '800' || text == '900') {
+      return FontWeight.bold;
+    }
+    if (text == 'normal' || text == 'lighter' || text == '400' || text == '300' || text == '200' || text == '100') {
+      return FontWeight.normal;
+    }
+    return null;
+  }
+
+  static FontStyle? _resolveFontStyle(css.Expression expr) {
+    css.Expression target = expr;
+    if (expr is css.Expressions && expr.expressions.isNotEmpty) {
+      target = expr.expressions.first;
+    }
+    final text = target.span?.text.trim().toLowerCase();
+    if (text == null || text.isEmpty) return null;
+    if (text == 'italic' || text == 'oblique') {
+      return FontStyle.italic;
+    }
+    if (text == 'normal') {
+      return FontStyle.normal;
+    }
     return null;
   }
 }

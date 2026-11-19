@@ -18,6 +18,7 @@ import 'package:ferrous/core/utils/safe_screen_paginator.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:html/dom.dart' as dom;
 
 class TxtContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -183,6 +184,17 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
             ? textureInfo.textColor
             : null);
 
+    final resolvedTextStyle = TextStyle(
+      fontSize: themeConfig.fontSize,
+      height: themeConfig.lineHeight,
+      fontFamily: fontData.fontFamily,
+      fontFamilyFallback: fontData.fontFamilyFallback,
+      fontWeight: FontWeight.values[
+          (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+      letterSpacing: themeConfig.wordSpacing,
+      color: effectiveTextColor,
+    );
+
     return Padding(
       key: ValueKey('txt-html-pad-${widget.chapterIndex}'),
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
@@ -192,60 +204,73 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
           for (int i = 0; i < chunks.length; i++)
             RepaintBoundary(
               key: ValueKey('txt_chunk_rb_${widget.chapterIndex}_$i'),
-              child: Html(
-                key: ValueKey('txt-html-chunk-${widget.chapterIndex}-$i'),
-                data: chunks[i],
-                extensions: extensions,
-                style: {
-                  "html": Style(
-                    padding: HtmlPaddings.zero,
-                    margin: Margins.zero,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  textTheme: Theme.of(context).textTheme.copyWith(
+                    bodyMedium: resolvedTextStyle,
                   ),
-                  "body": Style(
-                    fontSize: FontSize(themeConfig.fontSize),
-                    lineHeight: LineHeight(themeConfig.lineHeight),
-                    fontFamily: fontData.fontFamily,
-                    fontFamilyFallback: fontData.fontFamilyFallback,
-                    fontWeight: FontWeight.values[
-                        (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
-                    textAlign: parseTextAlign(themeConfig.textAlign),
-                    letterSpacing: themeConfig.wordSpacing,
-                    color: effectiveTextColor,
-                    padding: HtmlPaddings.zero,
-                    margin: Margins.zero,
+                ),
+                child: DefaultTextStyle(
+                  style: resolvedTextStyle,
+                  child: MediaQuery(
+                    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+                    child: Html(
+                      key: ValueKey('txt-html-chunk-${widget.chapterIndex}-$i'),
+                      data: chunks[i],
+                      extensions: extensions,
+                      style: {
+                        "html": Style(
+                          padding: HtmlPaddings.zero,
+                          margin: Margins.zero,
+                        ),
+                        "body": Style(
+                          fontSize: FontSize(themeConfig.fontSize),
+                          lineHeight: LineHeight(themeConfig.lineHeight),
+                          fontFamily: fontData.fontFamily,
+                          fontFamilyFallback: fontData.fontFamilyFallback,
+                          fontWeight: FontWeight.values[
+                              (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+                          textAlign: parseTextAlign(themeConfig.textAlign),
+                          letterSpacing: themeConfig.wordSpacing,
+                          color: effectiveTextColor,
+                          padding: HtmlPaddings.zero,
+                          margin: Margins.zero,
+                        ),
+                        "a": Style(
+                          color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
+                        ),
+                        "tts-highlight": Style(
+                          backgroundColor: isEInk
+                              ? const Color(0xFFD5D0C5)
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.3),
+                          color: isEInk ? const Color(0xFF1A1A18) : null,
+                        ),
+                        "p": Style(
+                          margin: blockMargin,
+                          textAlign: parseTextAlign(themeConfig.textAlign),
+                          color: effectiveTextColor,
+                          backgroundColor: isEInk ? Colors.transparent : null,
+                        ),
+                        "div": Style(
+                          margin: isPaged ? Margins.zero : blockMargin,
+                          padding: HtmlPaddings.zero,
+                          textAlign: parseTextAlign(themeConfig.textAlign),
+                          color: effectiveTextColor,
+                          backgroundColor: isEInk ? Colors.transparent : null,
+                        ),
+                        "section": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+                        "article": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+                        "main": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+                        "span": Style(
+                          color: effectiveTextColor,
+                        ),
+                      },
+                    ),
                   ),
-                  "a": Style(
-                    color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
-                  ),
-                  "tts-highlight": Style(
-                    backgroundColor: isEInk
-                        ? const Color(0xFFD5D0C5)
-                        : Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.3),
-                    color: isEInk ? const Color(0xFF1A1A18) : null,
-                  ),
-                  "p": Style(
-                    margin: blockMargin,
-                    textAlign: parseTextAlign(themeConfig.textAlign),
-                    color: effectiveTextColor,
-                    backgroundColor: isEInk ? Colors.transparent : null,
-                  ),
-                  "div": Style(
-                    margin: isPaged ? Margins.zero : blockMargin,
-                    padding: HtmlPaddings.zero,
-                    textAlign: parseTextAlign(themeConfig.textAlign),
-                    color: effectiveTextColor,
-                    backgroundColor: isEInk ? Colors.transparent : null,
-                  ),
-                  "section": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
-                  "article": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
-                  "main": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
-                  "span": Style(
-                    color: effectiveTextColor,
-                  ),
-                },
+                ),
               ),
             ),
         ],
@@ -286,6 +311,41 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
               height: 1.0,
             ),
           );
+        },
+      ),
+      TagExtension.inline(
+        tagsToExtend: {'page-split-tail'},
+        builder: (ctx) {
+          final style = ctx.style?.generateTextStyle() ?? const TextStyle();
+          final wsStr = ctx.attributes['data-word-spacing'] ?? '';
+          final extraWs = double.tryParse(wsStr) ?? 0.0;
+          final effectiveStyle = style.copyWith(
+            wordSpacing: extraWs > 0 ? extraWs : null,
+          );
+          if (ctx.node.nodes.isEmpty ||
+              (ctx.node.nodes.length == 1 && ctx.node.nodes.first is dom.Text)) {
+            return TextSpan(
+              text: ctx.node.text ?? '',
+              style: effectiveStyle,
+            );
+          }
+          final children = <InlineSpan>[];
+          for (final n in ctx.node.nodes) {
+            if (n is dom.Text) {
+              children.add(TextSpan(text: n.data, style: effectiveStyle));
+            } else if (n is dom.Element) {
+              final isItalic = n.localName == 'i' || n.localName == 'em';
+              final isBold = n.localName == 'b' || n.localName == 'strong';
+              children.add(TextSpan(
+                text: n.text,
+                style: effectiveStyle.copyWith(
+                  fontStyle: isItalic ? FontStyle.italic : null,
+                  fontWeight: isBold ? FontWeight.bold : null,
+                ),
+              ));
+            }
+          }
+          return TextSpan(children: children, style: effectiveStyle);
         },
       ),
       TagExtension(

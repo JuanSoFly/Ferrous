@@ -23,6 +23,7 @@ import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
+import 'package:html/dom.dart' as dom;
 
 class MobiContentViewer extends StatefulWidget {
   final int chapterIndex;
@@ -56,6 +57,16 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     String? textAlign,
     double? fontSize,
   }) {
+    final cleanHtml = html
+        .replaceAll(RegExp(r'(<body\b[^>]*>)\s+', caseSensitive: false), r'$1')
+        .replaceAll(RegExp(r'\s+(</body>)', caseSensitive: false), r'$1')
+        .replaceAll(
+          RegExp(
+            r'(</(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th)>)\s+(<(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th))',
+            caseSensitive: false,
+          ),
+          r'$1$2',
+        );
     final spacingPx = paragraphSpacing.toStringAsFixed(1);
     final alignRule = (textAlign != null && textAlign.isNotEmpty)
         ? 'text-align: $textAlign !important;'
@@ -66,6 +77,13 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
   margin-bottom: ${spacingPx}px !important;
   $alignRule
 }
+.page-continuation {
+  text-indent: 0px !important;
+  margin-top: 0px !important;
+}
+.ferrous-prose-split-tail {
+  margin-bottom: 0px !important;
+}
 ''';
     final baseRule = 'p { margin-top: 0px; margin-bottom: ${spacingPx}px; }\n$proseRule';
     final stylePattern = RegExp(
@@ -73,15 +91,15 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
       caseSensitive: false,
     );
 
-    if (!html.contains('id="epub-publisher-styles"') && !html.contains("id='epub-publisher-styles'")) {
+    if (!cleanHtml.contains('id="epub-publisher-styles"') && !cleanHtml.contains("id='epub-publisher-styles'")) {
       final injected = '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
-      if (html.contains('</head>')) {
-        return html.replaceFirst('</head>', '$injected</head>');
+      if (cleanHtml.contains('</head>')) {
+        return cleanHtml.replaceFirst('</head>', '$injected</head>');
       }
-      return '$injected$html';
+      return '$injected$cleanHtml';
     }
 
-    return html.replaceFirstMapped(stylePattern, (m) {
+    return cleanHtml.replaceFirstMapped(stylePattern, (m) {
       if (!usePublisherStyles) {
         return '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
       }
@@ -103,7 +121,7 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
           },
         );
       }
-      return '<style type="text/css" id="epub-publisher-styles">$baseRule\n$existingStyles</style>';
+      return '<style type="text/css" id="epub-publisher-styles">$existingStyles\n$baseRule</style>';
     });
   }
 
@@ -272,6 +290,17 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
             ? textureInfo.textColor
             : null);
 
+    final resolvedTextStyle = TextStyle(
+      fontSize: themeConfig.fontSize,
+      height: themeConfig.lineHeight,
+      fontFamily: fontData.fontFamily,
+      fontFamilyFallback: fontData.fontFamilyFallback,
+      fontWeight: FontWeight.values[
+          (themeConfig.fontWeight ~/ 100).clamp(0, 8)],
+      letterSpacing: themeConfig.wordSpacing,
+      color: effectiveTextColor,
+    );
+
     return Padding(
       key: ValueKey('mobi-html-pad-${widget.chapterIndex}'),
       padding: EdgeInsets.symmetric(horizontal: horizontalMargin),
@@ -281,9 +310,17 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
           for (int i = 0; i < chunks.length; i++)
             RepaintBoundary(
               key: ValueKey('mobi_chunk_rb_${widget.chapterIndex}_$i'),
-              child: MediaQuery(
-                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
-                child: Html(
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  textTheme: Theme.of(context).textTheme.copyWith(
+                    bodyMedium: resolvedTextStyle,
+                  ),
+                ),
+                child: DefaultTextStyle(
+                  style: resolvedTextStyle,
+                  child: MediaQuery(
+                    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+                    child: Html(
                   key: ValueKey('mobi-html-chunk-${widget.chapterIndex}-$i'),
                   data: chunks[i],
                   extensions: extensions,
@@ -415,6 +452,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
               ),
             ),
           ),
+        ),
+      ),
         ],
       ),
     );
@@ -591,6 +630,41 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
               height: 1.0,
             ),
           );
+        },
+      ),
+      TagExtension.inline(
+        tagsToExtend: {'page-split-tail'},
+        builder: (ctx) {
+          final style = ctx.style?.generateTextStyle() ?? const TextStyle();
+          final wsStr = ctx.attributes['data-word-spacing'] ?? '';
+          final extraWs = double.tryParse(wsStr) ?? 0.0;
+          final effectiveStyle = style.copyWith(
+            wordSpacing: extraWs > 0 ? extraWs : null,
+          );
+          if (ctx.node.nodes.isEmpty ||
+              (ctx.node.nodes.length == 1 && ctx.node.nodes.first is dom.Text)) {
+            return TextSpan(
+              text: ctx.node.text ?? '',
+              style: effectiveStyle,
+            );
+          }
+          final children = <InlineSpan>[];
+          for (final n in ctx.node.nodes) {
+            if (n is dom.Text) {
+              children.add(TextSpan(text: n.data, style: effectiveStyle));
+            } else if (n is dom.Element) {
+              final isItalic = n.localName == 'i' || n.localName == 'em';
+              final isBold = n.localName == 'b' || n.localName == 'strong';
+              children.add(TextSpan(
+                text: n.text,
+                style: effectiveStyle.copyWith(
+                  fontStyle: isItalic ? FontStyle.italic : null,
+                  fontWeight: isBold ? FontWeight.bold : null,
+                ),
+              ));
+            }
+          }
+          return TextSpan(children: children, style: effectiveStyle);
         },
       ),
       TagExtension(

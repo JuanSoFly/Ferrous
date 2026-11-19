@@ -1,6 +1,10 @@
 ## [1.4.3-alpha.3] - 2026-11-18
 
 ### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+- **Vertical Box Model & Typography Parsing**: Extended `CssRuleResolver` with 1-4 value box shorthand parsing (`_resolveBoxTerms`), resolving `marginTop`, `marginBottom`, `paddingTop`, and `paddingBottom` (in both `px` and `em`), alongside AST-level `font-weight` and `font-style` inheritance.
+- **Intrinsic Font Line Height & Safety Headroom**: Added `TextPainter` line-box probing in `SafeScreenPaginator` to measure true intrinsic font metrics, snapping canvas bounds with a `singleLineHeight + 4.0` headroom reserve to eliminate subpixel bottom overflow.
+- **Split Tail Justification (`<page-split-tail>`)**: Implemented dynamic inline `<page-split-tail>` tag extensions across EPUB, MOBI, and TXT viewers with computed word spacing to seamlessly expand broken lines to 100% block width when text is justified.
+- **Unified Viewer Text Styles**: Wrapped rendered HTML chunks in `Theme` and `DefaultTextStyle` inheriting `resolvedTextStyle` to ensure 1:1 metric parity between paginator measurements and screen rendering.
 - **Relative Font-Size Normalization**: Normalized relative `em` and `%` font sizes in publisher stylesheets directly against base `fontSize` (in px) across `EpubContentViewer` and `MobiContentViewer`, preventing nested inheritance double-scaling in `flutter_html`, and added `fontSize` to chunk cache keys.
 - **CSS AST Term & Expression Unpacking**: Enhanced `CssRuleResolver` to unpack compound expressions and resolve `PercentageTerm`, `EmTerm`, `RemTerm`, and `LengthTerm` (`pt`/`px`) directly for accurate margins, padding, and font scaling.
 - **Orphan Page Content Preservation**: Updated `SafeScreenPaginator` to merge trailing near-empty chapter slice HTML directly into the preceding page instead of dropping it, eliminating content loss.
