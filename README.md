@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/JuanSoFly/Ferrous/releases/latest"><img src="https://img.shields.io/github/v/release/JuanSoFly/Ferrous?style=flat-square&color=8C1D18" alt="Latest Release" /></a>
   <img src="https://img.shields.io/badge/Platform-Android%207.0%2B%20(API%2024%2B)-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform" />
-  <img src="https://img.shields.io/badge/Flutter-3.24%2B-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
+  <img src="https://img.shields.io/badge/Flutter-3.44%2B-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
   <img src="https://img.shields.io/badge/Rust-1.80%2B-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust" />
   <img src="https://img.shields.io/badge/Architecture-Flutter_Rust_Bridge_v2-black?style=flat-square" alt="FRB v2" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License: MIT" /></a>
@@ -35,6 +35,7 @@
   <a href="#overview">Overview</a> •
   <a href="#app-walkthrough">App Walkthrough</a> •
   <a href="#key-features">Key Features</a> •
+  <a href="#spatial-dimensions">Spatial Dimensions</a> •
   <a href="#supported-formats">Supported Formats</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#technical-specifications">Technical Specifications</a> •
@@ -59,9 +60,9 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 
 | Architecture | Target Devices | Release Asset Pattern | Download |
 | :--- | :--- | :--- | :--- |
-| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | `ferrous-*-arm64-v8a.apk` | [**Latest arm64-v8a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
-| **`armeabi-v7a`** | Legacy 32-bit Android devices | `ferrous-*-armeabi-v7a.apk` | [**Latest armeabi-v7a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
-| **`x86_64`** | Android emulators & ChromeOS | `ferrous-*-x86_64.apk` | [**Latest x86_64 APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`arm64-v8a`** | Modern 64-bit phones & tablets *(Recommended)* | `ferrous-v*-arm64-v8a.apk` | [**Latest arm64-v8a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`armeabi-v7a`** | Legacy 32-bit Android devices | `ferrous-v*-armeabi-v7a.apk` | [**Latest armeabi-v7a APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
+| **`x86_64`** | Android emulators & ChromeOS | `ferrous-v*-x86_64.apk` | [**Latest x86_64 APK**](https://github.com/JuanSoFly/Ferrous/releases/latest) |
 
 > [!TIP]
 > If you are unsure which build your phone requires, choose **`arm64-v8a`**, which works on virtually all modern Android devices.
@@ -74,7 +75,7 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 > sha256sum -c SHA256SUMS.txt
 >
 > # Or verify build provenance with the GitHub CLI (Sigstore attestation)
-> gh attestation verify ferrous-v1.4.0-arm64-v8a.apk --repo JuanSoFly/Ferrous
+> gh attestation verify ferrous-v1.4.3-arm64-v8a.apk --repo JuanSoFly/Ferrous
 > ```
 > *(F-Droid packaging metadata is also tracked in [`fdroid/com.juansofly.ferrous.yml`](fdroid/com.juansofly.ferrous.yml) for repository inclusion).*
 
@@ -82,10 +83,10 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 
 ## Overview
 
-Ferrous Reader is an open-source, offline-first mobile reading application designed for speed, low memory overhead, and typography control. By combining a reactive **Flutter** front-end (`package:ferrous`) with an asynchronous **Rust** backend (`crate:rust_lib_ferrous`) via `flutter_rust_bridge` (v2), Ferrous offloads computationally intensive workloads—such as PDF parsing, full-storage indexing, archive decompression, and text tokenization—to background native threads, keeping UI animations and page interactions fluid at 120Hz.
+Ferrous Reader is an open-source, offline-first mobile reading application designed for speed, minimal resource consumption, and granular typography control. By combining a reactive **Flutter** front-end (`package:ferrous`) with a high-throughput **Rust** engine (`crate:rust_lib_ferrous`) via `flutter_rust_bridge` (v2), Ferrous offloads computationally intensive workloads—such as PDFium rendering, full-storage indexing, archive decompression, and sentence tokenization—to background native threads, keeping UI animations and page interactions fluid at 120Hz.
 
 > [!NOTE]
-> Ferrous is fully offline. It operates with zero telemetry, zero analytics, and persists all library metadata, reading locations, and annotations locally on the device using Hive.
+> Ferrous is fully offline. It operates with zero telemetry, zero analytics, and persists all library metadata, reading locations, themes, and annotations locally on the device using Hive.
 
 ---
 
@@ -107,33 +108,51 @@ Experience Ferrous Reader's tactile 120Hz interface, native typography engine, a
 
 ## Key Features
 
-- **Screen-Fitted Paging Engine**: `SafeScreenPaginator` partitions reflowable EPUB and MOBI/AZW chapters into viewport-fitted `PageSlice` units using paragraph budgeting and dynamic text measurement. `EpubPagedViewer` and `MobiPagedViewer` use pure screen-sized `PageView.builder` widgets for both horizontal and vertical reading modes, with seamless chapter boundary swapping.
+- **Screen-Fitted Paging Engine**: `SafeScreenPaginator` partitions reflowable EPUB, MOBI/AZW, and TXT chapters into viewport-fitted `PageSlice` units using paragraph budgeting and dynamic text measurement. `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` use pure screen-sized `PageView.builder` widgets for both horizontal and vertical reading modes, with seamless chapter boundary swapping.
 - **Precision Typography & Offset Resolution**: Stateless `TextOffsetResolver` and centralized `ReaderTypographyMetrics` guarantee mathematical parity between layout measurement and rendering, mapping screen taps directly to exact character offsets for instant bookmarks, notes, and sentence-synchronized Text-to-Speech (TTS).
-- **Hardware-Accelerated PDF Engine**: Powered by Google PDFium via `pdfium-render`, generating thread-safe native texture bitmaps directly for continuous scrolling and rapid page flipping.
+- **Tactile Paper Textures & Book Crease**: 8 authentic paper textures (Japanese Washi, Vintage Parchment, Fine Laid Linen, Deckle Rag Folio, Heavy Kraft, Slate Ledger, Obsidian Velvet, Natural Paper) paired with realistic 3D book spine crease shadow simulation.
+- **Realistic 3D Page Turn & Curl**: Realistic physics curl (`RealisticPageTurn` and `AppleBooksPageCurl`) with hardware-accelerated shaders, ambient shadow simulation, and dynamic lighting.
+- **Split View / Dual Reader Screen**: Side-by-side reading (`SplitReaderScreen`) for comparing two books or studying dual documents with an adjustable split divider and quick document swap.
+- **Kindle Carta 1300 E-Ink Mode**: High-contrast monochrome theme with physical halftone scrims (GPU `ImageShader`), mechanical slider controls, and 0ms instant page transitions.
+- **Hardware-Accelerated PDF Engine**: Powered by Google PDFium via `pdfium-render`, generating thread-safe native texture bitmaps directly for continuous scrolling, rapid page flipping, and automatic whitespace detection.
 - **Native Comic & Manga Reader**: Direct Rust JPEG decoding (`jpeg-decoder`) with zero-cost chunk conversions, streaming ZIP/RAR (`unrar-rs`) extraction with pure-Rust crypto, interactive scrubber, and adaptive edge-color letterboxing.
-- **Blazing Fast File Indexing**: Scans device storage and Storage Access Framework (SAF) trees in seconds via parallel directory traversal in Rust (`walkdir`).
-- **Optimized Native Pipeline & Minimal Footprint**: Tokio-powered thread pool, memory-conscious LRU page slice and DOM chunk caches, and aggressive release optimizations (pure-Rust crypto, pruned features, and fat LTO).
-- **Kindle Carta 1300 E-Ink Mode & Tactile Textures**: High-contrast e-paper themes with physical halftone scrims (GPU `ImageShader`), 0ms animations, and tactile paper textures (Japanese Washi, Deckle Rag Folio, Obsidian Velvet).
-- **Material 3 Design & Private Storage**: Dynamic palette adaptation, customizable themes (OLED Midnight, Matcha, Nord Arctic, Kindle E-Ink), multi-directory SAF mapping, and zero-telemetry offline persistence.
+- **Synchronized Text-to-Speech (TTS)**: Multi-threaded text segmentation with sentence-lock tracking, 3 customizable highlight styles (`softPill`, `underline`, `classicClean`), adjustable speech rate and pitch, and non-blocking background workers.
+- **Instant Dictionary Lookup**: Built-in word definitions via the Free Dictionary API directly from the reader text selection toolbar.
+- **Blazing Fast File Indexing**: Scans device storage and Android Scoped Storage (SAF) trees in seconds via parallel directory traversal in Rust (`walkdir`).
+- **Privacy-First Offline Architecture**: Zero telemetry, zero analytics, private local Hive database persistence, and built-in diagnostic logging with clipboard export for frictionless bug reporting.
+
+---
+
+## Spatial Dimensions
+
+Ferrous introduces **Spatial Dimensions**—5 distinct structural and aesthetic archetypes that transform navigation, layout density, and interface geometry across the entire application:
+
+| Dimension | Navigation Style | Library Presentation | Design Characteristics |
+| :--- | :--- | :--- | :--- |
+| **Modernist** | Bottom Glassmorphic Bar | Staggered Masonry Grid | Contemporary fluid design with soft rounded cards and standard navigation. |
+| **Floating Island** | Detached Capsule Dock | Bento Showcase & Hero | Translucent floating pill dock, organic squircles, and magazine-style bento cards. |
+| **Cyber Terminal** | Top Command HUD | Monospace Telemetry | Sharp industrial geometry, monospace data chips, ASCII meters, and open bottom view. |
+| **Athenaeum** | Classical Ribbon Navigation | Embossed Index Spines | Library card catalog layout with authentic leather spine textures and Roman markers. |
+| **Compact Slate** | Micro Dock | Zero-Shadow List | Flat, ultra-dense single-row list designed for distraction-free reading and fast browsing. |
 
 ---
 
 ## Supported Formats
 
-| Format | Parsing Engine | Rendering Pipeline | Capabilities |
-| :--- | :--- | :--- | :--- |
-| **PDF** (`.pdf`) | Rust (`pdfium-render`) | Native texture bitmaps | Fast page flipping, text selection, TTS extraction, continuous scroll |
-| **EPUB** (`.epub`) | Dart (`epubx`) + Rust cover extractor | Native Flutter widgets (`SafeScreenPaginator`, `flutter_html`) | Screen-fitted paged reading, custom typography, dynamic hyphenation, CSS themes |
-| **MOBI / AZW / AZW3** (`.mobi`, `.azw`, `.azw3`) | Rust PalmDOC/PDB engine (`rust_lib_ferrous`) | Native Flutter widgets (`SafeScreenPaginator`, `flutter_html`) | Chapter navigation, embedded images, metadata extraction, paged & continuous modes |
-| **Comic & Manga Archives** (`.cbz`, `.cbr`, `.zip`, `.rar`) | Rust (`zip`, `unrar-rs`, `jpeg-decoder`) | Canvas image stream | Streaming archive extraction, direct Rust JPEG decoding, pinch-to-zoom, adaptive edge color matching |
-| **Plain Text** (`.txt`) | Rust (`txt`) | Rich HTML & layout widgets | Formatted indentation, lists, checkboxes, and Mermaid diagram rendering |
-| **Word Documents** (`.docx`) | Rust (`docx-rs`) | Structured HTML widgets | Document flow, paragraph formatting, and styled table layouts |
+| Format | Parsing Engine | Rendering Pipeline | TTS Support | Capabilities |
+| :--- | :--- | :--- | :---: | :--- |
+| **PDF** (`.pdf`) | Rust (`pdfium-render`) | Native texture bitmaps | Yes | Fast page flipping, text selection, TTS extraction, continuous scroll, whitespace detection |
+| **EPUB** (`.epub`) | Dart (`epubx`) + Rust cover extractor | Native Flutter widgets (`SafeScreenPaginator`, `flutter_html`) | Yes | Screen-fitted paged reading, custom typography, dynamic hyphenation, CSS themes |
+| **MOBI / AZW / AZW3** (`.mobi`, `.azw`, `.azw3`) | Rust PalmDOC/PDB engine (`rust_lib_ferrous`) | Native Flutter widgets (`SafeScreenPaginator`, `flutter_html`) | Yes | Chapter navigation, embedded images, metadata extraction, paged & continuous modes |
+| **Comic & Manga Archives** (`.cbz`, `.cbr`, `.zip`, `.rar`) | Rust (`zip`, `unrar-rs`, `jpeg-decoder`) | Canvas image stream | No | Streaming archive extraction, direct Rust JPEG decoding, pinch-to-zoom, adaptive edge colors |
+| **Plain Text** (`.txt`) | Rust (`txt`) | Rich HTML & layout widgets | Yes | Auto encoding detection (`chardetng`, `encoding_rs`), formatted indentation, lists |
+| **Word Documents** (`.docx`) | Rust (`docx-rs`) | Structured HTML widgets | Yes | Document flow, paragraph formatting, and styled table layouts |
 
 ---
 
 ## Architecture
 
-Ferrous utilizes a hybrid boundary model where Flutter handles UI composition and state presentation, while Rust manages high-throughput, latency-critical operations.
+Ferrous utilizes a hybrid boundary model where Flutter handles UI composition, state presentation, and gestures, while Rust manages high-throughput, latency-critical operations.
 
 ```mermaid
 flowchart LR
@@ -143,7 +162,7 @@ flowchart LR
 
     PDF["PDFium Engine<br/>(PDF Rendering)"]
     SCAN["walkdir<br/>(Storage Scanner)"]
-    PARSERS["Format Decoders<br/>(PalmDOC, CBZ, CBR, DOCX)"]
+    PARSERS["Format Decoders<br/>(PalmDOC, CBZ, CBR, DOCX, TXT)"]
     TTS["TTS Pipeline<br/>(Text Segmentation)"]
 
     UI <===>|"Type-Safe FFI"| FFI
@@ -158,14 +177,16 @@ flowchart LR
 ### Separation of Concerns
 
 - **Flutter (Frontend)**:
-  - Material 3 user interface with dynamic theme switching and smooth gesture interactions.
+  - Material 3 user interface with dynamic theme switching and 5 spatial layout dimensions.
   - Screen-fitted paged reader and continuous scroll modes backed by `SafeScreenPaginator`.
   - Hive NoSQL database for instant bookmarking, reading progress tracking, and collection management.
+  - Text selection toolbar with annotation highlighting, notes, and instant dictionary lookups.
 - **Rust (Backend)**:
   - Multi-threaded, non-blocking I/O operations powered by `tokio`.
   - PDFium binding management with safe, asynchronous document loading and page caching.
   - Direct JPEG decoding and zero-copy archive decompression (`zip`, `unrar-rs` with pure-Rust crypto).
-  - Text segmentation and tokenization for sentence-level TTS highlighting.
+  - Text segmentation and tokenization for sentence-level TTS highlighting across reflowable formats.
+  - Automated character encoding detection (`chardetng` and `encoding_rs`) for plain text files.
 
 ---
 
@@ -173,16 +194,17 @@ flowchart LR
 
 | Component | Technology | Role & Details |
 | :--- | :--- | :--- |
-| **Target OS** | Android 7.0+ (API Level 24+) | Supports `arm64-v8a`, `armeabi-v7a`, `x86_64` |
-| **Frontend Framework** | Flutter 3.24+ (Dart 3.5+) | `package:ferrous`: Material 3 UI, custom renderers, gesture recognizers |
+| **Target OS** | Android 7.0+ (API Level 24+) | Compile SDK 36; supports `arm64-v8a`, `armeabi-v7a`, `x86_64` |
+| **Frontend Framework** | Flutter 3.44+ (Dart SDK ^3.5.4) | `package:ferrous`: Material 3 UI, custom renderers, gesture recognizers |
 | **Backend Engine** | Rust 1.80+ (2021 Edition) | `crate:rust_lib_ferrous`: High-performance compute engine and file I/O |
 | **FFI Layer** | `flutter_rust_bridge` 2.11.1 | Auto-generated, type-safe foreign function interface |
-| **PDF Renderer** | Google PDFium (`pdfium-render`) | Native C++ rendering via dynamic binary loading |
-| **Comic & Archive Engine** | `zip`, `unrar-rs`, `jpeg-decoder` | Zero-copy streaming decompression with pure-Rust crypto and direct JPEG decoding |
+| **PDF Renderer** | Google PDFium (`pdfium-render` 0.8.37) | Native C++ rendering via dynamic binary loading (`libpdfium.so`) |
+| **Comic & Archive Engine** | `zip` 2.2, `unrar-rs` 0.15.0, `jpeg-decoder` 0.3 | Zero-copy streaming decompression with pure-Rust crypto and direct JPEG decoding |
+| **Text Processing** | `chardetng`, `encoding_rs`, `hyphenatorx` | Auto encoding detection and multilingual hyphenation dictionary |
 | **Binary Optimization** | Fat LTO (`lto = "fat"`), strip symbols, panic=abort | Aggressive dead-code elimination, minimized APK binary footprint |
-| **Database** | Hive (`hive_flutter`) | Fast, lightweight embedded key-value document store |
+| **Database** | Hive (`hive_flutter` 1.1.0) | Fast, lightweight embedded key-value document store |
 | **Concurrency** | `tokio` (Rust) | Multi-worker thread pool executing off the UI isolate |
-| **File Access** | Android SAF + Rust `walkdir` | Scoped storage compliance with rapid recursive traversal |
+| **File Access** | Android SAF + Rust `walkdir` | Scoped storage compliance (`androidx.documentfile`) with rapid recursive traversal |
 
 ---
 
@@ -190,7 +212,7 @@ flowchart LR
 
 Before building Ferrous, ensure the following tools are installed on your host system:
 
-- **Flutter SDK**: `3.24.0` or higher ([Installation Guide](https://docs.flutter.dev/get-started/install))
+- **Flutter SDK**: `3.44.0` or higher ([Installation Guide](https://docs.flutter.dev/get-started/install))
 - **Rust Toolchain**: `1.80.0` or higher (`stable`)
   ```bash
   rustup default stable
@@ -210,7 +232,7 @@ Before building Ferrous, ensure the following tools are installed on your host s
 
 ## Getting Started
 
-Follow these steps to set up the development environment, compile dependencies, and run Ferrous on an Android device or emulator.
+Follow these steps to set up the development environment, compile dependencies, and run Ferrous on an Android device or emulator:
 
 ### 1. Clone the Repository
 
@@ -276,14 +298,13 @@ To generate optimized Android production packages:
 Generating separate APKs per ABI significantly reduces download sizes. Production builds apply code obfuscation, symbol splitting, and icon tree-shaking:
 
 ```bash
-flutter build apk --split-per-abi --release --obfuscate --split-debug-info=build/app/outputs/symbols
+flutter build apk --split-per-abi --release --obfuscate --split-debug-info=build/app/outputs/symbols --tree-shake-icons
 ```
 
-Outputs are generated in:
-`build/app/outputs/flutter-apk/`
-- `ferrous-v1.4.0-arm64-v8a.apk` (modern 64-bit devices)
-- `ferrous-v1.4.0-armeabi-v7a.apk` (legacy 32-bit devices)
-- `ferrous-v1.4.0-x86_64.apk` (emulators & ChromeOS)
+Outputs are generated in `build/app/outputs/flutter-apk/`:
+- `ferrous-v1.4.3-arm64-v8a.apk` (modern 64-bit devices)
+- `ferrous-v1.4.3-armeabi-v7a.apk` (legacy 32-bit devices)
+- `ferrous-v1.4.3-x86_64.apk` (emulators & ChromeOS)
 
 ### Android App Bundle (AAB)
 
@@ -302,22 +323,29 @@ Output:
 
 ```text
 Ferrous/
-├── .github/workflows/       # CI/CD lint & automated release pipelines
+├── .github/workflows/       # CI/CD lint, release packaging & download stats
 ├── android/                 # Android native project & SAF integration
 │   └── app/src/main/jniLibs # Target ABI native libraries (libpdfium.so)
-├── assets/                  # Application launcher icons & visual assets
+├── assets/                  # Launcher icons, showcase animations & visuals
 ├── docs/                    # Technical guides (PDFium setup, architecture notes)
-├── lib/                     # Flutter / Dart presentation layer (package:ferrous)
-│   ├── app/                 # Application shell & routing
-│   ├── core/                # SafeScreenPaginator, models, and shared utilities
-│   ├── data/                # Repositories & Hive database services
-│   ├── features/            # Feature modules (library, reader, collections, settings)
-│   └── src/rust/            # Generated Dart FFI bridge code
+├── fdroid/                  # F-Droid packaging metadata (com.juansofly.ferrous.yml)
+├── lib/                     # Flutter presentation & logic layer (package:ferrous)
+│   ├── app/                 # Application shell & bottom navigation
+│   ├── core/                # SafeScreenPaginator, models, dimensions & services
+│   ├── data/                # Hive adapters, repositories, SAF & TTS services
+│   ├── features/            # Feature modules
+│   │   ├── annotations/     # Notes & centralized Annotations Hub
+│   │   ├── collections/     # Custom shelves & book grouping
+│   │   ├── dictionary/      # In-app word definitions dialog
+│   │   ├── library/         # Library carousel, grid views & book cards
+│   │   ├── reader/          # Format readers (PDF, EPUB, MOBI, CBZ, TXT, DOCX, Split)
+│   │   └── settings/        # Themes, spatial dimensions & library locations
+│   └── src/rust/            # Auto-generated Dart FFI bridge code
 ├── rust/                    # Native Rust compute crate (crate:rust_lib_ferrous)
 │   ├── Cargo.toml           # Crate dependencies & fat LTO release profile
 │   └── src/api/             # Rust exposed API modules (PDF, PalmDOC, CBZ, TXT, DOCX, scan)
 ├── rust_builder/            # Cargokit integration layer for cross-compiling Rust
-└── scripts/                 # Automation scripts (setup-pdfium-android.sh)
+└── scripts/                 # Automation scripts (setup-pdfium-android.sh, stats graph)
 ```
 
 ---
@@ -336,6 +364,14 @@ If you modify files under `rust/src/api/`, re-run the code generator to update t
 ```bash
 flutter_rust_bridge_codegen generate
 ```
+
+### Diagnostic Logging & Issue Reporting
+
+If you encounter unexpected errors or format parsing issues:
+
+1. Open **Settings > Diagnostic Logs** inside the app to inspect the runtime trace.
+2. Select **Feedback / Report Issue** to copy the sanitized diagnostic stack directly to your clipboard.
+3. Paste the diagnostic trace into the [GitHub Issues](https://github.com/JuanSoFly/Ferrous/issues) report template for expedited triage.
 
 ---
 
