@@ -255,11 +255,19 @@ class SafeScreenPaginator {
               fontSize: fontSize * fontScale,
               fontWeight: FontWeight.bold,
             )
-          : baseStyle.copyWith(
-              fontSize: fontScale == 1.0 ? fontSize : fontSize * fontScale,
-              fontWeight: isBold ? FontWeight.bold : fontWeight,
-              fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
-            );
+          : isPre
+              ? baseStyle.copyWith(
+                  fontFamily: 'monospace',
+                  fontFamilyFallback: const ['monospace'],
+                  fontSize: fontScale == 1.0 ? fontSize : fontSize * fontScale,
+                  fontWeight: isBold ? FontWeight.bold : fontWeight,
+                  fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                )
+              : baseStyle.copyWith(
+                  fontSize: fontScale == 1.0 ? fontSize : fontSize * fontScale,
+                  fontWeight: isBold ? FontWeight.bold : fontWeight,
+                  fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                );
 
       textPainter.text = TextSpan(
         style: effectiveStyle,
@@ -339,12 +347,12 @@ class SafeScreenPaginator {
 
       final cleanFragment = wellFormedFragmentHtml
           .trim()
-          .replaceAll(
+          .replaceAllMapped(
             RegExp(
               r'(</(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th)>)\s+(<(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th))',
               caseSensitive: false,
             ),
-            r'$1$2',
+            (m) => '${m[1]}${m[2]}',
           );
 
       final sliceHtml =
@@ -367,7 +375,7 @@ class SafeScreenPaginator {
       for (final el in openAncestors) {
         final tag = el.localName ?? 'div';
         final attrs = _serializeAttributes(el, stripId: true);
-        currentBuffer.write('<$tag$attrs style="margin-top: 0px; padding-top: 0px;">');
+        currentBuffer.write('<$tag$attrs style="margin-top: 0px !important; padding-top: 0px !important; margin-bottom: 0px !important; padding-bottom: 0px !important;">');
       }
     }
 
@@ -389,7 +397,8 @@ class SafeScreenPaginator {
           currentBuffer.write('<span id="$escapedId"></span>');
         }
 
-        final containerMargins = cssRules.isNotEmpty
+        final isPageContainer = tag == 'article' || tag == 'section' || tag == 'main';
+        final containerMargins = (!isPageContainer && cssRules.isNotEmpty)
             ? CssRuleResolver.resolveVerticalMargins(node, cssRules, baseFontSize: fontSize)
             : (top: 0.0, bottom: 0.0, hasExplicitTop: false, hasExplicitBottom: false);
 
@@ -398,7 +407,11 @@ class SafeScreenPaginator {
         }
 
         final containerAttrs = _serializeAttributes(node, stripId: false);
-        currentBuffer.write('<$tag$containerAttrs>');
+        if (isPageContainer) {
+          currentBuffer.write('<$tag$containerAttrs style="margin: 0px !important; padding: 0px !important;">');
+        } else {
+          currentBuffer.write('<$tag$containerAttrs>');
+        }
         openAncestors.add(node);
 
         processNodes(node.nodes);
@@ -447,7 +460,9 @@ class SafeScreenPaginator {
               ancestors: openAncestors,
             )
           : 0.0;
-      final effectiveBlockWidth = math.max(100.0, availableWidth - lateralInsets);
+      final isInsideList = openAncestors.any((a) => a.localName == 'ul' || a.localName == 'ol') || tag == 'li';
+      final listIndent = isInsideList ? 24.0 : 0.0;
+      final effectiveBlockWidth = math.max(100.0, availableWidth - lateralInsets - listIndent);
 
       final verticalMargins = cssRules.isNotEmpty
           ? CssRuleResolver.resolveVerticalMargins(targetElement, cssRules, baseFontSize: fontSize)
@@ -462,9 +477,11 @@ class SafeScreenPaginator {
           ? 0.0
           : (isProse
               ? paragraphSpacing
-              : (verticalMargins.hasExplicitBottom
-                  ? verticalMargins.bottom
-                  : (tag == 'p' ? paragraphSpacing : 0.0)));
+              : (tag == 'li'
+                  ? 4.0
+                  : (verticalMargins.hasExplicitBottom
+                      ? verticalMargins.bottom
+                      : ((tag == 'p' || tag == 'pre' || tag == 'ul' || tag == 'ol') ? paragraphSpacing : 0.0))));
 
       double effectiveFontScale = 1.0;
       FontStyle? inheritedFontStyle;
@@ -541,9 +558,11 @@ class SafeScreenPaginator {
       if (hasImage) {
         blockHeight = resolveImageHeight(targetElement);
       } else if (isHeading) {
-        final scale = ReaderTypographyMetrics.headingScale(tag);
-        final topMargin = ReaderTypographyMetrics.headingTopMargin(tag, true, fontSize) + verticalMargins.top;
-        final bottomMargin = ReaderTypographyMetrics.headingBottomMargin(tag, true, paragraphSpacing) + verticalMargins.bottom;
+        final scale = (cssRules.isNotEmpty && resolvedRule?.fontSizeScale != null)
+            ? resolvedRule!.fontSizeScale!
+            : ReaderTypographyMetrics.headingScale(tag);
+        final topMargin = 0.0;
+        final bottomMargin = paragraphSpacing;
         blockHeight = measureTextHeight(
           nodeText,
           fontScale: scale,
@@ -603,7 +622,7 @@ class SafeScreenPaginator {
       }
 
       // Multi-page paragraph/block splitting
-      final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div') && !hasImage;
+      final canSplit = (tag == 'p' || tag == 'blockquote' || tag == 'div' || tag == 'pre' || tag == 'li') && !hasImage;
 
       if (canSplit) {
         final double blockLineHeight = (fontSize * cssFontScale) * lineHeight;
@@ -628,11 +647,18 @@ class SafeScreenPaginator {
             : textAlign;
 
         final bool hasIndent = !isAnonymous && paragraphIndent && targetElement.querySelector('p-indent') != null;
-        final blockStyle = baseStyle.copyWith(
-          fontSize: cssFontScale == 1.0 ? fontSize : fontSize * cssFontScale,
-          fontWeight: isBold ? FontWeight.bold : fontWeight,
-          fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
-        );
+        final blockStyle = tag == 'pre'
+            ? baseStyle.copyWith(
+                fontFamily: 'monospace',
+                fontSize: cssFontScale == 1.0 ? fontSize : fontSize * cssFontScale,
+                fontWeight: isBold ? FontWeight.bold : fontWeight,
+                fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+              )
+            : baseStyle.copyWith(
+                fontSize: cssFontScale == 1.0 ? fontSize : fontSize * cssFontScale,
+                fontWeight: isBold ? FontWeight.bold : fontWeight,
+                fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+              );
         final brCount = targetElement.querySelectorAll('br').length;
         final hasNbsp = targetElement.text.contains('\u00A0') || targetElement.innerHtml.contains('&nbsp;');
 
@@ -1163,7 +1189,7 @@ class SafeScreenPaginator {
       }
 
       // 3. Layout remaining text with TextPainter to find how many full lines fit
-      final bool applyIndentThisPart = isFirstPart && hasIndent;
+      final bool applyIndentThisPart = isFirstPart && hasIndent && !isPre;
       textPainter.text = TextSpan(
         style: textStyle,
         children: [

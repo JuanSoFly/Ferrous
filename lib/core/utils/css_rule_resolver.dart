@@ -717,10 +717,35 @@ class CssRuleResolver {
       fontStyle = FontStyle.normal;
     }
 
+    double? fontSizeScale;
+    final fsMatch = RegExp(r'font-size\s*:\s*([^;]+)').firstMatch(lower);
+    if (fsMatch != null) {
+      final raw = fsMatch.group(1)!.trim();
+      final numMatch = RegExp(r'^([\d.]+)(%|em|rem|px|pt)?').firstMatch(raw);
+      if (numMatch != null) {
+        final val = double.tryParse(numMatch.group(1)!);
+        final unit = numMatch.group(2) ?? '';
+        if (val != null) {
+          if (unit == '%') {
+            fontSizeScale = (val / 100.0).clamp(0.5, 3.0);
+          } else if (unit == 'em' || unit == 'rem') {
+            fontSizeScale = val.clamp(0.5, 3.0);
+          } else if (unit == 'px') {
+            fontSizeScale = (val / 16.0).clamp(0.5, 3.0);
+          } else if (unit == 'pt') {
+            fontSizeScale = (val * 1.333 / 16.0).clamp(0.5, 3.0);
+          } else {
+            fontSizeScale = val.clamp(0.5, 3.0);
+          }
+        }
+      }
+    }
+
     return ResolvedCssRule(
       textAlign: textAlign,
       fontWeight: fontWeight,
       fontStyle: fontStyle,
+      fontSizeScale: fontSizeScale,
       marginLeft: marginLeft,
       marginRight: marginRight,
       marginTop: marginTop,

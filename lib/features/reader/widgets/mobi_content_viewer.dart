@@ -56,22 +56,48 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     required double paragraphSpacing,
     String? textAlign,
     double? fontSize,
+    double? lineHeight,
+    String? fontFamily,
   }) {
     final cleanHtml = html
-        .replaceAll(RegExp(r'(<body\b[^>]*>)\s+', caseSensitive: false), r'$1')
-        .replaceAll(RegExp(r'\s+(</body>)', caseSensitive: false), r'$1')
-        .replaceAll(
+        .replaceAllMapped(
+          RegExp(r'(<body\b[^>]*>)\s+', caseSensitive: false),
+          (m) => m[1]!,
+        )
+        .replaceAllMapped(
+          RegExp(r'\s+(</body>)', caseSensitive: false),
+          (m) => m[1]!,
+        )
+        .replaceAllMapped(
           RegExp(
             r'(</(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th)>)\s+(<(?:p|div|h[1-6]|blockquote|li|ul|ol|table|tr|td|th))',
             caseSensitive: false,
           ),
-          r'$1$2',
+          (m) => '${m[1]}${m[2]}',
         );
     final spacingPx = paragraphSpacing.toStringAsFixed(1);
     final alignRule = (textAlign != null && textAlign.isNotEmpty)
         ? 'text-align: $textAlign !important;'
         : '';
     final proseRule = '''
+html, body {
+  margin: 0px !important;
+  padding: 0px !important;
+}
+article, section, main {
+  margin: 0px !important;
+  padding: 0px !important;
+}
+ul, ol {
+  margin-top: 0px !important;
+  margin-bottom: ${spacingPx}px !important;
+  padding-left: 24px !important;
+}
+li {
+  margin-top: 0px !important;
+  margin-bottom: 4px !important;
+  padding: 0px !important;
+}
 .ferrous-prose {
   margin-top: 0px !important;
   margin-bottom: ${spacingPx}px !important;
@@ -83,6 +109,19 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
 }
 .ferrous-prose-split-tail {
   margin-bottom: 0px !important;
+}
+pre {
+  margin-top: 0px !important;
+  margin-bottom: ${spacingPx}px !important;
+  padding: 0px !important;
+  font-family: monospace;
+}
+code {
+  font-family: monospace;
+}
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 0px !important;
+  margin-bottom: ${spacingPx}px !important;
 }
 ''';
     final baseRule = 'p { margin-top: 0px; margin-bottom: ${spacingPx}px; }\n$proseRule';
@@ -104,6 +143,14 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
         return '<style type="text/css" id="epub-publisher-styles">$baseRule</style>';
       }
       var existingStyles = m.group(1) ?? '';
+      // Strip font-family from body and line-height so the user's selected reader font and line-height (passed via Style) are respected
+      existingStyles = existingStyles.replaceAllMapped(
+        RegExp(r'(body\s*\{[^}]*?)font-family\s*:\s*[^;]+;', caseSensitive: false),
+        (match) => match.group(1)!,
+      ).replaceAll(
+        RegExp(r'line-height\s*:\s*[^;]+;', caseSensitive: false),
+        '',
+      );
       if (fontSize != null && fontSize > 0) {
         existingStyles = existingStyles.replaceAllMapped(
           RegExp(r'font-size\s*:\s*([0-9.]+)\s*em\b', caseSensitive: false),
@@ -134,6 +181,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
     required double paragraphSpacing,
     String? textAlign,
     required double fontSize,
+    double? lineHeight,
+    String? fontFamily,
     required List<Annotation> annotations,
   }) {
     if (widget.pageSlice != null) {
@@ -143,6 +192,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
         paragraphSpacing: paragraphSpacing,
         textAlign: textAlign,
         fontSize: fontSize,
+        lineHeight: lineHeight,
+        fontFamily: fontFamily,
       );
     }
 
@@ -151,7 +202,9 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
         ? '0'
         : annotations.map((a) => '${a.id}:${a.color}').join(',');
     final alignSig = textAlign ?? 'default';
-    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$fontSize:$alignSig:$annotationSig';
+    final lhSig = lineHeight != null ? lineHeight.toStringAsFixed(2) : 'default';
+    final fontSig = fontFamily ?? 'default';
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$fontSize:$alignSig:$lhSig:$fontSig:$annotationSig';
 
     final cached = _chunkCache[key];
     if (cached != null) return cached;
@@ -164,6 +217,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
       paragraphSpacing: paragraphSpacing,
       textAlign: textAlign,
       fontSize: fontSize,
+      lineHeight: lineHeight,
+      fontFamily: fontFamily,
     );
 
     // 2. Inject annotation highlights into DOM FIRST (so clean text matches exactly before hyphenation)
@@ -220,6 +275,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
         paragraphSpacing: themeConfig.paragraphSpacing,
         textAlign: themeConfig.textAlign,
         fontSize: themeConfig.fontSize,
+        lineHeight: themeConfig.lineHeight,
+        fontFamily: themeConfig.fontFamily,
         annotations: annotations,
       );
       displayChunks.add(formatted);
@@ -423,7 +480,23 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
           "blockquote": Style(margin: null, color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
-          "li": Style(color: effectiveTextColor, backgroundColor: isEInk ? Colors.transparent : null),
+          "pre": Style(
+            fontFamily: "monospace",
+            fontFamilyFallback: const ["monospace"],
+            fontSize: FontSize(themeConfig.fontSize),
+            lineHeight: LineHeight(themeConfig.lineHeight),
+            margin: pagedOnlyMargin,
+            padding: HtmlPaddings.zero,
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
+          "ul": Style(margin: pagedOnlyMargin, padding: HtmlPaddings.only(left: 24.0)),
+          "ol": Style(margin: pagedOnlyMargin, padding: HtmlPaddings.only(left: 24.0)),
+          "li": Style(
+            margin: Margins.only(bottom: 4.0),
+            color: effectiveTextColor,
+            backgroundColor: isEInk ? Colors.transparent : null,
+          ),
           "img": Style(
             width: Width(100, Unit.percent),
             height: Height.auto(),
@@ -834,6 +907,8 @@ class _MobiContentViewerState extends State<MobiContentViewer> {
               paragraphSpacing: themeConfig.paragraphSpacing,
               textAlign: themeConfig.textAlign,
               fontSize: themeConfig.fontSize,
+              lineHeight: themeConfig.lineHeight,
+              fontFamily: themeConfig.fontFamily,
               annotations: chapterAnnotations,
             ));
           }

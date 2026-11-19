@@ -9,6 +9,18 @@ import 'package:xml/xml.dart' as xml;
 import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 import 'package:ferrous/core/utils/css_rule_resolver.dart';
 
+extension _XmlLocalHelper on xml.XmlNode {
+  Iterable<xml.XmlElement> findDescendantsByLocal(String localName) {
+    final lower = localName.toLowerCase();
+    return descendantElements.where((e) => e.name.local.toLowerCase() == lower);
+  }
+
+  Iterable<xml.XmlElement> findChildrenByLocal(String localName) {
+    final lower = localName.toLowerCase();
+    return childElements.where((e) => e.name.local.toLowerCase() == lower);
+  }
+}
+
 class EpubTocAnchor {
   final String title;
   final String targetPath;
@@ -370,7 +382,7 @@ class EpubFallbackParser {
 
     // 1. Try NCX document (EPUB 2 / EPUB 3 backwards-compatibility)
     String? ncxHref;
-    for (final spine in opfDoc.findAllElements('spine')) {
+    for (final spine in opfDoc.findDescendantsByLocal('spine')) {
       final tocId = spine.getAttribute('toc');
       if (tocId != null && manifest.containsKey(tocId)) {
         ncxHref = manifest[tocId]?.href;
@@ -400,10 +412,10 @@ class EpubFallbackParser {
           final ncxDir = _directoryOf(resolvedNcxPath);
           int autoOrder = 0;
 
-          for (final navPoint in ncxDoc.findAllElements('navPoint')) {
+          for (final navPoint in ncxDoc.findDescendantsByLocal('navPoint')) {
             String? title;
-            for (final navLabel in navPoint.findElements('navLabel')) {
-              for (final textEl in navLabel.findElements('text')) {
+            for (final navLabel in navPoint.findChildrenByLocal('navLabel')) {
+              for (final textEl in navLabel.findChildrenByLocal('text')) {
                 final t = textEl.innerText.trim();
                 if (t.isNotEmpty) {
                   title = t;
@@ -413,7 +425,7 @@ class EpubFallbackParser {
               if (title != null) break;
             }
 
-            final contentEls = navPoint.findElements('content');
+            final contentEls = navPoint.findChildrenByLocal('content').toList();
             final contentEl = contentEls.isNotEmpty ? contentEls.first : null;
             final src = contentEl?.getAttribute('src');
             final playOrderAttr = int.tryParse(navPoint.getAttribute('playOrder') ?? '');
@@ -669,7 +681,7 @@ class EpubFallbackParser {
   }
 
   static String? _readRootfilePath(xml.XmlDocument containerDoc) {
-    for (final element in containerDoc.findAllElements('rootfile')) {
+    for (final element in containerDoc.findDescendantsByLocal('rootfile')) {
       final fullPath =
           element.getAttribute('full-path') ?? element.getAttribute('fullpath');
       if (fullPath != null && fullPath.trim().isNotEmpty) {
@@ -682,7 +694,7 @@ class EpubFallbackParser {
   static Map<String, _ManifestItem> _readManifest(xml.XmlDocument opfDoc) {
     final items = <String, _ManifestItem>{};
 
-    for (final item in opfDoc.findAllElements('item')) {
+    for (final item in opfDoc.findDescendantsByLocal('item')) {
       final id = item.getAttribute('id');
       final href = item.getAttribute('href');
       if (id == null || href == null) continue;
@@ -705,8 +717,8 @@ class EpubFallbackParser {
   static List<String> _readSpineIdRefs(xml.XmlDocument opfDoc) {
     final ids = <String>[];
 
-    for (final spine in opfDoc.findAllElements('spine')) {
-      for (final itemref in spine.findAllElements('itemref')) {
+    for (final spine in opfDoc.findDescendantsByLocal('spine')) {
+      for (final itemref in spine.findDescendantsByLocal('itemref')) {
         final idref = itemref.getAttribute('idref');
         if (idref != null && idref.trim().isNotEmpty) {
           ids.add(idref.trim());

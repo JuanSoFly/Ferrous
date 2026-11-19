@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -346,6 +347,27 @@ class EpubChapterController extends ChangeNotifier {
       try {
         final book = await EpubReader.readBook(bytes);
         rawChapters = _flattenAndDeduplicateChapters(book.Chapters ?? []);
+        if (book.Content?.Images != null && book.Content!.Images!.isNotEmpty) {
+          final images = book.Content!.Images!;
+          for (final ch in rawChapters) {
+            var html = ch.HtmlContent ?? '';
+            if (html.contains('<img') || html.contains('<image')) {
+              for (final entry in images.entries) {
+                final key = entry.key;
+                final fileName = key.split('/').last;
+                final imgBytes = entry.value.Content;
+                if (imgBytes != null && imgBytes.isNotEmpty) {
+                  final mime = fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                  final b64 = 'data:$mime;base64,${base64Encode(imgBytes)}';
+                  html = html.replaceAll(key, b64);
+                  html = html.replaceAll('../$key', b64);
+                  html = html.replaceAll(fileName, b64);
+                }
+              }
+              ch.HtmlContent = html;
+            }
+          }
+        }
       } catch (fallbackError) {
         throw Exception('EPUB parsing failed. Fallback also failed: $fallbackError');
       }

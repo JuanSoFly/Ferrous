@@ -1,6 +1,13 @@
 ## [1.4.3-alpha.3] - 2026-11-18
 
 ### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+- **CSS Font-Size Scale Parsing**: Extended `CssRuleResolver` with unit-aware `font-size` parsing (`%`, `em`, `rem`, `px`, `pt`), resolving dynamic `fontSizeScale` (clamped 0.5x–3.0x) on `ResolvedCssRule`.
+- **Preformatted Code `<pre>` Monospace Support**: Added monospace font family fallback and proportional text scaling for `<pre>` elements in `SafeScreenPaginator`, `EpubContentViewer`, and `MobiContentViewer`.
+- **Semantic Container Margin Neutralization**: Zeroed out external margins and paddings (`!important`) on `<article>`, `<section>`, and `<main>` tags in `SafeScreenPaginator` to prevent unwanted outer margin offset accumulation.
+- **Ancestor Margin Reset Across Page Slices**: Enforced zero margins and paddings with `!important` on open ancestor tags across page breaks to maintain strict vertical alignment continuity.
+- **Reader Font-Family & Line-Height Priority**: Stripped publisher `body` `font-family` and `line-height` declarations in `EpubContentViewer` and `MobiContentViewer` to ensure user typography choices take full precedence.
+- **Typography Cache Invalidation**: Added `fontFamily` and `lineHeight` parameters to HTML formatting and chunk cache key signatures across EPUB and MOBI viewers to prevent stale typography renders.
+- **List Item Spacing & Structure**: Added standard left padding (24px) for `<ul>` / `<ol>` and bottom margins (4px) on `<li>` in EPUB and MOBI content viewers.
 - **Vertical Box Model & Typography Parsing**: Extended `CssRuleResolver` with 1-4 value box shorthand parsing (`_resolveBoxTerms`), resolving `marginTop`, `marginBottom`, `paddingTop`, and `paddingBottom` (in both `px` and `em`), alongside AST-level `font-weight` and `font-style` inheritance.
 - **Intrinsic Font Line Height & Safety Headroom**: Added `TextPainter` line-box probing in `SafeScreenPaginator` to measure true intrinsic font metrics, snapping canvas bounds with a `singleLineHeight + 4.0` headroom reserve to eliminate subpixel bottom overflow.
 - **Split Tail Justification (`<page-split-tail>`)**: Implemented dynamic inline `<page-split-tail>` tag extensions across EPUB, MOBI, and TXT viewers with computed word spacing to seamlessly expand broken lines to 100% block width when text is justified.
