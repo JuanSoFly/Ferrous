@@ -852,7 +852,9 @@ class _TextureCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: texture.baseColor,
+                  color: texture.id == BookTextures.none
+                      ? theme.scaffoldBackgroundColor
+                      : texture.baseColor,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.grey.withValues(alpha: 0.35),
@@ -870,7 +872,9 @@ class _TextureCard extends StatelessWidget {
                   child: Icon(
                     Icons.menu_book,
                     size: 18,
-                    color: texture.textColor.withValues(alpha: 0.65),
+                    color: (texture.id == BookTextures.none
+                        ? theme.colorScheme.onSurface
+                        : texture.textColor).withValues(alpha: 0.65),
                   ),
                 ),
               ),

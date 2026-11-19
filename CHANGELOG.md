@@ -1,6 +1,16 @@
-## [1.4.3-alpha.3] - 2026-11-18
+﻿## [1.4.3] - 2026-11-20
 
-### Publisher Styles & Pagination Refinements (EPUB & MOBI)
+### Highlights
+- **Publisher Styles & Advanced Layout Engine (EPUB & MOBI)**: Comprehensive CSS rule resolver with unit-aware font scaling, lateral box model parsing, line-snapped canvas bounds, and split-tail justification.
+- **PDF Visual Render Preemption (120Hz Scrolling)**: Atomic `ActiveVisualRenderGuard` in Rust prioritizes visual page renders over background text parsing for butter-smooth scrolling.
+- **Direct Single & Multi-File Document Import**: Instant file import via `ACTION_OPEN_DOCUMENT` with auto-launch, SAF quota management, and deduplication.
+- **Bookshelf Contextual Multi-Select & Batch Operations**: High-performance batch deletion and bulk collection assignment across all 8 bookshelf views.
+- **Theme & Contrast Polish**: Standardized text colors across EPUB, MOBI, TXT, and HTML viewers with active theme `onSurface` and paper texture support.
+
+<details>
+<summary><b>Detailed Changes & Architectural Refinements</b></summary>
+
+#### EPUB & MOBI Layout & Pagination
 - **CSS Font-Size Scale Parsing**: Extended `CssRuleResolver` with unit-aware `font-size` parsing (`%`, `em`, `rem`, `px`, `pt`), resolving dynamic `fontSizeScale` (clamped 0.5x–3.0x) on `ResolvedCssRule`.
 - **Preformatted Code `<pre>` Monospace Support**: Added monospace font family fallback and proportional text scaling for `<pre>` elements in `SafeScreenPaginator`, `EpubContentViewer`, and `MobiContentViewer`.
 - **Semantic Container Margin Neutralization**: Zeroed out external margins and paddings (`!important`) on `<article>`, `<section>`, and `<main>` tags in `SafeScreenPaginator` to prevent unwanted outer margin offset accumulation.
@@ -33,16 +43,7 @@
 - **Narrative Prose Detection**: Added `_stampProseMarkers` to distinguish standard body paragraphs from non-narrative elements (headings, epigraphs, blockquotes, media), ensuring reader justification and indent settings apply cleanly without distorting publisher formatting.
 - **Line Height Sanitization & UI Polish**: Added `sanitizeLineHeight` (clamped between 1.0x and 2.2x, default 1.4x), modernized reader settings slider with multiplier labels (`1.40x`), and wrapped settings sheet in `SafeArea` with responsive constraints.
 
-### Bookshelf Batch Collection Management
-- **Bulk Collection Assignment**: Added ability in library selection mode to assign or remove multiple selected books to/from collections simultaneously.
-- **Inline Collection Creation**: Implemented quick collection creation directly within the assignment sheet without navigating away.
-
-### UI & Interaction Performance
-- **Zero-Latency Storage Mode Selection**: Eliminated micro-stutters and tap latency across storage mode option cards.
-
-## [1.4.3-alpha.2] - 2026-11-18
-
-### PDF Visual Render Preemption & 120Hz Smooth Scrolling
+#### PDF Engine & Concurrency
 - **Active Visual Render Priority**: Implemented an atomic `ActiveVisualRenderGuard` pipeline in the Rust PDF engine. Background text sanitization and bounds extraction jobs yield every 50 characters and abort (`PREEMPTED_BY_VISUAL_RENDER`) during user scrolling, eliminating lock contention and ensuring rock-solid 120Hz rendering.
 - **Resilient TTS Preemption Recovery**: Integrated automatic backoff retries in `PdfTtsController` when text extraction yields to interactive visual page renders.
 - **Single-Concurrency Native Render Queue**: Serialized native PDF page rendering to `_maxConcurrentNativeRenders = 1` in `PdfPageController`, preventing GPU memory pressure and raster contention.
@@ -51,27 +52,23 @@
 - **Tight Character Bounds**: Switched PDF glyph boundaries to native PDFium `tight_bounds()` for pinpoint text highlight and selection alignment.
 - **Memory-Tuned Texture Dimension**: Capped texture generation to 1600px, reducing memory consumption while maintaining razor-sharp rendering on high-DPI devices.
 
-### Redesigned Storage Import & Add Books/Folder Dialogs
+#### Storage Import & Bookshelf Management
 - **Dedicated Import Flows**: Split generic add dialog into distinct, purpose-built workflows for adding individual books versus configuring monitored folders.
 - **Theme-Aware Storage Mode Dialog**: Created `StorageModeDialog` with full support for Light, Dark, Console, and authentic E-Ink themes (Roboto Slab, sharp 2px radii, high-contrast borders, hard drop shadows).
 - **Streamlined Dialog Layout**: Positioned Cancel and confirmation buttons side-by-side with responsive action cards and tactile haptic feedback.
-
-### F-Droid Build Recipe Synchronization
-- **Stable Metadata Recipe Alignment**: Synchronized `fdroid/com.juansofly.ferrous.yml` to track stable `v1.4.2` (commit `6e8ec91`, versionCode `32`).
-- **Fastlane Release Notes**: Added version 32 release changelog (`fastlane/metadata/android/en-US/changelogs/32.txt`).
-
-## [1.4.3-alpha.1] - 2026-11-17
-
-### Single & Multi-File Direct Import with Auto-Launch
-- **Direct Standalone Document Import**: Added ability to pick and import individual ebook files via `ACTION_OPEN_DOCUMENT` rather than requiring whole-directory grants.
+- **Single & Multi-File Direct Document Import**: Added ability to pick and import individual ebook files via `ACTION_OPEN_DOCUMENT` rather than requiring whole-directory grants.
 - **Immediate Reader Launch**: Opening a single file automatically transitions into `ReaderScreen` without manual shelf navigation, while multi-file selections batch import with progress summaries.
 - **SAF Running Quota & Permission Management**: Dynamically monitors Android 128/512 persisted URI grant limits during multi-file selection with automated fallback to internal storage copying, and releases document-level grants upon deletion.
 - **Import Deduplication & Orphan File Prevention**: Reuses existing book entities for repeated imports and cleans up redundant temporary internal storage copies.
-
-### Bookshelf Multi-Select Mode & High-Performance Batch Deletion
 - **Contextual Selection Mode**: Added multi-select mode across all 8 bookshelf view modes and high-contrast E-Ink themes, accessible via long-press or the library menu.
 - **Selection Action Bar & Back Navigation**: Integrated contextual app bar with Select All / Deselect All, dynamic selection counts, `PopScope` hardware back gesture handling, and single-book "More Options" menu access for compact grid cards.
 - **Atomic Batch Deletion Pipeline**: Implemented bulk deletions in `BookRepository`, `CollectionRepository`, and `AnnotationRepository` with sequenced external document deletion, grant release, and a single UI notification pass.
+- **Bulk Collection Assignment**: Added ability in library selection mode to assign or remove multiple selected books to/from collections simultaneously.
+- **Inline Collection Creation**: Implemented quick collection creation directly within the assignment sheet without navigating away.
+- **Zero-Latency Storage Mode Selection**: Eliminated micro-stutters and tap latency across storage mode option cards.
+- **F-Droid Recipe Synchronization**: Synchronized `fdroid/com.juansofly.ferrous.yml` and Fastlane release changelog tracking stable build metadata.
+
+</details>
 
 ## [1.4.2] - 2026-11-17
 

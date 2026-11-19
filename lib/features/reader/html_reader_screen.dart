@@ -981,7 +981,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                 ? const Color(0xFF1A1A18)
                 : (themeConfig.paperTexture != BookTextures.none
                     ? textureInfo.textColor
-                    : Theme.of(context).textTheme.bodyLarge?.color);
+                    : Theme.of(context).colorScheme.onSurface);
 
             Widget buildHtmlWidget(String displayContent) {
               return Padding(
@@ -1101,7 +1101,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       backgroundColor: isEInk ? Colors.transparent : null,
                       margin: Margins.only(bottom: 6),
                     ),
@@ -1155,7 +1155,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(bottom: 8),
                     ),
                     ".choice-item": Style(
@@ -1163,7 +1163,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(bottom: 6),
                     ),
                     ".toc-entry": Style(
@@ -1171,7 +1171,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       lineHeight: LineHeight(themeConfig.lineHeight),
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(bottom: 6),
                     ),
                     ".toc-heading": Style(
@@ -1179,7 +1179,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                       fontWeight: FontWeight.bold,
                       fontFamily: _getGoogleFontData(themeConfig.fontFamily).fontFamily,
                       fontFamilyFallback: _getGoogleFontData(themeConfig.fontFamily).fontFamilyFallback,
-                      color: isEInk ? effectiveTextColor : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: effectiveTextColor,
                       margin: Margins.only(top: 20, bottom: 12),
                     ),
                   },

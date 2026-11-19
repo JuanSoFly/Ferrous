@@ -345,7 +345,7 @@ h1, h2, h3, h4, h5, h6 {
         ? const Color(0xFF1A1A18)
         : (themeConfig.paperTexture != BookTextures.none
             ? textureInfo.textColor
-            : null);
+            : Theme.of(context).colorScheme.onSurface);
 
     final resolvedTextStyle = TextStyle(
       fontSize: themeConfig.fontSize,

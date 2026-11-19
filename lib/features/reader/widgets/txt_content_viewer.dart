@@ -182,7 +182,7 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
         ? const Color(0xFF1A1A18)
         : (themeConfig.paperTexture != BookTextures.none
             ? textureInfo.textColor
-            : null);
+            : Theme.of(context).colorScheme.onSurface);
 
     final resolvedTextStyle = TextStyle(
       fontSize: themeConfig.fontSize,

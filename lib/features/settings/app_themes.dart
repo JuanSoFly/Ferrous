@@ -84,6 +84,9 @@ class AppThemes {
       titleMedium: GoogleFonts.outfit(fontWeight: FontWeight.w600, letterSpacing: -0.1),
       bodyLarge: GoogleFonts.outfit(height: 1.5),
       bodyMedium: GoogleFonts.outfit(height: 1.4),
+    ).apply(
+      bodyColor: const Color(0xFFECE6E2),
+      displayColor: const Color(0xFFECE6E2),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.transparent,
@@ -341,6 +344,9 @@ class AppThemes {
       titleMedium: GoogleFonts.outfit(fontWeight: FontWeight.w600, letterSpacing: -0.1),
       bodyLarge: GoogleFonts.outfit(height: 1.5),
       bodyMedium: GoogleFonts.outfit(height: 1.4),
+    ).apply(
+      bodyColor: const Color(0xFF212529),
+      displayColor: const Color(0xFF212529),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.transparent,
