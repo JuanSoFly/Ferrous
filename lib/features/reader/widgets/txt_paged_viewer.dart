@@ -364,8 +364,6 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
   }
 
   void _handleTapUp(TapUpDetails details, Size size, int totalSlots) {
-    widget.onTapUp(details);
-
     final themeRepo = context.read<ReaderThemeRepository>();
     final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
         themeRepo.config.pageFlip;
@@ -380,6 +378,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
         _goToNextPage(totalSlots);
       } else {
         widget.onToggleChrome();
+        widget.onTapUp(details);
       }
     } else {
       const marginRatio = 0.18;
@@ -399,6 +398,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
         }
       } else {
         widget.onToggleChrome();
+        widget.onTapUp(details);
       }
     }
   }
@@ -444,21 +444,26 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
           _handleTapUp(details, MediaQuery.sizeOf(context), totalSlots);
         },
         child: SizedBox.expand(
-          child: SingleChildScrollView(
-            key: ValueKey('txt-page-slice-$chapterIndex-$sliceIdx'),
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(
-              left: 16.0,
-              right: 16.0,
-              top: 16.0,
-              bottom: 16.0,
-            ),
-            child: TxtContentViewer(
-              chapterIndex: chapterIndex,
-              htmlContent: slice.html,
-              chapterController: widget.chapterController,
-              ttsController: widget.ttsController,
-              pageSlice: slice,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: 0.0,
+              maxHeight: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: 16.0,
+                  right: 16.0,
+                  top: 16.0,
+                  bottom: 16.0,
+                ),
+                child: TxtContentViewer(
+                  chapterIndex: chapterIndex,
+                  htmlContent: slice.html,
+                  chapterController: widget.chapterController,
+                  ttsController: widget.ttsController,
+                  pageSlice: slice,
+                ),
+              ),
             ),
           ),
         ),

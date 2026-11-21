@@ -125,8 +125,8 @@ class _MobiContinuousViewerState extends State<MobiContinuousViewer> {
               return;
             }
             _hadSelectionOnTapDown = false;
-            widget.onTapUp(details);
             widget.onToggleChrome();
+            widget.onTapUp(details);
           },
           child: ListView.builder(
             key: ValueKey('mobi-continuous-${widget.chapterController.scrollEpoch}'),

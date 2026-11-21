@@ -8,13 +8,14 @@ typedef PageTurnCallback = void Function(int newIndex);
 ///
 /// Features:
 /// - Smooth, silky, tactile page turning inspired by physical books.
-/// - Uninterrupted reading: no opaque slabs, leftover rectangular blocks, or covered text.
+/// - Uninterrupted reading: zero transparent page bleed-through and zero frame drops.
+/// - Pre-warmed idle Element mounting for instantaneous 120Hz drag tracking.
 /// - Physically modelled cylindrical curvature shading, soft specular apex highlight,
 ///   and ambient occlusion contact shadows.
 /// - Full interactive swipe gestures with fluid drag tracking, inertia flings,
 ///   and organic cubic easing.
 /// - Outer margin tap-to-turn (left/right 18%) and center tap for reader chrome.
-/// - Zero-allocation custom painters and efficient `RepaintBoundary` caching.
+/// - Drag-only cancellation protection ensuring tap-to-turn animations never abort.
 class RealisticPageTurn extends StatefulWidget {
   final int chapterIndex;
   final int pageCount;
@@ -55,15 +56,11 @@ class RealisticPageTurn extends StatefulWidget {
 typedef AppleBooksPageCurl = RealisticPageTurn;
 
 class RealisticPageTurnState extends State<RealisticPageTurn>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late int _activePage;
   late AnimationController _curlController;
   late Animation<double> _curlAnimation;
   late final ValueNotifier<double> _progressNotifier;
-
-  // Page widget cache and global keys for instant zero-rebuild GPU compositing
-  final Map<int, Widget> _pageCache = {};
-  final Map<int, GlobalKey> _pageKeys = {};
 
   // Turn direction: 1 for forward (next page), -1 for backward (previous page), 0 for unselected
   int _turnDirection = 0;
@@ -71,32 +68,13 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   bool _isDragging = false;
   bool _isAnimating = false;
   bool _directionDetermined = false;
-
-  GlobalKey _getPageKey(int index) {
-    return _pageKeys.putIfAbsent(
-      index,
-      () => GlobalKey(debugLabel: 'realistic-page-$index'),
-    );
-  }
-
-  Widget _getPage(BuildContext context, int index) {
-    return _pageCache.putIfAbsent(index, () {
-      return RepaintBoundary(
-        key: _getPageKey(index),
-        child: widget.pageBuilder(context, index),
-      );
-    });
-  }
-
-  void _pruneCache() {
-    // Keep active page and adjacent pages (+/- 2) in cache; evict others to strictly bound memory
-    _pageCache.removeWhere((index, _) => (index - _activePage).abs() > 2);
-    _pageKeys.removeWhere((index, _) => (index - _activePage).abs() > 2);
-  }
+  double _downX = 0.0;
+  bool _prewarmReady = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _activePage = widget.pageCount > 0
         ? widget.currentPage.clamp(0, widget.pageCount - 1)
         : 0;
@@ -112,11 +90,18 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     )..addListener(() {
         _progressNotifier.value = _curlAnimation.value;
       })..addStatusListener(_onAnimationStatus);
+
+    // Defer neighbor mounting by 1 frame so initial chapter open doesn't triple load time
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _prewarmReady = true;
+        });
+      }
+    });
   }
 
   void invalidateCache() {
-    _pageCache.clear();
-    _pageKeys.clear();
     if (mounted) setState(() {});
   }
 
@@ -128,16 +113,6 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final bool needsPageSync = chapterChanged ||
         widget.currentPage != oldWidget.currentPage ||
         _activePage != widget.currentPage;
-
-    if (chapterChanged ||
-        widget.textureId != oldWidget.textureId ||
-        widget.showSpine != oldWidget.showSpine ||
-        widget.pageCount != oldWidget.pageCount ||
-        widget.enabled != oldWidget.enabled ||
-        needsPageSync) {
-      _pageCache.clear();
-      _pageKeys.clear();
-    }
 
     if (needsPageSync) {
       if (_isAnimating || _isDragging) {
@@ -152,36 +127,68 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
       _activePage = widget.pageCount > 0
           ? widget.currentPage.clamp(0, widget.pageCount - 1)
           : 0;
-      _pruneCache();
+      if (chapterChanged) {
+        _prewarmReady = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _prewarmReady = true;
+            });
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      if (_isDragging) {
+        _handleHorizontalDragCancel();
+      } else if (_isAnimating) {
+        if (_curlController.status == AnimationStatus.forward && _curlController.value >= 0.5) {
+          final targetIndex = _turnDirection == 1 ? _activePage + 1 : _activePage - 1;
+          _commitPageTurn(targetIndex);
+        } else {
+          _curlController.reset();
+          _dragProgress = 0.0;
+          _progressNotifier.value = 0.0;
+          _directionDetermined = false;
+          _isAnimating = false;
+          _turnDirection = 0;
+          if (mounted) setState(() {});
+        }
+      }
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _curlController.dispose();
     _progressNotifier.dispose();
-    _pageCache.clear();
-    _pageKeys.clear();
     super.dispose();
+  }
+
+  void _commitPageTurn(int newIndex) {
+    _activePage = widget.pageCount > 0
+        ? newIndex.clamp(0, widget.pageCount - 1)
+        : 0;
+    _dragProgress = 0.0;
+    _progressNotifier.value = 0.0;
+    _directionDetermined = false;
+    _isAnimating = false;
+    _isDragging = false;
+    _turnDirection = 0;
+    _curlController.reset();
+    if (mounted) setState(() {});
+    widget.onPageChanged(_activePage);
   }
 
   void _onAnimationStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
       final newIndex = _turnDirection == 1 ? _activePage + 1 : _activePage - 1;
-      _activePage = widget.pageCount > 0
-          ? newIndex.clamp(0, widget.pageCount - 1)
-          : 0;
-      _dragProgress = 0.0;
-      _progressNotifier.value = 0.0;
-      _directionDetermined = false;
-      _isAnimating = false;
-      _isDragging = false;
-      _turnDirection = 0;
-      _curlController.reset();
-      _pruneCache();
-      if (mounted) setState(() {});
-      // Parent callback triggered last; didUpdateWidget will sync _activePage on parent rebuild
-      widget.onPageChanged(_activePage);
+      _commitPageTurn(newIndex);
     } else if (status == AnimationStatus.dismissed) {
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
@@ -197,15 +204,42 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   bool _canTurnForward() => widget.pageCount > 0 && _activePage < widget.pageCount - 1;
   bool _canTurnBackward() => widget.pageCount > 0 && _activePage > 0;
 
+  void _handleHorizontalDragDown(DragDownDetails details) {
+    if (!widget.enabled || _isAnimating || !(widget.canSwipe?.call() ?? true)) return;
+    _downX = details.globalPosition.dx;
+  }
+
   void _handleHorizontalDragStart(DragStartDetails details) {
     if (!widget.enabled || _isAnimating || !(widget.canSwipe?.call() ?? true)) return;
-    // Synchronously clear selection while outgoing page render objects are still mounted
     widget.onClearSelection?.call();
     _isDragging = true;
     _dragProgress = 0.0;
     _progressNotifier.value = 0.0;
     _directionDetermined = false;
     _turnDirection = 0;
+
+    final initialOffset = details.globalPosition.dx - _downX;
+    final width = MediaQuery.sizeOf(context).width;
+
+    if (initialOffset < -2.0) {
+      if (_canTurnForward()) {
+        _turnDirection = 1;
+        _directionDetermined = true;
+        if (width > 0) {
+          _dragProgress = (-initialOffset / width).clamp(0.0, 1.0);
+          _progressNotifier.value = _dragProgress;
+        }
+      }
+    } else if (initialOffset > 2.0) {
+      if (_canTurnBackward()) {
+        _turnDirection = -1;
+        _directionDetermined = true;
+        if (width > 0) {
+          _dragProgress = (initialOffset / width).clamp(0.0, 1.0);
+          _progressNotifier.value = _dragProgress;
+        }
+      }
+    }
   }
 
   void _handleHorizontalDragUpdate(DragUpdateDetails details, double screenWidth) {
@@ -214,16 +248,14 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final delta = details.primaryDelta ?? 0.0;
 
     if (!_directionDetermined) {
-      if (delta < -1.5) {
+      if (delta < -1.0) {
         if (!_canTurnForward()) return;
         _turnDirection = 1;
         _directionDetermined = true;
-        setState(() {});
-      } else if (delta > 1.5) {
+      } else if (delta > 1.0) {
         if (!_canTurnBackward()) return;
         _turnDirection = -1;
         _directionDetermined = true;
-        setState(() {});
       } else {
         return;
       }
@@ -233,49 +265,59 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         ? -delta / screenWidth
         : delta / screenWidth;
 
-    final newProgress = _dragProgress + rawChange;
-
-    if (newProgress <= 0.0) {
-      // Reached zero: allow reversing direction naturally
-      _dragProgress = 0.0;
-      _progressNotifier.value = 0.0;
-      _directionDetermined = false;
-      _turnDirection = 0;
-      setState(() {});
-    } else {
-      _dragProgress = newProgress.clamp(0.0, 1.0);
-      _progressNotifier.value = _dragProgress;
-    }
+    // Resilient continuous clamping in [0.0, 1.0] without destroying directional lock
+    _dragProgress = (_dragProgress + rawChange).clamp(0.0, 1.0);
+    _progressNotifier.value = _dragProgress;
   }
 
   void _handleHorizontalDragEnd(DragEndDetails details, double screenWidth) {
     if (!widget.enabled || !_isDragging || _isAnimating) return;
     _isDragging = false;
 
-    if (!_directionDetermined || _turnDirection == 0 || _dragProgress <= 0.01) {
+    if (!_directionDetermined || _turnDirection == 0) {
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
       _directionDetermined = false;
       _turnDirection = 0;
-      setState(() {});
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Epsilon-safe early exit if released near 0.0:
+    if (_dragProgress <= 0.001) {
+      _dragProgress = 0.0;
+      _progressNotifier.value = 0.0;
+      _directionDetermined = false;
+      _turnDirection = 0;
+      _curlController.reset();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Epsilon-safe fast path if released near 1.0:
+    if (_dragProgress >= 0.999) {
+      final newIndex = _turnDirection == 1 ? _activePage + 1 : _activePage - 1;
+      _commitPageTurn(newIndex);
       return;
     }
 
     final velocity = details.primaryVelocity ?? 0.0;
     final bool isFling = _turnDirection == 1
-        ? velocity < -200.0
-        : velocity > 200.0;
+        ? velocity < -150.0
+        : velocity > 150.0;
     final bool isCancelFling = _turnDirection == 1
-        ? velocity > 200.0
-        : velocity < -200.0;
+        ? velocity > 280.0
+        : velocity < -280.0;
 
-    final shouldComplete = !isCancelFling && (isFling || _dragProgress >= 0.32);
+    final shouldComplete = !isCancelFling && (
+      (isFling && _dragProgress >= 0.04) || _dragProgress >= 0.20
+    );
 
     _isAnimating = true;
 
-    // Smooth, relaxed duration scaling: ~380ms to ~520ms so it never snaps or rushes
+    // Smooth, relaxed duration scaling: ~320ms to ~500ms
     final remaining = shouldComplete ? (1.0 - _dragProgress) : _dragProgress;
-    final durationMs = (380 + (remaining * 180)).round().clamp(360, 520);
+    final durationMs = (320 + (remaining * 180)).round().clamp(280, 500);
     _curlController.duration = Duration(milliseconds: durationMs);
 
     if (shouldComplete) {
@@ -283,6 +325,19 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     } else {
       _curlController.reverse(from: _dragProgress);
     }
+  }
+
+  void _handleHorizontalDragCancel() {
+    // CRITICAL: Guard strictly on _isDragging!
+    // Never abort an in-flight tap-to-turn animation!
+    if (!_isDragging) return;
+    _isDragging = false;
+    _dragProgress = 0.0;
+    _progressNotifier.value = 0.0;
+    _directionDetermined = false;
+    _turnDirection = 0;
+    _curlController.reset();
+    if (mounted) setState(() {});
   }
 
   void turnPageAnimated(int direction) {
@@ -296,13 +351,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     if (reduceMotion || !widget.enabled) {
       final newIndex = direction == 1 ? _activePage + 1 : _activePage - 1;
-      _activePage = widget.pageCount > 0
-          ? newIndex.clamp(0, widget.pageCount - 1)
-          : 0;
-      _turnDirection = 0;
-      widget.onPageChanged(_activePage);
-      _pruneCache();
-      if (mounted) setState(() {});
+      _commitPageTurn(newIndex);
       return;
     }
 
@@ -312,8 +361,31 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     _directionDetermined = true;
     _isAnimating = true;
     _curlController.duration = const Duration(milliseconds: 480);
-    setState(() {});
     _curlController.forward(from: 0.0);
+  }
+
+  Widget _buildPageSlot(BuildContext context, int slotIndex, {required bool isInteractive}) {
+    if (slotIndex < 0 || slotIndex >= widget.pageCount) {
+      return const SizedBox.shrink();
+    }
+    final key = ValueKey('slot_${widget.chapterIndex}_$slotIndex');
+
+    return KeyedSubtree(
+      key: key,
+      child: IgnorePointer(
+        ignoring: !isInteractive,
+        child: ExcludeSemantics(
+          excluding: !isInteractive,
+          child: FocusScope(
+            canRequestFocus: isInteractive,
+            child: RepaintBoundary(
+              key: ValueKey('repaint_${widget.chapterIndex}_$slotIndex'),
+              child: widget.pageBuilder(context, slotIndex),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -326,114 +398,205 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         final height = constraints.maxHeight;
         final size = Size(width, height);
 
-        final isTurning = _isAnimating || (_isDragging && _directionDetermined);
-
-        Widget content;
-
-        if (!isTurning || !widget.enabled) {
-          // Static page view using cached page, fully interactive
-          content = IgnorePointer(
-            ignoring: false,
-            child: _getPage(context, _activePage),
-          );
-        } else {
-          // Active realistic page turn animation
-          content = _buildPageCurlLayers(context, size);
-        }
-
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
+          onHorizontalDragDown: _handleHorizontalDragDown,
           onHorizontalDragStart: _handleHorizontalDragStart,
           onHorizontalDragUpdate: (details) =>
               _handleHorizontalDragUpdate(details, width),
           onHorizontalDragEnd: (details) =>
               _handleHorizontalDragEnd(details, width),
-          child: content,
+          onHorizontalDragCancel: _handleHorizontalDragCancel,
+          child: _buildPersistentCurlStack(context, size),
         );
       },
     );
   }
 
-  Widget _buildPageCurlLayers(BuildContext context, Size size) {
+  Widget _buildSlotLayer({
+    required BuildContext context,
+    required int slotIndex,
+    required bool visible,
+    required bool isInteractive,
+    bool isTurning = false,
+    bool isLeftPage = false,
+    bool isForward = true,
+    double width = 0.0,
+    double height = 0.0,
+  }) {
+    if (slotIndex < 0 || slotIndex >= widget.pageCount) {
+      return const SizedBox.shrink();
+    }
+    return Positioned.fill(
+      key: ValueKey('slot_pos_${widget.chapterIndex}_$slotIndex'),
+      child: Visibility(
+        key: ValueKey('slot_vis_${widget.chapterIndex}_$slotIndex'),
+        visible: visible,
+        maintainState: true,
+        maintainSize: true,
+        maintainAnimation: true,
+        child: ValueListenableBuilder<double>(
+          key: ValueKey('slot_listen_${widget.chapterIndex}_$slotIndex'),
+          valueListenable: _progressNotifier,
+          child: _buildPageSlot(context, slotIndex, isInteractive: isInteractive),
+          builder: (context, progress, cachedChild) {
+            CustomClipper<Rect>? clipper;
+            if (isTurning && width > 0) {
+              final double curlX = isForward
+                  ? (width * (1.0 - progress)).clamp(0.0, width)
+                  : (width * progress).clamp(0.0, width);
+              clipper = _CurlRectClipper(
+                isLeftPage
+                    ? Rect.fromLTRB(0, 0, curlX, height)
+                    : Rect.fromLTRB(curlX, 0, width, height),
+              );
+            }
+            return ClipRect(
+              key: ValueKey('slot_clip_${widget.chapterIndex}_$slotIndex'),
+              clipper: clipper,
+              child: cachedChild,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersistentCurlStack(BuildContext context, Size size) {
     final width = size.width;
     final height = size.height;
 
+    final isTurning = _isAnimating || (_isDragging && _directionDetermined);
     final isForward = _turnDirection == 1;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Clean boundary split between pages:
-    // Left page spans [0, curlX]
-    // Right page spans [curlX, width]
+    // Active curl pair indices
     final int leftPageIndex = isForward ? _activePage : _activePage - 1;
     final int rightPageIndex = isForward ? _activePage + 1 : _activePage;
 
-    // Background and curling sheets are completely isolated from pointer events
-    final Widget leftPage = IgnorePointer(
-      ignoring: true,
-      child: _getPage(context, leftPageIndex),
-    );
-    final Widget rightPage = IgnorePointer(
-      ignoring: true,
-      child: _getPage(context, rightPageIndex),
-    );
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    // Prewarmed neighbors
+    final int prevSlot = _activePage - 1;
+    final int nextSlot = _activePage + 1;
 
-    return ValueListenableBuilder<double>(
-      valueListenable: _progressNotifier,
-      builder: (context, progress, _) {
-        final double curlX = isForward
-            ? (width * (1.0 - progress)).clamp(0.0, width)
-            : (width * progress).clamp(0.0, width);
-
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. Right page (revealed on the right of curl fold)
-            Positioned.fill(
-              child: ClipRect(
-                clipper: _CurlRectClipper(
-                  Rect.fromLTRB(curlX, 0, width, height),
-                ),
-                child: rightPage,
-              ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (!isTurning) ...[
+          // Offscreen pre-warmed neighbors during idle (keeps Element & layout alive with zero bleed)
+          if (_prewarmReady && prevSlot >= 0 && prevSlot < widget.pageCount)
+            _buildSlotLayer(
+              context: context,
+              slotIndex: prevSlot,
+              visible: false,
+              isInteractive: false,
             ),
-
-            // 2. Realistic drop shadow cast onto the right page by the lifted sheet
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _RealisticDropShadowPainter(
-                    curlX: curlX,
-                    progress: progress,
-                  ),
-                ),
-              ),
+          if (_prewarmReady && nextSlot >= 0 && nextSlot < widget.pageCount)
+            _buildSlotLayer(
+              context: context,
+              slotIndex: nextSlot,
+              visible: false,
+              isInteractive: false,
             ),
+          // Active page during idle (fully visible and interactive)
+          _buildSlotLayer(
+            context: context,
+            slotIndex: _activePage,
+            visible: true,
+            isInteractive: true,
+          ),
+        ],
 
-            // 3. Left page (intact page on the left of curl fold)
-            Positioned.fill(
-              child: ClipRect(
-                clipper: _CurlRectClipper(
-                  Rect.fromLTRB(0, 0, curlX, height),
-                ),
-                child: leftPage,
+        if (isTurning) ...[
+          // Keep unused neighbor mounted offscreen during active turn
+          if (_prewarmReady) ...[
+            if (isForward && prevSlot >= 0 && prevSlot < widget.pageCount)
+              _buildSlotLayer(
+                context: context,
+                slotIndex: prevSlot,
+                visible: false,
+                isInteractive: false,
               ),
-            ),
-
-            // 4. Physical cylindrical curvature shading & specular crest highlight on the curl edge
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _RealisticCurlLightingPainter(
-                    curlX: curlX,
-                    progress: progress,
-                    isDark: isDark,
-                  ),
-                ),
+            if (!isForward && nextSlot >= 0 && nextSlot < widget.pageCount)
+              _buildSlotLayer(
+                context: context,
+                slotIndex: nextSlot,
+                visible: false,
+                isInteractive: false,
               ),
-            ),
           ],
-        );
-      },
+
+          // 1. Right page (revealed on the right of curl fold [curlX, width])
+          if (rightPageIndex >= 0 && rightPageIndex < widget.pageCount)
+            _buildSlotLayer(
+              context: context,
+              slotIndex: rightPageIndex,
+              visible: true,
+              isInteractive: false,
+              isTurning: true,
+              isLeftPage: false,
+              isForward: isForward,
+              width: width,
+              height: height,
+            ),
+
+          // 2. Drop shadow cast onto the right page by lifted left sheet
+          Positioned.fill(
+            key: const ValueKey('curl_drop_shadow'),
+            child: IgnorePointer(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _progressNotifier,
+                builder: (context, progress, _) {
+                  final double curlX = isForward
+                      ? (width * (1.0 - progress)).clamp(0.0, width)
+                      : (width * progress).clamp(0.0, width);
+                  return CustomPaint(
+                    painter: _RealisticDropShadowPainter(
+                      curlX: curlX,
+                      progress: progress,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // 3. Left page (intact page on the left of curl fold [0, curlX])
+          if (leftPageIndex >= 0 && leftPageIndex < widget.pageCount)
+            _buildSlotLayer(
+              context: context,
+              slotIndex: leftPageIndex,
+              visible: true,
+              isInteractive: false,
+              isTurning: true,
+              isLeftPage: true,
+              isForward: isForward,
+              width: width,
+              height: height,
+            ),
+
+          // 4. Curvature shading & specular crest highlight on the fold edge
+          Positioned.fill(
+            key: const ValueKey('curl_lighting'),
+            child: IgnorePointer(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _progressNotifier,
+                builder: (context, progress, _) {
+                  final double curlX = isForward
+                      ? (width * (1.0 - progress)).clamp(0.0, width)
+                      : (width * progress).clamp(0.0, width);
+                  return CustomPaint(
+                    painter: _RealisticCurlLightingPainter(
+                      curlX: curlX,
+                      progress: progress,
+                      isDark: isDark,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

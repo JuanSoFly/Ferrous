@@ -382,6 +382,13 @@ class SafeScreenPaginator {
     late final void Function(List<dom.Node>) processNodes;
 
     void processBlockElement(dom.Element node, {bool isAnonymous = false}) {
+      // Intercept explicit MOBI / EPUB pagebreaks
+      if (node.classes.contains('ferrous-pagebreak') ||
+          node.attributes['data-pagebreak'] == 'true') {
+        flushPage();
+        return;
+      }
+
       final tag = node.localName?.toLowerCase() ?? '';
 
       // Structural container elements with block children

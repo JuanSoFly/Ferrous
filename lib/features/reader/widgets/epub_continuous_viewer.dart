@@ -125,8 +125,8 @@ class _EpubContinuousViewerState extends State<EpubContinuousViewer> {
               return;
             }
             _hadSelectionOnTapDown = false;
-            widget.onTapUp(details);
             widget.onToggleChrome();
+            widget.onTapUp(details);
           },
           child: ListView.builder(
             key: ValueKey('epub-continuous-${widget.chapterController.scrollEpoch}'),

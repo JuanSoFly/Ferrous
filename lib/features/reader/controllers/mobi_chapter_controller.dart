@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/core/utils/html_defragmenter.dart';
+import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 import 'package:ferrous/src/rust/api/covers.dart' as covers_api;
 import 'package:ferrous/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:ferrous/core/services/diagnostic_logger.dart';
@@ -284,6 +285,28 @@ class MobiChapterController extends ChangeNotifier {
     }, metadata: {'book_id': book.id});
   }
 
+  static final RegExp _mobiPagebreakHint = RegExp(
+    r'pagebreak|</?pb\b',
+    caseSensitive: false,
+  );
+  static final RegExp _mobiPagebreakRegex = RegExp(
+    r'<(?:(?:mbp:)?pagebreak|pb)\b[^>]*>(?:\s*</(?:(?:mbp:)?pagebreak|pb)\s*>)?',
+    caseSensitive: false,
+  );
+  static final RegExp _mobiPagebreakOrphanCloseRegex = RegExp(
+    r'</(?:(?:mbp:)?pagebreak|pb)\s*>',
+    caseSensitive: false,
+  );
+
+  static String sanitizeMobiSpecialTags(String html) {
+    if (!_mobiPagebreakHint.hasMatch(html)) return html;
+    final replaced = html.replaceAll(
+      _mobiPagebreakRegex,
+      '<div class="ferrous-pagebreak" data-pagebreak="true"></div>',
+    );
+    return replaced.replaceAll(_mobiPagebreakOrphanCloseRegex, '');
+  }
+
   static ParsedMobiBook _parseMobiIsolated(List<rust_mobi.MobiChapter> rawChapters) {
     const mobiCss =
         '.ferrous-attribution { text-align: right; font-style: italic; margin-right: 2em; margin-bottom: 1em; }\n'
@@ -309,7 +332,13 @@ class MobiChapterController extends ChangeNotifier {
       if (trimmed == previousContent) continue;
       previousContent = trimmed;
       
-      final doc = html_parser.parse(content);
+      // 1. Sanitize MOBI-specific pagebreak tags FIRST to prevent unnecessary XML rewriting
+      var cleanContent = sanitizeMobiSpecialTags(content);
+
+      // 2. Expand remaining self-closing XML tags (e.g., <a name="filepos..."/> -> <a name="..."></a>)
+      cleanContent = XmlHtmlNormalizer.normalizeXmlSelfClosingTags(cleanContent);
+
+      final doc = html_parser.parse(cleanContent);
       HtmlDefragmenter.defragmentDocument(doc);
       if (title.isEmpty) {
         final heading = doc.querySelector('h1, h2, h3, h4, title')?.text.trim();

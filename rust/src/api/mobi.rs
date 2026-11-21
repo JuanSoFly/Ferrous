@@ -1,8 +1,27 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use anyhow::{Context, Result};
 use regex::Regex;
+
+static MOBI_PAGEBREAK_RE: OnceLock<Regex> = OnceLock::new();
+static MOBI_PAGEBREAK_ORPHAN_CLOSE_RE: OnceLock<Regex> = OnceLock::new();
+
+/// Replaces `<mbp:pagebreak/>`, `<pagebreak/>`, `<pb/>`, and paired `<mbp:pagebreak></mbp:pagebreak>`
+/// (whitespace-only body) with a standard HTML5 `<div class="ferrous-pagebreak" data-pagebreak="true"></div>`
+/// and strips any orphaned closing tags.
+fn normalize_mobi_pagebreaks(html: &str) -> String {
+    let open_re = MOBI_PAGEBREAK_RE.get_or_init(|| {
+        Regex::new(r#"(?i)<(?:(?:mbp:)?pagebreak|pb)\b[^>]*>(?:\s*</(?:(?:mbp:)?pagebreak|pb)\s*>)?"#).unwrap()
+    });
+    let orphan_re = MOBI_PAGEBREAK_ORPHAN_CLOSE_RE.get_or_init(|| {
+        Regex::new(r#"(?i)</(?:(?:mbp:)?pagebreak|pb)\s*>"#).unwrap()
+    });
+
+    let replaced = open_re.replace_all(html, r#"<div class="ferrous-pagebreak" data-pagebreak="true"></div>"#);
+    orphan_re.replace_all(&replaced, "").into_owned()
+}
 
 #[flutter_rust_bridge::frb]
 pub struct MobiChapter {
@@ -286,7 +305,8 @@ fn decompress_mobi_book(data: &[u8]) -> Result<(Vec<u8>, u32, usize)> {
 pub fn get_mobi_content(path: String) -> Result<String> {
     let data = fs::read(&path).context("Failed to read MOBI file")?;
     let (raw_bytes, encoding, _) = decompress_mobi_book(&data)?;
-    Ok(decode_mobi_text(&raw_bytes, encoding))
+    let decoded = decode_mobi_text(&raw_bytes, encoding);
+    Ok(normalize_mobi_pagebreaks(&decoded))
 }
 
 #[flutter_rust_bridge::frb]
@@ -513,6 +533,7 @@ pub fn get_mobi_chapters(path: String) -> Result<Vec<MobiChapter>> {
                 let trimmed = decoded.trim();
                 if !trimmed.is_empty() {
                     let normalized_html = normalize_images(trimmed);
+                    let normalized_html = normalize_mobi_pagebreaks(&normalized_html);
                     chapters.push(MobiChapter {
                         title: title.clone(),
                         html_content: normalized_html,
@@ -534,6 +555,7 @@ pub fn get_mobi_chapters(path: String) -> Result<Vec<MobiChapter>> {
             }
             let title = format!("Section {}", i + 1);
             let normalized = normalize_images(trimmed);
+            let normalized = normalize_mobi_pagebreaks(&normalized);
             chapters.push(MobiChapter {
                 title,
                 html_content: normalized,
@@ -542,9 +564,11 @@ pub fn get_mobi_chapters(path: String) -> Result<Vec<MobiChapter>> {
     }
 
     if chapters.is_empty() {
+        let normalized = normalize_images(&full_text);
+        let normalized = normalize_mobi_pagebreaks(&normalized);
         chapters.push(MobiChapter {
             title: "Beginning".to_string(),
-            html_content: normalize_images(&full_text),
+            html_content: normalized,
         });
     }
 

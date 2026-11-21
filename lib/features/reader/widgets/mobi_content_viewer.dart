@@ -424,6 +424,12 @@ h1, h2, h3, h4, h5, h6 {
             color: effectiveTextColor,
             backgroundColor: isEInk ? Colors.transparent : null,
           ),
+          ".ferrous-pagebreak": Style(
+            display: Display.none,
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+            height: Height(0),
+          ),
           "section": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
           "article": Style(margin: Margins.zero, padding: HtmlPaddings.zero),
           "main": Style(margin: Margins.zero, padding: HtmlPaddings.zero),

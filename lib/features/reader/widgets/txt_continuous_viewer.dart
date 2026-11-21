@@ -124,8 +124,8 @@ class _TxtContinuousViewerState extends State<TxtContinuousViewer> {
               return;
             }
             _hadSelectionOnTapDown = false;
-            widget.onTapUp(details);
             widget.onToggleChrome();
+            widget.onTapUp(details);
           },
           child: ListView.builder(
             key: ValueKey('txt-continuous-${widget.chapterController.scrollEpoch}'),

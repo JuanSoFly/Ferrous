@@ -1,4 +1,14 @@
-﻿## [1.4.3] - 2026-11-20
+﻿## [1.4.4-alpha.1] - 2026-11-21
+
+### Added
+- **MOBI & EPUB Explicit Page Break Normalization**: Added Rust-level regex normalization and Dart DOM sanitization for `<mbp:pagebreak>`, `<pagebreak>`, and `<pb>` tags into `.ferrous-pagebreak` elements, forcing discrete chapter page flushes in `SafeScreenPaginator`.
+- **Pre-Warmed Slot Layering for Realistic Page Turn**: Overhauled `RealisticPageTurn` with deferred offscreen element mounting, eliminating drag tracking frame drops and transparent page bleed-through during 120Hz turns.
+
+### Changed
+- **Paged Viewer Slicing Architecture**: Replaced `SingleChildScrollView` with `ClipRect` + `OverflowBox` in `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` to eliminate scroll artifacts and guarantee exact vertical slice rendering.
+- **Gesture Disambiguation & Debounced Chrome**: Implemented a 280ms toggle timer and tap margin isolation across EPUB, MOBI, and TXT readers to cleanly separate margin page turns, center chrome toggling, and double-tap actions.
+
+## [1.4.3] - 2026-11-20
 
 ### Highlights
 - **Publisher Styles & Advanced Layout Engine (EPUB & MOBI)**: Comprehensive CSS rule resolver with unit-aware font scaling, lateral box model parsing, line-snapped canvas bounds, and split-tail justification.

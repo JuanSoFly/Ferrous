@@ -51,7 +51,9 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
   late PageController _pageController;
 
   ReadingMode _readingMode = ReadingMode.leftToRight;
-  Offset? _lastDoubleTapDown;
+  DateTime? _lastTapTime;
+  Offset? _lastTapPosition;
+  Timer? _chromeToggleTimer;
   String _lastLoadedFontFamily = '';
   ReaderThemeRepository? _themeRepository;
   bool _hasRestoredPosition = false;
@@ -110,6 +112,7 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
+    _chromeToggleTimer?.cancel();
     _selectionController.dispose();
     _themeRepository?.removeListener(_onThemeChanged);
     _chapterController.removeListener(_onChapterControllerChanged);
@@ -219,13 +222,7 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
     }
   }
 
-  void _handleDoubleTapDown(TapDownDetails details) {
-    _lastDoubleTapDown = details.globalPosition;
-  }
-
-  void _handleDoubleTap() {
-    final position = _lastDoubleTapDown;
-    if (position == null) return;
+  void _handleDoubleTapAt(Offset position) {
     final screenSize = MediaQuery.of(context).size;
 
     // 1. If locked, double tap center unlocks
@@ -271,10 +268,14 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
       setState(() => _pendingTapResult = null);
       return;
     }
-    _chromeController.toggleChrome();
-    if (!_chromeController.showChrome) {
-      _ttsController.setTtsControlsVisible(false);
-    }
+    _chromeToggleTimer?.cancel();
+    _chromeToggleTimer = Timer(const Duration(milliseconds: 280), () {
+      if (!mounted) return;
+      _chromeController.toggleChrome();
+      if (!_chromeController.showChrome) {
+        _ttsController.setTtsControlsVisible(false);
+      }
+    });
   }
 
   Future<void> _showReadingModePicker() async {
@@ -430,6 +431,41 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
     if (_pendingTapResult != null) {
       setState(() => _pendingTapResult = null);
     }
+
+    final tapPos = details.globalPosition;
+    final size = MediaQuery.sizeOf(context);
+
+    // Safeguard: In paged modes, ignore taps in navigation margins (outer 18% horizontal, outer 15% vertical)
+    if (_modeController.isPagedMode) {
+      if (_readingMode == ReadingMode.vertical) {
+        if (tapPos.dy < size.height * 0.15 || tapPos.dy > size.height * 0.85) {
+          _lastTapTime = null;
+          _lastTapPosition = null;
+          return;
+        }
+      } else {
+        if (tapPos.dx < size.width * 0.18 || tapPos.dx > size.width * 0.82) {
+          _lastTapTime = null;
+          _lastTapPosition = null;
+          return;
+        }
+      }
+    }
+
+    final now = DateTime.now();
+    final isDoubleTap = _lastTapTime != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 260) &&
+        _lastTapPosition != null &&
+        (tapPos - _lastTapPosition!).distance < 40.0;
+
+    _lastTapTime = now;
+    _lastTapPosition = tapPos;
+
+    if (isDoubleTap) {
+      _chromeToggleTimer?.cancel();
+      _chromeToggleTimer = null;
+      _handleDoubleTapAt(tapPos);
+    }
   }
 
   void _confirmTapSelection() {
@@ -554,11 +590,7 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
             _ttsController.saveCurrentTtsSentence();
           }
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onDoubleTapDown: _handleDoubleTapDown,
-          onDoubleTap: _handleDoubleTap,
-          child: Stack(
+        child: Stack(
             children: [
               Positioned.fill(
                 child: RealBookBackground(
@@ -672,7 +704,6 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }

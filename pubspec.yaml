@@ -3,7 +3,7 @@ description: "Ferrous: Fast, minimal, cross-platform e-reader built with Flutter
 
 publish_to: 'none' 
 
-version: 1.4.3+36
+version: 1.4.4-alpha.1+37
 
 environment:
   sdk: ^3.5.4
