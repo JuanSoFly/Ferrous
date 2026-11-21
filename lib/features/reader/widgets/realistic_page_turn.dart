@@ -229,6 +229,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
           _dragProgress = (-initialOffset / width).clamp(0.0, 1.0);
           _progressNotifier.value = _dragProgress;
         }
+        if (mounted) setState(() {});
       }
     } else if (initialOffset > 2.0) {
       if (_canTurnBackward()) {
@@ -238,6 +239,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
           _dragProgress = (initialOffset / width).clamp(0.0, 1.0);
           _progressNotifier.value = _dragProgress;
         }
+        if (mounted) setState(() {});
       }
     }
   }
@@ -252,10 +254,12 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         if (!_canTurnForward()) return;
         _turnDirection = 1;
         _directionDetermined = true;
+        if (mounted) setState(() {});
       } else if (delta > 1.0) {
         if (!_canTurnBackward()) return;
         _turnDirection = -1;
         _directionDetermined = true;
+        if (mounted) setState(() {});
       } else {
         return;
       }
@@ -320,6 +324,8 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final durationMs = (320 + (remaining * 180)).round().clamp(280, 500);
     _curlController.duration = Duration(milliseconds: durationMs);
 
+    if (mounted) setState(() {});
+
     if (shouldComplete) {
       _curlController.forward(from: _dragProgress);
     } else {
@@ -361,6 +367,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     _directionDetermined = true;
     _isAnimating = true;
     _curlController.duration = const Duration(milliseconds: 480);
+    if (mounted) setState(() {});
     _curlController.forward(from: 0.0);
   }
 
@@ -433,8 +440,8 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         key: ValueKey('slot_vis_${widget.chapterIndex}_$slotIndex'),
         visible: visible,
         maintainState: true,
-        maintainSize: true,
-        maintainAnimation: true,
+        maintainSize: visible,
+        maintainAnimation: visible,
         child: ValueListenableBuilder<double>(
           key: ValueKey('slot_listen_${widget.chapterIndex}_$slotIndex'),
           valueListenable: _progressNotifier,

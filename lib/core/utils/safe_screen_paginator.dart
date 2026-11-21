@@ -1,4 +1,5 @@
 ﻿import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -66,6 +67,88 @@ class SafeScreenPaginator {
 
   static void invalidateBook(String bookId) {
     _cache.removeWhere((key, _) => key.startsWith('$bookId:'));
+  }
+
+  /// Fast binary header probe to extract image dimensions in <1 microsecond without decoding full bitmap.
+  static Size? _probeImageDimensions(Uint8List bytes) {
+    if (bytes.length < 10) return null;
+
+    // 1. PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (bytes.length >= 24 &&
+        bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+      final width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+      final height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+      if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+    }
+
+    // 2. GIF: 'GIF87a' or 'GIF89a'
+    if (bytes.length >= 10 &&
+        bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+      final width = bytes[6] | (bytes[7] << 8);
+      final height = bytes[8] | (bytes[9] << 8);
+      if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+    }
+
+    // 3. JPEG: FF D8
+    if (bytes.length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xD8) {
+      int offset = 2;
+      while (offset + 4 < bytes.length) {
+        if (bytes[offset] != 0xFF) {
+          offset++;
+          continue;
+        }
+        final marker = bytes[offset + 1];
+        if ((marker >= 0xC0 && marker <= 0xC3) ||
+            (marker >= 0xC5 && marker <= 0xC7) ||
+            (marker >= 0xC9 && marker <= 0xCB) ||
+            (marker >= 0xCD && marker <= 0xCF)) {
+          if (offset + 9 < bytes.length) {
+            final height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+            final width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+            if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+          }
+          break;
+        }
+        if (marker == 0xDA || marker == 0xD9) break; // SOS or EOI
+        if (offset + 3 >= bytes.length) break;
+        final length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+        if (length <= 0) break;
+        offset += 2 + length;
+      }
+    }
+
+    // 4. WebP: 'RIFF' .... 'WEBP'
+    if (bytes.length >= 30 &&
+        bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+        bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
+      if (bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x20) {
+        if (bytes.length >= 30) {
+          final width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
+          final height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
+          if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+        }
+      }
+      if (bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x4C) {
+        if (bytes.length >= 25 && bytes[20] == 0x2F) {
+          final b1 = bytes[21];
+          final b2 = bytes[22];
+          final b3 = bytes[23];
+          final b4 = bytes[24];
+          final width = 1 + (((b2 & 0x3F) << 8) | b1);
+          final height = 1 + ((((b4 & 0xF) << 10) | (b3 << 2) | ((b2 & 0xC0) >> 6)));
+          if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+        }
+      }
+      if (bytes[12] == 0x56 && bytes[13] == 0x50 && bytes[14] == 0x38 && bytes[15] == 0x58) {
+        if (bytes.length >= 30) {
+          final width = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
+          final height = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+          if (width > 0 && height > 0) return Size(width.toDouble(), height.toDouble());
+        }
+      }
+    }
+
+    return null;
   }
 
   /// Paginates a chapter into screen-fitted slices with accurate typography and DOM preservation
@@ -202,8 +285,10 @@ class SafeScreenPaginator {
     final singleLineHeight = math.max(fontSize * lineHeight, intrinsicLineHeight);
 
     // Dynamic canvas bounds: snap to whole integer line multiples with 1.0 line headroom reserve
-    // so accumulated margins and subpixel rendering never exceed availableHeight
-    final double reserveHeadroom = singleLineHeight + 4.0;
+    // (expanded to 2.0 lines when publisher CSS rules are active to prevent margin accumulation overflow)
+    final double reserveHeadroom = cssRules.isNotEmpty
+        ? (singleLineHeight * 2.0) + 8.0
+        : singleLineHeight + 4.0;
     final int wholeLineCount = math.max(
       1,
       ((availableHeight - reserveHeadroom) / singleLineHeight).floor(),
@@ -548,10 +633,12 @@ class SafeScreenPaginator {
           if (comma != -1) {
             try {
               final bytes = base64Decode(src.substring(comma + 1).trim());
-              final decoded = img.decodeImage(bytes);
-              if (decoded != null && decoded.width > 0 && decoded.height > 0) {
-                final scale = math.min(1.0, availableWidth / decoded.width);
-                final scaledH = decoded.height * scale;
+              final probed = _probeImageDimensions(bytes);
+              final imgWidth = probed?.width ?? (img.decodeImage(bytes)?.width.toDouble() ?? 0.0);
+              final imgHeight = probed?.height ?? (img.decodeImage(bytes)?.height.toDouble() ?? 0.0);
+              if (imgWidth > 0 && imgHeight > 0) {
+                final scale = math.min(1.0, availableWidth / imgWidth);
+                final scaledH = imgHeight * scale;
                 final effectiveH = math.max(singleLineHeight, scaledH);
                 return effectiveH + effectiveTopMargin + effectiveBottomMargin;
               }

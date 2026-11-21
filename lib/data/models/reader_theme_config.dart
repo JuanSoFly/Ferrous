@@ -61,7 +61,7 @@ class ReaderThemeConfig {
     this.fontWeight = 400,
     this.paperTexture = 'natural',
     this.showBookSpine = true,
-    this.usePublisherStyles = true,
+    this.usePublisherStyles = false,
   });
 
   static double sanitizeLineHeight(double? h) {

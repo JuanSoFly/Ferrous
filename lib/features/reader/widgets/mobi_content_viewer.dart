@@ -125,6 +125,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 ''';
     final baseRule = 'p { margin-top: 0px; margin-bottom: ${spacingPx}px; }\n$proseRule';
+    final publisherBaseRule = '''
+$baseRule
+div, p, blockquote, section, article {
+  margin-top: 0px !important;
+}
+''';
     final stylePattern = RegExp(
       r'<style\b[^>]*\bid=["\x27]epub-publisher-styles["\x27][^>]*>([\s\S]*?)<\/style>',
       caseSensitive: false,
@@ -152,23 +158,41 @@ h1, h2, h3, h4, h5, h6 {
         '',
       );
       if (fontSize != null && fontSize > 0) {
-        existingStyles = existingStyles.replaceAllMapped(
-          RegExp(r'font-size\s*:\s*([0-9.]+)\s*em\b', caseSensitive: false),
-          (match) {
-            final emVal = double.tryParse(match.group(1)!) ?? 1.0;
-            final pxVal = (emVal * fontSize).toStringAsFixed(2);
-            return 'font-size: ${pxVal}px';
-          },
-        ).replaceAllMapped(
-          RegExp(r'font-size\s*:\s*([0-9.]+)\s*%\b', caseSensitive: false),
-          (match) {
-            final pctVal = double.tryParse(match.group(1)!) ?? 100.0;
-            final pxVal = (pctVal / 100.0 * fontSize).toStringAsFixed(2);
-            return 'font-size: ${pxVal}px';
-          },
-        );
+        existingStyles = existingStyles
+            .replaceAllMapped(
+              RegExp(r'font-size\s*:\s*([0-9.]+)\s*em\b', caseSensitive: false),
+              (match) {
+                final emVal = double.tryParse(match.group(1)!) ?? 1.0;
+                final pxVal = (emVal * fontSize).toStringAsFixed(2);
+                return 'font-size: ${pxVal}px';
+              },
+            )
+            .replaceAllMapped(
+              RegExp(r'font-size\s*:\s*([0-9.]+)\s*rem\b', caseSensitive: false),
+              (match) {
+                final remVal = double.tryParse(match.group(1)!) ?? 1.0;
+                final pxVal = (remVal * fontSize).toStringAsFixed(2);
+                return 'font-size: ${pxVal}px';
+              },
+            )
+            .replaceAllMapped(
+              RegExp(r'font-size\s*:\s*([0-9.]+)\s*%\b', caseSensitive: false),
+              (match) {
+                final pctVal = double.tryParse(match.group(1)!) ?? 100.0;
+                final pxVal = (pctVal / 100.0 * fontSize).toStringAsFixed(2);
+                return 'font-size: ${pxVal}px';
+              },
+            )
+            .replaceAllMapped(
+              RegExp(r'font-size\s*:\s*([0-9.]+)\s*pt\b', caseSensitive: false),
+              (match) {
+                final ptVal = double.tryParse(match.group(1)!) ?? 12.0;
+                final pxVal = ((ptVal * 1.333 / 16.0) * fontSize).clamp(fontSize * 0.70, fontSize * 2.0).toStringAsFixed(2);
+                return 'font-size: ${pxVal}px';
+              },
+            );
       }
-      return '<style type="text/css" id="epub-publisher-styles">$existingStyles\n$baseRule</style>';
+      return '<style type="text/css" id="epub-publisher-styles">$existingStyles\n$publisherBaseRule</style>';
     });
   }
 

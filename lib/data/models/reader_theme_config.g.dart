@@ -30,7 +30,7 @@ class ReaderThemeConfigAdapter extends TypeAdapter<ReaderThemeConfig> {
       fontWeight: fields[10] as int? ?? 400,
       paperTexture: fields[11] as String? ?? 'natural',
       showBookSpine: fields[12] as bool? ?? true,
-      usePublisherStyles: fields[13] as bool? ?? true,
+      usePublisherStyles: fields[13] as bool? ?? false,
     );
   }
 

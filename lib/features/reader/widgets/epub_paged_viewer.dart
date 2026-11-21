@@ -564,10 +564,11 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
   }
 
   Widget _buildPageItem(BuildContext context, int chapterIndex, PageSlice? slice, int totalSlots) {
+    if (slice == null) return const SizedBox.shrink();
     final html = widget.chapterController.allChapterContents.length > chapterIndex
         ? widget.chapterController.allChapterContents[chapterIndex]
         : '';
-    final sliceIdx = slice?.pageIndex ?? -1;
+    final sliceIdx = slice.pageIndex;
 
     return SelectionArea(
       key: widget.selectionController.keyForPage(chapterIndex, sliceIdx),

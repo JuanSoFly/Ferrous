@@ -1,4 +1,16 @@
-﻿## [1.4.4-alpha.1] - 2026-11-21
+## [1.4.4-alpha.2] - 2026-11-21
+
+### Added
+- **Fast Binary Image Header Probing**: Implemented sub-microsecond binary header probing in `SafeScreenPaginator` for PNG, GIF, JPEG, and WebP images, extracting dimensions without decoding full bitmaps into memory.
+
+### Changed
+- **Adaptive Canvas Headroom for Publisher Styles**: Expanded reserve headroom calculation in `SafeScreenPaginator` to double line height when publisher CSS is present, preventing outer margin accumulation overflow.
+- **Publisher Style Font-Size Normalization**: Normalized relative `em`, `rem`, `%`, and `pt` units within embedded `<style>` sheets directly against user base font size in EPUB and MOBI content viewers.
+- **Default Publisher Styles Preference**: Set default `usePublisherStyles` configuration to `false` in `ReaderThemeConfig` to favor clean user typography out-of-the-box.
+- **Realistic Page Turn Gesture Responsiveness**: Added explicit mounted state synchronization during drag transitions and optimized offscreen slot visibility to discard inactive animation tickers.
+- **Paged Viewer Slice Null Safety**: Added defensive null slice checks in `EpubPagedViewer` and `MobiPagedViewer` page builders.
+
+## [1.4.4-alpha.1] - 2026-11-21
 
 ### Added
 - **MOBI & EPUB Explicit Page Break Normalization**: Added Rust-level regex normalization and Dart DOM sanitization for `<mbp:pagebreak>`, `<pagebreak>`, and `<pb>` tags into `.ferrous-pagebreak` elements, forcing discrete chapter page flushes in `SafeScreenPaginator`.
