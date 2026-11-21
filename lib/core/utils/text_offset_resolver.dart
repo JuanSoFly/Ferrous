@@ -17,6 +17,7 @@ class TextOffsetResolver {
     required int windowStart,
     required int windowEnd,
     required int expectedOffset,
+    bool strictWindow = false,
   }) {
     if (chapterText.isEmpty || rawParagraphFragment.isEmpty) return null;
 
@@ -75,8 +76,31 @@ class TextOffsetResolver {
         return (word: targetWord, offset: windowedMatch);
       }
 
-      // Tier 1b: Full-chapter N-Gram fallback if scroll/page window missed
-      if (paddedStart > 0 || paddedEnd < chapterText.length) {
+      // Try tighter n-gram window in page boundary before falling back
+      if (strictWindow) {
+        for (var span = 2; span >= 1; span--) {
+          final tightStart = (targetTokenIdx - span).clamp(0, tokens.length - 1);
+          final tightEnd = (targetTokenIdx + span).clamp(0, tokens.length - 1);
+          if (tightEnd > tightStart && (tightStart != startIdx || tightEnd != endIdx)) {
+            final tightMatch = _matchNGramInWindow(
+              chapterText: chapterText,
+              tokens: tokens,
+              startIdx: tightStart,
+              targetIdx: targetTokenIdx,
+              endIdx: tightEnd,
+              windowStart: paddedStart,
+              windowEnd: paddedEnd,
+              expectedOffset: safeExpected,
+            );
+            if (tightMatch != null) {
+              return (word: targetWord, offset: tightMatch);
+            }
+          }
+        }
+      }
+
+      // Tier 1b: Full-chapter N-Gram fallback if scroll/page window missed (continuous mode only)
+      if (!strictWindow && (paddedStart > 0 || paddedEnd < chapterText.length)) {
         final fullChapterNGramMatch = _matchNGramInWindow(
           chapterText: chapterText,
           tokens: tokens,
@@ -110,19 +134,21 @@ class TextOffsetResolver {
       return (word: targetWord, offset: best);
     }
 
-    // Full-chapter single-word fallback with strict boundaries
-    final allMatches = boundaryPattern.allMatches(chapterText);
-    if (allMatches.isNotEmpty) {
-      final best = _closestMatch(
-        matches: allMatches,
-        baseOffset: 0,
-        expectedOffset: safeExpected,
-      );
-      return (word: targetWord, offset: best);
+    // Full-chapter single-word fallback with strict boundaries (continuous mode only)
+    if (!strictWindow) {
+      final allMatches = boundaryPattern.allMatches(chapterText);
+      if (allMatches.isNotEmpty) {
+        final best = _closestMatch(
+          matches: allMatches,
+          baseOffset: 0,
+          expectedOffset: safeExpected,
+        );
+        return (word: targetWord, offset: best);
+      }
     }
 
-    // 5. Tier 3: Safety clamp to active window start (never 0 unless on Page 1)
-    return (word: targetWord, offset: safeStart);
+    // 5. Tier 3: Safety clamp to active window (expected offset in paged mode)
+    return (word: targetWord, offset: strictWindow ? safeExpected : safeStart);
   }
 
   /// Allows optional soft-hyphens (\u00AD) and continuation/baked hyphens (\u2010) inside raw chapterText words.

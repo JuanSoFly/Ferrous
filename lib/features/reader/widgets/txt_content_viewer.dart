@@ -275,20 +275,13 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
-    final themeConfig = themeRepo.config;
-    final annotationRepo = context.watch<AnnotationRepository>();
-
-    final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
-
-    final chapterAnnotations = annotationRepo
-        .getAnnotationsForBook(widget.chapterController.book.id)
-        .where((a) => a.chapterIndex == widget.chapterIndex)
-        .toList();
-
-    final extensions = [
+  List<HtmlExtension> _buildExtensions({
+    required BuildContext context,
+    required ReaderThemeConfig themeConfig,
+    required AnnotationRepository annotationRepo,
+    required TtsHighlightStyle highlightStyle,
+  }) {
+    return [
       TagWrapExtension(
         tagsToWrap: {'table'},
         builder: (child) => HtmlTableViewer(child: child),
@@ -348,15 +341,15 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
       TagExtension(
         tagsToExtend: {'tts-highlight'},
         builder: (ctx) {
-          final isCurrent = widget.chapterIndex == widget.chapterController.currentChapterIndex;
+          final isSpeaking = widget.chapterIndex == widget.ttsController.speakingChapterIndex;
           final text = ctx.node.text ?? '';
           final style = ctx.style?.generateTextStyle() ?? const TextStyle();
 
           return _TxtTtsHighlightSpan(
-            key: isCurrent ? widget.ttsController.ttsHighlightKey : null,
+            key: isSpeaking ? widget.ttsController.ttsHighlightKey : null,
             text: text,
             textStyle: style,
-            highlightStyle: themeRepo.highlightStyle,
+            highlightStyle: highlightStyle,
           );
         },
       ),
@@ -373,7 +366,7 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
           final colorVal = int.tryParse(ctx.attributes['data-color'] ?? '') ?? 0xFFFFF176;
           final color = isEInk ? const Color(0xFFD5D0C5) : Color(colorVal);
           final style = ctx.style?.generateTextStyle() ?? const TextStyle();
-          final highlightStyle = style.copyWith(
+          final hStyle = style.copyWith(
             backgroundColor: isEInk ? const Color(0xFFD5D0C5) : color.withValues(alpha: 0.35),
             color: isEInk ? const Color(0xFF1A1A18) : null,
           );
@@ -393,21 +386,40 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
           if (children != null && children.isNotEmpty) {
             return TextSpan(
               children: children,
-              style: highlightStyle,
+              style: hStyle,
               recognizer: TapGestureRecognizer()..onTap = handleTap,
             );
           }
           return TextSpan(
             text: text,
-            style: highlightStyle,
+            style: hStyle,
             recognizer: TapGestureRecognizer()..onTap = handleTap,
           );
         },
       ),
     ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeRepo = context.watch<ReaderThemeRepository>();
+    final themeConfig = themeRepo.config;
+    final annotationRepo = context.watch<AnnotationRepository>();
+
+    final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
+
+    final chapterAnnotations = annotationRepo
+        .getAnnotationsForBook(widget.chapterController.book.id)
+        .where((a) => a.chapterIndex == widget.chapterIndex)
+        .toList();
 
     final staticChild = _buildHtmlContent(
-      extensions: extensions,
+      extensions: _buildExtensions(
+        context: context,
+        themeConfig: themeConfig,
+        annotationRepo: annotationRepo,
+        highlightStyle: themeRepo.highlightStyle,
+      ),
       horizontalMargin: horizontalMargin,
       themeConfig: themeConfig,
       annotations: chapterAnnotations,
@@ -426,6 +438,13 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
         if (!isSpeakingChapter || !isTtsActive || !hasHighlight) {
           return child!;
         }
+
+        final liveExtensions = _buildExtensions(
+          context: context,
+          themeConfig: themeConfig,
+          annotationRepo: annotationRepo,
+          highlightStyle: themeRepo.highlightStyle,
+        );
 
         widget.ttsController.highlightKeyAssigned = false;
         final highlightStart = widget.ttsController.lastHighlightStart!;
@@ -451,7 +470,7 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
             });
             return _buildHtmlWidget(
               [sliceHtml],
-              extensions: extensions,
+              extensions: liveExtensions,
               horizontalMargin: horizontalMargin,
               themeConfig: themeConfig,
             );
@@ -517,7 +536,7 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
 
         return _buildHtmlWidget(
           ttsChunks,
-          extensions: extensions,
+          extensions: liveExtensions,
           horizontalMargin: horizontalMargin,
           themeConfig: themeConfig,
         );

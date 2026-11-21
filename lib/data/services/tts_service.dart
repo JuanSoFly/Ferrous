@@ -52,6 +52,7 @@ class TtsService extends ChangeNotifier {
   bool _disposed = false;
   bool _stopRequested = false;
   bool _isRestartingForRateChange = false;
+  int _rateRestartId = 0;
   Timer? _rateDebounceTimer;
 
   // Precomputed Rust highlight data
@@ -161,6 +162,8 @@ class TtsService extends ChangeNotifier {
   }
 
   void _clear() {
+    _rateDebounceTimer?.cancel();
+    _rateDebounceTimer = null;
     _chunks = const [];
     _chunkOffsets = const [];
     _chunkIndex = 0;
@@ -181,50 +184,9 @@ class TtsService extends ChangeNotifier {
   Future<void> setRate(double rate, {bool immediateRestart = true}) async {
     _rate = rate.clamp(0.25, 4.0);
     notifyListeners(); // Notify immediately for UI update
-    await _ensureReady();
-    await _flutterTts.setSpeechRate(_engineRate());
 
-    DiagnosticLogger.instance.log(
-      'TTS::Speed',
-      'Rate set to ${_rate.toStringAsFixed(2)}x (immediateRestart: $immediateRestart, state: $_state)',
-    );
-
-    if (immediateRestart) {
-      _rateDebounceTimer?.cancel();
-      _rateDebounceTimer = null;
-
-      if (_state == TtsState.playing) {
-        _isRestartingForRateChange = true;
-        _stopFallback();
-        await _flutterTts.stop();
-        await Future.delayed(const Duration(milliseconds: 30));
-
-        if (_disposed || _stopRequested) {
-          _isRestartingForRateChange = false;
-          return;
-        }
-
-        if (_chunkIndex >= 0 && _chunkIndex < _chunks.length) {
-          final currentChunk = _chunks[_chunkIndex];
-          final resumeOffset = (_wordStart ?? 0).clamp(0, currentChunk.length);
-          if (resumeOffset > 0 && resumeOffset < currentChunk.length) {
-            final remainingText = currentChunk.substring(resumeOffset);
-            _chunkOffset += resumeOffset;
-            final updatedChunks = List<String>.from(_chunks);
-            updatedChunks[_chunkIndex] = remainingText;
-            _chunks = updatedChunks;
-            _updateWordPositionsForCurrentChunk();
-          }
-        }
-
-        _nativeProgressReceived = false;
-        _isRestartingForRateChange = false;
-        if (_chunks.isNotEmpty && _chunkIndex < _chunks.length) {
-          await _speakChunk(_chunks[_chunkIndex]);
-        }
-      }
-    } else {
-      // Debounce restart while actively dragging
+    if (!immediateRestart) {
+      // Debounce restart while actively dragging without flooding setSpeechRate
       _rateDebounceTimer?.cancel();
       _rateDebounceTimer = Timer(const Duration(milliseconds: 400), () {
         if (!_disposed && _state == TtsState.playing) {
@@ -235,6 +197,54 @@ class TtsService extends ChangeNotifier {
       if (!_nativeProgressReceived && _state == TtsState.playing) {
         _stopFallback();
         _startFallbackIfNeeded();
+      }
+      return;
+    }
+
+    _rateDebounceTimer?.cancel();
+    _rateDebounceTimer = null;
+
+    await _ensureReady();
+    await _flutterTts.setSpeechRate(_engineRate());
+
+    DiagnosticLogger.instance.log(
+      'TTS::Speed',
+      'Rate set to ${_rate.toStringAsFixed(2)}x (immediateRestart: $immediateRestart, state: $_state)',
+    );
+
+    if (_state == TtsState.playing) {
+      final restartId = ++_rateRestartId;
+      _isRestartingForRateChange = true;
+      _stopFallback();
+      await _flutterTts.stop();
+      await Future.delayed(const Duration(milliseconds: 30));
+
+      if (_disposed || _stopRequested || restartId != _rateRestartId) {
+        if (restartId == _rateRestartId) {
+          _isRestartingForRateChange = false;
+        }
+        return;
+      }
+
+      if (_chunkIndex >= 0 && _chunkIndex < _chunks.length) {
+        final currentChunk = _chunks[_chunkIndex];
+        final resumeOffset = (_wordStart ?? 0).clamp(0, currentChunk.length);
+        if (resumeOffset > 0 && resumeOffset < currentChunk.length) {
+          final remainingText = currentChunk.substring(resumeOffset);
+          _chunkOffset += resumeOffset;
+          final updatedChunks = List<String>.from(_chunks);
+          updatedChunks[_chunkIndex] = remainingText;
+          _chunks = updatedChunks;
+          _updateWordPositionsForCurrentChunk();
+        }
+        _wordStart = 0;
+        _wordEnd = null;
+      }
+
+      _nativeProgressReceived = false;
+      _isRestartingForRateChange = false;
+      if (_chunks.isNotEmpty && _chunkIndex < _chunks.length) {
+        await _speakChunk(_chunks[_chunkIndex]);
       }
     }
   }
@@ -518,6 +528,9 @@ class TtsService extends ChangeNotifier {
 
     // Update chunk offset for next chunk
     _chunkOffset = _chunkOffsets[_chunkIndex];
+    _wordStart = null;
+    _wordEnd = null;
+    _word = null;
 
     _updateWordPositionsForCurrentChunk();
     _nativeProgressReceived = false;
@@ -526,6 +539,10 @@ class TtsService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _rateDebounceTimer?.cancel();
+    _rateDebounceTimer = null;
+    _rateRestartId++;
+    _isRestartingForRateChange = false;
     await _ensureReady();
     _stopRequested = true;
     _stopFallback();

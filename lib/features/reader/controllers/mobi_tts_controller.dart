@@ -338,6 +338,7 @@ class MobiTtsController extends ChangeNotifier {
       windowStart: bounds.start,
       windowEnd: bounds.end,
       expectedOffset: bounds.expected,
+      strictWindow: modeController.isPagedMode,
     );
 
     if (resolved != null) {

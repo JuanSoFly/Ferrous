@@ -1,3 +1,16 @@
+## [1.4.5-alpha.2] - 2026-11-22
+
+### Added
+- **Paging-Strict TTS Offset Resolution**: Added `strictWindow` mode to `TextOffsetResolver` to enforce tighter page-boundary n-gram matching and prevent whole-chapter fallback jumps when reading in paged mode.
+- **Active Page Slice Bounds Seeding in TXT Paged Mode**: Linked `TxtPagedViewer` to `ChapterController.setActivePageBounds` to provide accurate slice character bounds during paginated TXT reading.
+- **Connector-Aware Word Boundary Snapping**: Enhanced `HtmlTtsHighlightHelper` to treat apostrophes (`'`, `’`, `‘`) and hyphens (`-`, `\u2011`) as internal word connectors, preventing clipped or fragmented highlights on contractions and compound words.
+
+### Changed
+- **Speaking Chapter Key Alignment**: Updated `EpubContentViewer`, `MobiContentViewer`, and `TxtContentViewer` to assign the TTS highlight scroll key strictly to `speakingChapterIndex`, preventing false scroll targets during chapter transitions.
+- **Dynamic Live Extensions in Content Viewers**: Extracted `_buildExtensions` in HTML content viewers to ensure live reader themes and highlight styles update immediately during active TTS playback.
+- **Race-Free Speech Rate Restarts**: Added monotonic `_rateRestartId` tracking and comprehensive debounce timer cleanup in `TtsService` to eliminate duplicate audio speech loops and race conditions during rapid speech rate adjustments.
+- **Paginator Plain Text Measurement Alignment**: Aligned `SafeScreenPaginator` plain text extraction with standard DOM length to maintain consistent slice measurement.
+
 ## [1.4.5-alpha.1] - 2026-11-22
 
 ### Added

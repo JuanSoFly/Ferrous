@@ -3,6 +3,24 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/core/services/diagnostic_logger.dart';
 
+class _TextNodeInfo {
+  final dom.Text node;
+  final String nodeText;
+  final List<int> cleanToProcessed;
+  final String cleanText;
+  final int nodeStart;
+  final int nodeEnd;
+
+  _TextNodeInfo({
+    required this.node,
+    required this.nodeText,
+    required this.cleanToProcessed,
+    required this.cleanText,
+    required this.nodeStart,
+    required this.nodeEnd,
+  });
+}
+
 /// Centralized helper for injecting TTS highlights into HTML DOM structures.
 /// Guarantees whole-word highlighting and prevents word clipping or partial fragments.
 class HtmlTtsHighlightHelper {
@@ -12,10 +30,24 @@ class HtmlTtsHighlightHelper {
 
   static bool _isWordChar(String char) => _wordCharRegex.hasMatch(char);
 
+  static bool _isInternalConnector(String char) {
+    return char == "'" || char == '’' || char == '‘' || char == '-' || char == '\u2011';
+  }
+
   static bool _isWordBoundary(String text, int start, int length) {
-    if (start > 0 && _isWordChar(text[start - 1])) return false;
+    if (start > 0) {
+      if (_isWordChar(text[start - 1])) return false;
+      if (start > 1 && _isInternalConnector(text[start - 1]) && _isWordChar(text[start - 2])) {
+        return false;
+      }
+    }
     final end = start + length;
-    if (end < text.length && _isWordChar(text[end])) return false;
+    if (end < text.length) {
+      if (_isWordChar(text[end])) return false;
+      if (end + 1 < text.length && _isInternalConnector(text[end]) && _isWordChar(text[end + 1])) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -24,6 +56,24 @@ class HtmlTtsHighlightHelper {
     final normA = a.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
     final normB = b.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
     return normA == normB;
+  }
+
+  static int _findWholeWordMatch(String text, String query, {int preferredPos = 0}) {
+    if (query.isEmpty || text.isEmpty || query.length > text.length) return -1;
+    int bestIdx = -1;
+    int bestDist = 1 << 30;
+
+    for (var i = 0; i + query.length <= text.length; i++) {
+      if (_matchesWord(text.substring(i, i + query.length), query) &&
+          _isWordBoundary(text, i, query.length)) {
+        final dist = (i - preferredPos).abs();
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      }
+    }
+    return bestIdx;
   }
 
   static int findWordEnd(String text, int start) {
@@ -84,6 +134,7 @@ class HtmlTtsHighlightHelper {
         ? strippedWord
         : expectedWord;
 
+    final nodeInfos = <_TextNodeInfo>[];
     var offset = 0;
     for (final node in textNodes) {
       final nodeText = node.data;
@@ -119,30 +170,72 @@ class HtmlTtsHighlightHelper {
       final nodeEnd = offset + rawEquivalentLen;
       offset = nodeEnd;
 
-      // Skip nodes that don't overlap with highlight range
-      if (rawEnd <= nodeStart || rawStart >= nodeEnd) continue;
-
-      // Skip synthetic nodes (block separators)
-      if (node.parent == null) continue;
-
-      int exactCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
-      int exactCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
-
-      if (cleanToProcessed.isEmpty) continue;
       final cleanText = cleanToProcessed.map((i) => nodeText[i]).join();
+      nodeInfos.add(_TextNodeInfo(
+        node: node,
+        nodeText: nodeText,
+        cleanToProcessed: cleanToProcessed,
+        cleanText: cleanText,
+        nodeStart: nodeStart,
+        nodeEnd: nodeEnd,
+      ));
+    }
 
-      int matchIdx = -1;
+    int targetIdx = -1;
+    for (var i = 0; i < nodeInfos.length; i++) {
+      final info = nodeInfos[i];
+      if (info.node.parent == null || info.cleanToProcessed.isEmpty) continue;
+      if (rawEnd > info.nodeStart && rawStart < info.nodeEnd) {
+        targetIdx = i;
+        break;
+      }
+    }
 
-      // Search for query with strict word boundary enforcement
-      if (query != null && query.isNotEmpty) {
-        // 1. Check exact position first
-        if (exactCleanStart + query.length <= cleanText.length &&
-            _matchesWord(cleanText.substring(exactCleanStart, exactCleanStart + query.length), query) &&
-            _isWordBoundary(cleanText, exactCleanStart, query.length)) {
-          matchIdx = exactCleanStart;
-        } else {
-          // 2. Search backwards in small window
-          for (var delta = -1; delta >= -8; delta--) {
+    if (targetIdx == -1) {
+      int minDiff = 1 << 30;
+      for (var i = 0; i < nodeInfos.length; i++) {
+        final info = nodeInfos[i];
+        if (info.node.parent == null || info.cleanToProcessed.isEmpty) continue;
+        final diff = (info.nodeStart - rawStart).abs();
+        if (diff < minDiff) {
+          minDiff = diff;
+          targetIdx = i;
+        }
+      }
+    }
+
+    if (targetIdx == -1) return html;
+
+    _TextNodeInfo activeInfo = nodeInfos[targetIdx];
+    int exactCleanStart = (rawStart - activeInfo.nodeStart).clamp(0, activeInfo.cleanToProcessed.length);
+    int exactCleanEnd = (rawEnd - activeInfo.nodeStart).clamp(0, activeInfo.cleanToProcessed.length);
+    int matchIdx = -1;
+
+    // Search for query with strict word boundary enforcement
+    if (query != null && query.isNotEmpty) {
+      final cleanText = activeInfo.cleanText;
+
+      // 1. Check exact position first
+      if (exactCleanStart + query.length <= cleanText.length &&
+          _matchesWord(cleanText.substring(exactCleanStart, exactCleanStart + query.length), query) &&
+          _isWordBoundary(cleanText, exactCleanStart, query.length)) {
+        matchIdx = exactCleanStart;
+      } else {
+        // 2. Search backwards in small window
+        for (var delta = -1; delta >= -8; delta--) {
+          final testPos = exactCleanStart + delta;
+          if (testPos >= 0 && testPos + query.length <= cleanText.length) {
+            if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query) &&
+                _isWordBoundary(cleanText, testPos, query.length)) {
+              matchIdx = testPos;
+              break;
+            }
+          }
+        }
+
+        // 3. Search forwards in small window
+        if (matchIdx < 0) {
+          for (var delta = 1; delta <= 8; delta++) {
             final testPos = exactCleanStart + delta;
             if (testPos >= 0 && testPos + query.length <= cleanText.length) {
               if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query) &&
@@ -152,118 +245,159 @@ class HtmlTtsHighlightHelper {
               }
             }
           }
-
-          // 3. Search forwards in small window
-          if (matchIdx < 0) {
-            for (var delta = 1; delta <= 8; delta++) {
-              final testPos = exactCleanStart + delta;
-              if (testPos >= 0 && testPos + query.length <= cleanText.length) {
-                if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query) &&
-                    _isWordBoundary(cleanText, testPos, query.length)) {
-                  matchIdx = testPos;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 4. Broader search for nearest whole-word match in the entire node
-          if (matchIdx < 0) {
-            int bestDistance = 1 << 30;
-            for (var i = 0; i + query.length <= cleanText.length; i++) {
-              if (_matchesWord(cleanText.substring(i, i + query.length), query) &&
-                  _isWordBoundary(cleanText, i, query.length)) {
-                final dist = (i - exactCleanStart).abs();
-                if (dist < bestDistance) {
-                  bestDistance = dist;
-                  matchIdx = i;
-                }
-              }
-            }
-          }
         }
 
-        if (matchIdx >= 0) {
-          exactCleanStart = matchIdx;
-          exactCleanEnd = matchIdx + query.length;
+        // 4. Broader search for nearest whole-word match in the entire node
+        if (matchIdx < 0) {
+          matchIdx = _findWholeWordMatch(cleanText, query, preferredPos: exactCleanStart);
         }
       }
 
-      // If query was not found or not provided: snap to whole word boundaries around exactCleanStart
+      // If query not found in initially overlapping text node, check adjacent text nodes
       if (matchIdx < 0) {
-        int wStart = exactCleanStart.clamp(0, cleanText.length);
-        if (wStart < cleanText.length && !_isWordChar(cleanText[wStart])) {
-          // If on whitespace or punctuation, find closest adjacent word character
-          for (var d = 1; d <= 4; d++) {
-            if (wStart + d < cleanText.length && _isWordChar(cleanText[wStart + d])) {
-              wStart += d;
-              break;
-            } else if (wStart - d >= 0 && _isWordChar(cleanText[wStart - d])) {
-              wStart -= d;
+        int prevMatch = -1;
+        int prevIdx = -1;
+        if (targetIdx > 0) {
+          for (var i = targetIdx - 1; i >= 0; i--) {
+            if (nodeInfos[i].node.parent != null && nodeInfos[i].cleanToProcessed.isNotEmpty) {
+              prevIdx = i;
+              prevMatch = _findWholeWordMatch(
+                nodeInfos[i].cleanText,
+                query,
+                preferredPos: nodeInfos[i].cleanText.length - query.length,
+              );
               break;
             }
           }
         }
 
-        if (wStart < cleanText.length && _isWordChar(cleanText[wStart])) {
-          var s = wStart;
-          while (s > 0 && _isWordChar(cleanText[s - 1])) {
-            s--;
+        int nextMatch = -1;
+        int nextIdx = -1;
+        if (targetIdx + 1 < nodeInfos.length) {
+          for (var i = targetIdx + 1; i < nodeInfos.length; i++) {
+            if (nodeInfos[i].node.parent != null && nodeInfos[i].cleanToProcessed.isNotEmpty) {
+              nextIdx = i;
+              nextMatch = _findWholeWordMatch(
+                nodeInfos[i].cleanText,
+                query,
+                preferredPos: 0,
+              );
+              break;
+            }
           }
-          var e = wStart;
-          while (e < cleanText.length && _isWordChar(cleanText[e])) {
-            e++;
+        }
+
+        if (prevMatch >= 0 && nextMatch >= 0) {
+          final prevDist = (rawStart - (nodeInfos[prevIdx].nodeStart + prevMatch)).abs();
+          final nextDist = ((nodeInfos[nextIdx].nodeStart + nextMatch) - rawStart).abs();
+          if (prevDist <= nextDist) {
+            activeInfo = nodeInfos[prevIdx];
+            matchIdx = prevMatch;
+          } else {
+            activeInfo = nodeInfos[nextIdx];
+            matchIdx = nextMatch;
           }
-          exactCleanStart = s;
-          exactCleanEnd = e;
-        } else {
-          exactCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
-          exactCleanEnd = (rawEnd - nodeStart).clamp(exactCleanStart + 1, cleanToProcessed.length);
+        } else if (prevMatch >= 0) {
+          activeInfo = nodeInfos[prevIdx];
+          matchIdx = prevMatch;
+        } else if (nextMatch >= 0) {
+          activeInfo = nodeInfos[nextIdx];
+          matchIdx = nextMatch;
         }
       }
 
-      if (exactCleanStart >= exactCleanEnd) continue;
-
-      // Map clean indices back to processed indices in nodeText
-      final localStart = exactCleanStart < cleanToProcessed.length
-          ? cleanToProcessed[exactCleanStart]
-          : nodeText.length;
-      final localEnd = exactCleanEnd < cleanToProcessed.length
-          ? cleanToProcessed[exactCleanEnd]
-          : (cleanToProcessed.isNotEmpty ? cleanToProcessed.last + 1 : nodeText.length);
-
-      if (localStart >= localEnd) continue;
-
-      final before = nodeText.substring(0, localStart);
-      final mid = nodeText.substring(localStart, localEnd);
-      final after = nodeText.substring(localEnd);
-
-      final parent = node.parent;
-      if (parent == null) continue;
-
-      final index = parent.nodes.indexOf(node);
-      if (index < 0) continue;
-
-      final newNodes = <dom.Node>[];
-      if (before.isNotEmpty) newNodes.add(dom.Text(before));
-      if (mid.isNotEmpty) {
-        final mark = dom.Element.tag(ttsHighlightTag);
-        mark.append(dom.Text(mid));
-        newNodes.add(mark);
+      if (matchIdx >= 0) {
+        exactCleanStart = matchIdx;
+        exactCleanEnd = matchIdx + query.length;
       }
-      if (after.isNotEmpty) newNodes.add(dom.Text(after));
-
-      parent.nodes.removeAt(index);
-      parent.nodes.insertAll(index, newNodes);
-
-      DiagnosticLogger.instance.log(
-        'TTS::Highlight',
-        'Injected highlight for "${mid.trim()}" at clean [$exactCleanStart..$exactCleanEnd]',
-      );
-
-      // Successfully highlighted target word
-      break;
     }
+
+    // If query was not found or not provided: snap to whole word boundaries around exactCleanStart
+    if (matchIdx < 0) {
+      final cleanText = activeInfo.cleanText;
+      int wStart = exactCleanStart.clamp(0, cleanText.length);
+      if (wStart < cleanText.length && !_isWordChar(cleanText[wStart])) {
+        // If on whitespace or punctuation, find closest adjacent word character
+        for (var d = 1; d <= 4; d++) {
+          if (wStart + d < cleanText.length && _isWordChar(cleanText[wStart + d])) {
+            wStart += d;
+            break;
+          } else if (wStart - d >= 0 && _isWordChar(cleanText[wStart - d])) {
+            wStart -= d;
+            break;
+          }
+        }
+      }
+
+      if (wStart < cleanText.length && _isWordChar(cleanText[wStart])) {
+        var s = wStart;
+        while (s > 0) {
+          if (_isWordChar(cleanText[s - 1])) {
+            s--;
+          } else if (s > 1 && _isInternalConnector(cleanText[s - 1]) && _isWordChar(cleanText[s - 2])) {
+            s -= 2;
+          } else {
+            break;
+          }
+        }
+        var e = wStart;
+        while (e < cleanText.length) {
+          if (_isWordChar(cleanText[e])) {
+            e++;
+          } else if (e + 1 < cleanText.length && _isInternalConnector(cleanText[e]) && _isWordChar(cleanText[e + 1])) {
+            e += 2;
+          } else {
+            break;
+          }
+        }
+        exactCleanStart = s;
+        exactCleanEnd = e;
+      } else {
+        exactCleanStart = (rawStart - activeInfo.nodeStart).clamp(0, activeInfo.cleanToProcessed.length);
+        exactCleanEnd = (rawEnd - activeInfo.nodeStart).clamp(exactCleanStart + 1, activeInfo.cleanToProcessed.length);
+      }
+    }
+
+    if (exactCleanStart >= exactCleanEnd) return html;
+
+    // Map clean indices back to processed indices in nodeText
+    final nodeText = activeInfo.nodeText;
+    final cleanToProcessed = activeInfo.cleanToProcessed;
+    final localStart = exactCleanStart < cleanToProcessed.length
+        ? cleanToProcessed[exactCleanStart]
+        : nodeText.length;
+    final localEnd = exactCleanEnd < cleanToProcessed.length
+        ? cleanToProcessed[exactCleanEnd]
+        : (cleanToProcessed.isNotEmpty ? cleanToProcessed.last + 1 : nodeText.length);
+
+    if (localStart >= localEnd) return html;
+
+    final before = nodeText.substring(0, localStart);
+    final mid = nodeText.substring(localStart, localEnd);
+    final after = nodeText.substring(localEnd);
+
+    final parent = activeInfo.node.parent;
+    if (parent == null) return html;
+
+    final index = parent.nodes.indexOf(activeInfo.node);
+    if (index < 0) return html;
+
+    final newNodes = <dom.Node>[];
+    if (before.isNotEmpty) newNodes.add(dom.Text(before));
+    if (mid.isNotEmpty) {
+      final mark = dom.Element.tag(ttsHighlightTag);
+      mark.append(dom.Text(mid));
+      newNodes.add(mark);
+    }
+    if (after.isNotEmpty) newNodes.add(dom.Text(after));
+
+    parent.nodes.removeAt(index);
+    parent.nodes.insertAll(index, newNodes);
+
+    DiagnosticLogger.instance.log(
+      'TTS::Highlight',
+      'Injected highlight for "${mid.trim()}" at clean [$exactCleanStart..$exactCleanEnd]',
+    );
 
     return root.outerHtml;
   }

@@ -536,6 +536,16 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
         final totalSlots = slices.length + leadingOffset + trailingOffset;
         final trailingSlot = totalSlots - 1;
 
+        // Seed active page slice bounds on ChapterController
+        final activeSliceIdx = _activeSlot - leadingOffset;
+        if (activeSliceIdx >= 0 && activeSliceIdx < slices.length) {
+          final activeSlice = slices[activeSliceIdx];
+          widget.chapterController.setActivePageBounds(
+            activeSlice.startCharOffset,
+            activeSlice.endCharOffset,
+          );
+        }
+
         final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
             themeRepo.config.pageFlip;
 

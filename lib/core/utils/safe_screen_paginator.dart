@@ -540,7 +540,7 @@ class SafeScreenPaginator {
       }
 
       final nodeText = _extractMeasurementText(targetElement, isPre: tag == 'pre');
-      final textLen = DomTextUtils.extractPlainText(targetElement, preserveSoftHyphens: true).length;
+      final textLen = DomTextUtils.extractPlainText(targetElement).length;
 
       // Compute lateral insets (with ancestor summation) and vertical margins from CSS AST + inline styles
       final lateralInsets = cssRules.isNotEmpty
@@ -870,7 +870,7 @@ class SafeScreenPaginator {
           }
 
           final plainText =
-              DomTextUtils.extractPlainText(anonBlock, preserveSoftHyphens: true);
+              DomTextUtils.extractPlainText(anonBlock);
           final hasVisibleText = plainText.replaceAll('\u00A0', ' ').trim().isNotEmpty;
 
           if (!hasVisibleText) {
@@ -1199,7 +1199,7 @@ class SafeScreenPaginator {
     normalizeBlockTextNodes(node, isPre: isPre);
 
     final rawText = extractMeasurementText(node, isPre: isPre);
-    final totalBlockTextLen = DomTextUtils.extractPlainText(node, preserveSoftHyphens: true).length;
+    final totalBlockTextLen = DomTextUtils.extractPlainText(node).length;
     if (rawText.trim().isEmpty) {
       return [
         _BlockPart(
