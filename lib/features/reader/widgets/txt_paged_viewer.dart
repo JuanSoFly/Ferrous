@@ -550,6 +550,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
             onTapUp: widget.onTapUp,
             onTryDismissSelection: widget.selectionController.tryDismissSelection,
             onClearSelection: widget.selectionController.clearSelection,
+            canSwipe: () => !widget.selectionController.hasSelection,
             pageBuilder: (context, slot) {
               if (hasLeading && slot == 0) {
                 final prevSlices = _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);

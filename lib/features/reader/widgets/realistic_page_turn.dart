@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// Callback when a page turn begins or finishes.
@@ -218,10 +219,13 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     _directionDetermined = false;
     _turnDirection = 0;
 
+    if (_downX == 0.0) {
+      _downX = details.globalPosition.dx;
+    }
     final initialOffset = details.globalPosition.dx - _downX;
     final width = MediaQuery.sizeOf(context).width;
 
-    if (initialOffset < -2.0) {
+    if (initialOffset < -1.5) {
       if (_canTurnForward()) {
         _turnDirection = 1;
         _directionDetermined = true;
@@ -231,7 +235,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         }
         if (mounted) setState(() {});
       }
-    } else if (initialOffset > 2.0) {
+    } else if (initialOffset > 1.5) {
       if (_canTurnBackward()) {
         _turnDirection = -1;
         _directionDetermined = true;
@@ -250,12 +254,12 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
     final delta = details.primaryDelta ?? 0.0;
 
     if (!_directionDetermined) {
-      if (delta < -1.0) {
+      if (delta < -0.5) {
         if (!_canTurnForward()) return;
         _turnDirection = 1;
         _directionDetermined = true;
         if (mounted) setState(() {});
-      } else if (delta > 1.0) {
+      } else if (delta > 0.5) {
         if (!_canTurnBackward()) return;
         _turnDirection = -1;
         _directionDetermined = true;
@@ -277,18 +281,31 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   void _handleHorizontalDragEnd(DragEndDetails details, double screenWidth) {
     if (!widget.enabled || !_isDragging || _isAnimating) return;
     _isDragging = false;
+    _downX = 0.0;
 
+    final velocity = details.primaryVelocity ?? 0.0;
+
+    // Fast-path recovery for quick flicks: if direction wasn't locked yet,
+    // determine it directly from fling velocity
     if (!_directionDetermined || _turnDirection == 0) {
-      _dragProgress = 0.0;
-      _progressNotifier.value = 0.0;
-      _directionDetermined = false;
-      _turnDirection = 0;
-      if (mounted) setState(() {});
-      return;
+      if (velocity < -120.0 && _canTurnForward()) {
+        _turnDirection = 1;
+        _directionDetermined = true;
+      } else if (velocity > 120.0 && _canTurnBackward()) {
+        _turnDirection = -1;
+        _directionDetermined = true;
+      } else {
+        _dragProgress = 0.0;
+        _progressNotifier.value = 0.0;
+        _directionDetermined = false;
+        _turnDirection = 0;
+        if (mounted) setState(() {});
+        return;
+      }
     }
 
-    // Epsilon-safe early exit if released near 0.0:
-    if (_dragProgress <= 0.001) {
+    // Epsilon-safe early exit if released near 0.0 with minimal velocity:
+    if (_dragProgress <= 0.001 && velocity.abs() < 120.0) {
       _dragProgress = 0.0;
       _progressNotifier.value = 0.0;
       _directionDetermined = false;
@@ -305,23 +322,26 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
       return;
     }
 
-    final velocity = details.primaryVelocity ?? 0.0;
     final bool isFling = _turnDirection == 1
-        ? velocity < -150.0
-        : velocity > 150.0;
+        ? velocity < -120.0
+        : velocity > 120.0;
     final bool isCancelFling = _turnDirection == 1
-        ? velocity > 280.0
-        : velocity < -280.0;
+        ? velocity > 250.0
+        : velocity < -250.0;
 
+    // Responsive completion: a genuine fling in turn direction or dragging >= 15% screen
     final shouldComplete = !isCancelFling && (
-      (isFling && _dragProgress >= 0.04) || _dragProgress >= 0.20
+      isFling || _dragProgress >= 0.15
     );
 
     _isAnimating = true;
 
-    // Smooth, relaxed duration scaling: ~320ms to ~500ms
+    // Responsive duration scaling: snappy (~240ms-320ms) for high-velocity flings,
+    // smooth & relaxed (~320ms-460ms) for deliberate drags
     final remaining = shouldComplete ? (1.0 - _dragProgress) : _dragProgress;
-    final durationMs = (320 + (remaining * 180)).round().clamp(280, 500);
+    final speedFactor = (velocity.abs() / 1500.0).clamp(0.0, 1.0);
+    final baseDuration = 320.0 - (speedFactor * 80.0);
+    final durationMs = (baseDuration + (remaining * 140.0)).round().clamp(220, 480);
     _curlController.duration = Duration(milliseconds: durationMs);
 
     if (mounted) setState(() {});
@@ -334,6 +354,7 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
   }
 
   void _handleHorizontalDragCancel() {
+    _downX = 0.0;
     // CRITICAL: Guard strictly on _isDragging!
     // Never abort an in-flight tap-to-turn animation!
     if (!_isDragging) return;
@@ -405,15 +426,34 @@ class RealisticPageTurnState extends State<RealisticPageTurn>
         final height = constraints.maxHeight;
         final size = Size(width, height);
 
-        return GestureDetector(
+        return RawGestureDetector(
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragDown: _handleHorizontalDragDown,
-          onHorizontalDragStart: _handleHorizontalDragStart,
-          onHorizontalDragUpdate: (details) =>
-              _handleHorizontalDragUpdate(details, width),
-          onHorizontalDragEnd: (details) =>
-              _handleHorizontalDragEnd(details, width),
-          onHorizontalDragCancel: _handleHorizontalDragCancel,
+          gestures: <Type, GestureRecognizerFactory>{
+            _DominantHorizontalDragGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                    _DominantHorizontalDragGestureRecognizer>(
+              () => _DominantHorizontalDragGestureRecognizer(
+                debugOwner: this,
+                canDrag: () =>
+                    widget.enabled &&
+                    !_isAnimating &&
+                    (widget.canSwipe?.call() ?? true),
+              ),
+              (_DominantHorizontalDragGestureRecognizer instance) {
+                instance
+                  ..onDown = _handleHorizontalDragDown
+                  ..onStart = _handleHorizontalDragStart
+                  ..onUpdate = (details) {
+                    _handleHorizontalDragUpdate(details, width);
+                  }
+                  ..onEnd = (details) {
+                    _handleHorizontalDragEnd(details, width);
+                  }
+                  ..onCancel = _handleHorizontalDragCancel
+                  ..dragStartBehavior = DragStartBehavior.down;
+              },
+            ),
+          },
           child: _buildPersistentCurlStack(context, size),
         );
       },
@@ -742,4 +782,44 @@ class _RealisticCurlLightingPainter extends CustomPainter {
       oldDelegate.curlX != curlX ||
       oldDelegate.progress != progress ||
       oldDelegate.isDark != isDark;
+}
+
+/// A specialized [HorizontalDragGestureRecognizer] that has a more responsive
+/// horizontal touch slop (~4.0px vs default 18.0px), allowing it to resolve
+/// and claim victory in the gesture arena before child [SelectableRegion]'s
+/// [TapAndHorizontalDragGestureRecognizer] can claim eager victory on touch screens.
+///
+/// If [canDrag] returns false (e.g. active text selection or disabled), it yields
+/// the pointer immediately so child text selection handles can be freely adjusted.
+class _DominantHorizontalDragGestureRecognizer
+    extends HorizontalDragGestureRecognizer {
+  _DominantHorizontalDragGestureRecognizer({
+    super.debugOwner,
+    this.canDrag,
+  });
+
+  final ValueGetter<bool>? canDrag;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    if (canDrag != null && !canDrag!()) {
+      return;
+    }
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) {
+    if (canDrag != null && !canDrag!()) {
+      return false;
+    }
+    // Android pan slop is ~8.0. By declaring victory when horizontal delta exceeds
+    // ~4.0px, this recognizer wins the gesture arena before child SelectableRegion's
+    // TapAndHorizontalDragGestureRecognizer can claim eager victory on touch.
+    final slop = (deviceTouchSlop ?? 4.0).clamp(2.0, 5.0);
+    return globalDistanceMoved.abs() > slop;
+  }
 }

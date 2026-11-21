@@ -701,6 +701,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
               onTapUp: widget.onTapUp,
               onTryDismissSelection: widget.selectionController.tryDismissSelection,
               onClearSelection: widget.selectionController.clearSelection,
+              canSwipe: () => !widget.selectionController.hasSelection,
               pageBuilder: (context, slot) {
                 if (hasLeading && slot == 0) {
                   final prevSlices = _getPagedSlices(

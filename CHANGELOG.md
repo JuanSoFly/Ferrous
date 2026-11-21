@@ -2,11 +2,15 @@
 
 ### Added
 - **Fast Binary Image Header Probing**: Implemented sub-microsecond binary header probing in `SafeScreenPaginator` for PNG, GIF, JPEG, and WebP images, extracting dimensions without decoding full bitmaps into memory.
+- **Dominant Gesture Recognizer for Page Turns**: Implemented `_DominantHorizontalDragGestureRecognizer` with responsive touch slop (~4.0px) in `RealisticPageTurn`, winning the gesture arena over child `SelectableRegion` gestures on touchscreen devices.
+- **Selection-Aware Swipe Guard**: Added `canSwipe` guard to `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` to yield horizontal gestures when active text selection is present, ensuring text handles can be dragged freely.
 
 ### Changed
 - **Adaptive Canvas Headroom for Publisher Styles**: Expanded reserve headroom calculation in `SafeScreenPaginator` to double line height when publisher CSS is present, preventing outer margin accumulation overflow.
 - **Publisher Style Font-Size Normalization**: Normalized relative `em`, `rem`, `%`, and `pt` units within embedded `<style>` sheets directly against user base font size in EPUB and MOBI content viewers.
 - **Default Publisher Styles Preference**: Set default `usePublisherStyles` configuration to `false` in `ReaderThemeConfig` to favor clean user typography out-of-the-box.
+- **Page Turn Velocity Curve & Quick-Flick Recovery**: Added fast-path fling recovery and velocity-weighted animation duration scaling in `RealisticPageTurn` for fluid page turns on fast swipes.
+- **Swipe Initiation Sensitivity**: Lowered initial drag detection threshold from 2.0px to 1.5px and incremental delta from 1.0px to 0.5px for immediate curl feedback.
 - **Realistic Page Turn Gesture Responsiveness**: Added explicit mounted state synchronization during drag transitions and optimized offscreen slot visibility to discard inactive animation tickers.
 - **Paged Viewer Slice Null Safety**: Added defensive null slice checks in `EpubPagedViewer` and `MobiPagedViewer` page builders.
 
