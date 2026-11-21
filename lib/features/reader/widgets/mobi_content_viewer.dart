@@ -427,13 +427,9 @@ div, p, blockquote, section, article {
             color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
           ),
           "tts-highlight": Style(
-            backgroundColor: isEInk
-                ? const Color(0xFFD5D0C5)
-                : Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.3),
-            color: isEInk ? const Color(0xFF1A1A18) : null,
+            backgroundColor: Colors.transparent,
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
           ),
           "p": Style(
             margin: null,
@@ -841,16 +837,16 @@ div, p, blockquote, section, article {
     );
 
     return ListenableBuilder(
-      listenable: widget.ttsController,
+      listenable: Listenable.merge([widget.ttsController, themeRepo]),
       child: staticChild,
       builder: (context, child) {
-        final isCurrentChapter =
-            widget.chapterIndex == widget.chapterController.currentChapterIndex;
+        final isSpeakingChapter =
+            widget.ttsController.speakingChapterIndex == widget.chapterIndex;
         final isTtsActive = widget.ttsController.showTtsControls ||
             widget.ttsController.ttsService.state != TtsState.stopped;
         final hasHighlight = widget.ttsController.lastHighlightStart != null;
 
-        if (!isCurrentChapter || !isTtsActive || !hasHighlight) {
+        if (!isSpeakingChapter || !isTtsActive || !hasHighlight) {
           return child!;
         }
 
@@ -862,13 +858,16 @@ div, p, blockquote, section, article {
         if (widget.pageSlice != null) {
           final slice = widget.pageSlice!;
           if (highlightStart >= slice.startCharOffset && highlightStart < slice.endCharOffset) {
-            final localStart = (highlightStart - slice.startCharOffset).clamp(0, slice.html.length);
-            final localEnd = (highlightEnd - slice.startCharOffset).clamp(localStart, slice.html.length);
+            final sliceCharLen = (slice.endCharOffset - slice.startCharOffset).clamp(0, double.maxFinite.toInt());
+            final localStart = (highlightStart - slice.startCharOffset).clamp(0, sliceCharLen);
+            final localEnd = (highlightEnd - slice.startCharOffset).clamp(localStart, sliceCharLen);
 
             var sliceHtml = widget.ttsController.buildTtsHighlightedHtml(
               slice.html,
               overrideStart: localStart,
               overrideEnd: localEnd,
+              chapterRawStart: highlightStart,
+              chapterRawEnd: highlightEnd,
             );
             WidgetsBinding.instance.addPostFrameCallback((_) {
               widget.ttsController.maybeEnsureHighlightVisible();
@@ -911,6 +910,8 @@ div, p, blockquote, section, article {
               baseChunks[i],
               overrideStart: localStart,
               overrideEnd: localEnd,
+              chapterRawStart: highlightStart,
+              chapterRawEnd: highlightEnd,
             );
             if (chapterAnnotations.isNotEmpty) {
               chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);

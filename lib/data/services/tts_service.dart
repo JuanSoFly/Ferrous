@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:ferrous/core/utils/performance.dart';
+import 'package:ferrous/core/services/diagnostic_logger.dart';
 import 'package:ferrous/src/rust/api/tts_text.dart';
 
 enum TtsState { stopped, playing, paused }
@@ -50,6 +51,8 @@ class TtsService extends ChangeNotifier {
 
   bool _disposed = false;
   bool _stopRequested = false;
+  bool _isRestartingForRateChange = false;
+  Timer? _rateDebounceTimer;
 
   // Precomputed Rust highlight data
   TextHighlightData? _highlightData;
@@ -103,10 +106,12 @@ class TtsService extends ChangeNotifier {
     });
 
     _flutterTts.setCompletionHandler(() {
+      if (_isRestartingForRateChange) return;
       unawaited(_onChunkComplete());
     });
 
     _flutterTts.setCancelHandler(() {
+      if (_isRestartingForRateChange) return;
       _stopFallback();
       _clear();
       _setState(TtsState.stopped);
@@ -123,6 +128,7 @@ class TtsService extends ChangeNotifier {
     });
 
     _flutterTts.setErrorHandler((_) {
+      if (_isRestartingForRateChange) return;
       _stopFallback();
       _clear();
       _setState(TtsState.stopped);
@@ -172,16 +178,64 @@ class TtsService extends ChangeNotifier {
   // Engine rate: flutter_tts uses 0.0-1.0 range where 0.5 = normal
   double _engineRate() => 0.5 * _rate;
 
-  Future<void> setRate(double rate) async {
+  Future<void> setRate(double rate, {bool immediateRestart = true}) async {
     _rate = rate.clamp(0.25, 4.0);
     notifyListeners(); // Notify immediately for UI update
     await _ensureReady();
     await _flutterTts.setSpeechRate(_engineRate());
 
-    // Restart fallback timer with new rate
-    if (!_nativeProgressReceived && _state == TtsState.playing) {
-      _stopFallback();
-      _startFallbackIfNeeded();
+    DiagnosticLogger.instance.log(
+      'TTS::Speed',
+      'Rate set to ${_rate.toStringAsFixed(2)}x (immediateRestart: $immediateRestart, state: $_state)',
+    );
+
+    if (immediateRestart) {
+      _rateDebounceTimer?.cancel();
+      _rateDebounceTimer = null;
+
+      if (_state == TtsState.playing) {
+        _isRestartingForRateChange = true;
+        _stopFallback();
+        await _flutterTts.stop();
+        await Future.delayed(const Duration(milliseconds: 30));
+
+        if (_disposed || _stopRequested) {
+          _isRestartingForRateChange = false;
+          return;
+        }
+
+        if (_chunkIndex >= 0 && _chunkIndex < _chunks.length) {
+          final currentChunk = _chunks[_chunkIndex];
+          final resumeOffset = (_wordStart ?? 0).clamp(0, currentChunk.length);
+          if (resumeOffset > 0 && resumeOffset < currentChunk.length) {
+            final remainingText = currentChunk.substring(resumeOffset);
+            _chunkOffset += resumeOffset;
+            final updatedChunks = List<String>.from(_chunks);
+            updatedChunks[_chunkIndex] = remainingText;
+            _chunks = updatedChunks;
+            _updateWordPositionsForCurrentChunk();
+          }
+        }
+
+        _nativeProgressReceived = false;
+        _isRestartingForRateChange = false;
+        if (_chunks.isNotEmpty && _chunkIndex < _chunks.length) {
+          await _speakChunk(_chunks[_chunkIndex]);
+        }
+      }
+    } else {
+      // Debounce restart while actively dragging
+      _rateDebounceTimer?.cancel();
+      _rateDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+        if (!_disposed && _state == TtsState.playing) {
+          setRate(_rate, immediateRestart: true);
+        }
+      });
+      // Adjust fallback timing if active
+      if (!_nativeProgressReceived && _state == TtsState.playing) {
+        _stopFallback();
+        _startFallbackIfNeeded();
+      }
     }
   }
 
@@ -524,6 +578,7 @@ class TtsService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _rateDebounceTimer?.cancel();
     _stopFallback();
     _cancelBatchTimer();
     unawaited(_flutterTts.stop());

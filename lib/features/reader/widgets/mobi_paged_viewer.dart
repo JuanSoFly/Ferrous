@@ -234,6 +234,7 @@ class _MobiPagedViewerState extends State<MobiPagedViewer> {
 
   void _onTtsControllerChanged() {
     if (!mounted || _isSwappingChapter || _isPageAnimating) return;
+    if (widget.ttsController.speakingChapterIndex != _currentChapter) return;
     final highlightStart = widget.ttsController.lastHighlightStart;
     if (highlightStart == null || highlightStart == _lastTtsHandledOffset) return;
     _lastTtsHandledOffset = highlightStart;

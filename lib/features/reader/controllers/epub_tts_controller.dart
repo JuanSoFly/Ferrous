@@ -6,10 +6,8 @@ import 'package:ferrous/data/repositories/book_repository.dart';
 import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/core/utils/sentence_utils.dart';
 import 'package:ferrous/core/utils/normalized_text_map.dart';
-import 'package:html/parser.dart' as html_parser;
-import 'package:html/dom.dart' as dom;
-import 'package:ferrous/core/utils/dom_text_utils.dart';
 import 'package:ferrous/core/utils/text_offset_resolver.dart';
+import 'package:ferrous/features/reader/html_tts_highlight_helper.dart';
 import 'epub_chapter_controller.dart';
 import 'reader_mode_controller.dart';
 
@@ -47,6 +45,7 @@ class EpubTtsController extends ChangeNotifier {
   final GlobalKey _ttsHighlightKey = GlobalKey();
   bool highlightKeyAssigned = false;
 
+  int? _speakingChapterIndex;
   int? _lastHighlightStart;
   int? _lastHighlightEnd;
   int? _lastEnsuredStart;
@@ -58,7 +57,6 @@ class EpubTtsController extends ChangeNotifier {
   late int _lastTtsSentenceEnd;
   late int _lastTtsSection;
 
-  static const String _ttsHighlightTag = 'tts-highlight';
 
   // Getters
   TtsService get ttsService => _ttsService;
@@ -67,6 +65,7 @@ class EpubTtsController extends ChangeNotifier {
   bool get ttsFollowMode => _ttsFollowMode;
   bool get tapToStartEnabled => _tapToStartEnabled;
   GlobalKey get ttsHighlightKey => _ttsHighlightKey;
+  int? get speakingChapterIndex => _speakingChapterIndex;
   int? get lastHighlightStart => _lastHighlightStart;
   int? get lastHighlightEnd => _lastHighlightEnd;
 
@@ -105,6 +104,7 @@ class EpubTtsController extends ChangeNotifier {
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
+      _speakingChapterIndex = null;
       unawaited(_ttsService.stop());
       return;
     }
@@ -133,6 +133,7 @@ class EpubTtsController extends ChangeNotifier {
       _cachedHighlightedHtml = null;
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
+      _speakingChapterIndex = null;
       notifyListeners();
       return;
     }
@@ -216,6 +217,7 @@ class EpubTtsController extends ChangeNotifier {
       if (rawText.trim().isEmpty) continue;
 
       // Set up for TTS with raw text starting from beginning
+      _speakingChapterIndex = index;
       _ttsRawBaseOffset = 0;
       _ttsNormalizationMap = buildNormalizedTextMap(rawText);
       
@@ -224,8 +226,13 @@ class EpubTtsController extends ChangeNotifier {
     }
   }
 
-  String buildTtsHighlightedHtml(String html, {int? overrideStart, int? overrideEnd}) {
-    // Use the raw positions already computed in _handleTtsProgress or chunk-local overrides
+  String buildTtsHighlightedHtml(
+    String html, {
+    int? overrideStart,
+    int? overrideEnd,
+    int? chapterRawStart,
+    int? chapterRawEnd,
+  }) {
     final highlightStart = overrideStart ?? _lastHighlightStart;
     final highlightEnd = overrideEnd ?? _lastHighlightEnd;
     if (highlightStart == null || highlightEnd == null) return html;
@@ -234,184 +241,28 @@ class EpubTtsController extends ChangeNotifier {
       return _cachedHighlightedHtml!;
     }
 
-    final highlighted = _buildHighlightedHtmlAround(html, highlightStart, highlightEnd);
+    final effectiveChapter = _speakingChapterIndex ?? chapterController.currentChapterIndex;
+    final chapterText = (effectiveChapter >= 0 && effectiveChapter < chapterController.allChapterPlainTexts.length)
+        ? chapterController.allChapterPlainTexts[effectiveChapter]
+        : chapterController.currentPlainText;
+
+    final targetWord = HtmlTtsHighlightHelper.resolveExpectedWord(
+      ttsServiceWord: _ttsService.currentWord,
+      chapterPlainText: chapterText,
+      chapterRawStart: chapterRawStart ?? _lastHighlightStart ?? highlightStart,
+      chapterRawEnd: chapterRawEnd ?? _lastHighlightEnd ?? highlightEnd,
+    );
+
+    final highlighted = HtmlTtsHighlightHelper.buildHighlightedHtml(
+      html: html,
+      rawStart: highlightStart,
+      rawEnd: highlightEnd,
+      expectedWord: targetWord,
+    );
+
     _lastHighlightedSourceHtml = html;
     _cachedHighlightedHtml = highlighted;
     return highlighted;
-  }
-
-  static bool _matchesWord(String a, String b) {
-    if (a.toLowerCase() == b.toLowerCase()) return true;
-    final normA = a.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
-    final normB = b.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
-    return normA == normB;
-  }
-
-  String _buildHighlightedHtmlAround(String html, int rawStart, int rawEnd) {
-    if (rawStart < 0 || rawEnd <= rawStart) return html;
-
-    final document = html_parser.parse(html);
-    final root = document.body ?? document.documentElement;
-    if (root == null) return html;
-
-    // Use DomTextUtils for consistent text extraction with block spacing
-    final textNodes = DomTextUtils.collectTextNodes(root);
-    if (textNodes.isEmpty) return html;
-
-    // Determine target word to highlight
-    String? expectedWord = _ttsService.currentWord?.trim();
-    if (expectedWord == null || expectedWord.isEmpty) {
-      final rawText = chapterController.currentPlainText;
-      if (rawStart >= 0 && rawEnd <= rawText.length) {
-        expectedWord = rawText.substring(rawStart, rawEnd).trim();
-      }
-    }
-    final strippedWord = expectedWord?.replaceAll(RegExp(r'^[^\w\d]+|[^\w\d]+$', unicode: true), '');
-    final query = (strippedWord != null && strippedWord.isNotEmpty) ? strippedWord : expectedWord;
-
-    // Iterate through text nodes and find which node contains the highlight range.
-    // Positions are already in raw text space (matching currentPlainText).
-    var offset = 0;
-    for (final node in textNodes) {
-      final nodeText = node.data;
-
-      // Build mapping from clean index to processed index
-      final cleanToProcessed = <int>[];
-      int processedIdx = 0;
-      int indentLen = 0;
-
-      // Skip leading paragraph indent characters (em-spaces U+2003 or non-breaking spaces U+00A0)
-      while (processedIdx < nodeText.length) {
-        final cu = nodeText.codeUnitAt(processedIdx);
-        if (cu == 0x2003 || cu == 0x00A0) {
-          processedIdx++;
-          indentLen++;
-        } else {
-          break;
-        }
-      }
-
-      while (processedIdx < nodeText.length) {
-        final codeUnit = nodeText.codeUnitAt(processedIdx);
-        if (codeUnit == 0x00AD || codeUnit == 0x200B) { // Soft hyphen or zero-width space
-          processedIdx++;
-          continue;
-        }
-        cleanToProcessed.add(processedIdx);
-        processedIdx++;
-      }
-
-      final nodeStart = offset;
-      // Account for the leading newline stripped by paragraph indentation in raw text space
-      final rawEquivalentLen = cleanToProcessed.length + (indentLen > 0 ? 1 : 0);
-      final nodeEnd = offset + rawEquivalentLen;
-      offset = nodeEnd;
-
-      // Skip nodes that don't overlap with highlight range
-      if (rawEnd <= nodeStart || rawStart >= nodeEnd) continue;
-
-      // Skip synthetic nodes (block separators) - they can't be modified in DOM
-      if (node.parent == null) continue;
-
-      // Calculate local positions in clean text space
-      int exactCleanStart = (rawStart - nodeStart).clamp(0, cleanToProcessed.length);
-      int exactCleanEnd = (rawEnd - nodeStart).clamp(0, cleanToProcessed.length);
-
-      // Verify and correct word alignment in clean text space
-      if (query != null && query.isNotEmpty && cleanToProcessed.isNotEmpty) {
-        final cleanText = cleanToProcessed.map((i) => nodeText[i]).join();
-        int matchIdx = -1;
-
-        // 1. Check exact position first
-        if (exactCleanStart + query.length <= cleanText.length &&
-            _matchesWord(cleanText.substring(exactCleanStart, exactCleanStart + query.length), query)) {
-          matchIdx = exactCleanStart;
-        } else {
-          // 2. Check backwards for 1-4 char offset shifts caused by stripped leading whitespace
-          for (var delta = -1; delta >= -4; delta--) {
-            final testPos = exactCleanStart + delta;
-            if (testPos >= 0 && testPos + query.length <= cleanText.length) {
-              if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
-                matchIdx = testPos;
-                break;
-              }
-            }
-          }
-
-          // 3. Check forwards if rawStart was slightly earlier
-          if (matchIdx < 0) {
-            for (var delta = 1; delta <= 4; delta++) {
-              final testPos = exactCleanStart + delta;
-              if (testPos >= 0 && testPos + query.length <= cleanText.length) {
-                if (_matchesWord(cleanText.substring(testPos, testPos + query.length), query)) {
-                  matchIdx = testPos;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 4. Fallback search in surrounding window
-          if (matchIdx < 0) {
-            const window = 12;
-            final searchStart = (exactCleanStart - window).clamp(0, cleanText.length);
-            final searchEnd = (exactCleanStart + query.length + window).clamp(0, cleanText.length);
-            final region = cleanText.substring(searchStart, searchEnd);
-
-            final normRegion = region.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
-            final normQuery = query.toLowerCase().replaceAll('’', "'").replaceAll('‘', "'");
-            final localIdx = normRegion.indexOf(normQuery);
-            if (localIdx >= 0) {
-              matchIdx = searchStart + localIdx;
-            }
-          }
-        }
-
-        if (matchIdx >= 0 && matchIdx < cleanToProcessed.length) {
-          exactCleanStart = matchIdx;
-          exactCleanEnd = (matchIdx + query.length).clamp(exactCleanStart + 1, cleanToProcessed.length);
-        }
-      }
-
-      if (exactCleanStart >= exactCleanEnd) continue;
-
-      // Map clean indices back to processed indices in nodeText
-      final localStart = exactCleanStart < cleanToProcessed.length
-          ? cleanToProcessed[exactCleanStart]
-          : nodeText.length;
-      final localEnd = exactCleanEnd < cleanToProcessed.length
-          ? cleanToProcessed[exactCleanEnd]
-          : (cleanToProcessed.isNotEmpty ? cleanToProcessed.last + 1 : nodeText.length);
-
-      if (localStart >= localEnd) continue;
-
-      final before = nodeText.substring(0, localStart);
-      final mid = nodeText.substring(localStart, localEnd);
-      final after = nodeText.substring(localEnd);
-
-      final parent = node.parent;
-      if (parent == null) continue;
-
-      final index = parent.nodes.indexOf(node);
-      if (index < 0) continue;
-
-      final newNodes = <dom.Node>[];
-      if (before.isNotEmpty) newNodes.add(dom.Text(before));
-      if (mid.isNotEmpty) {
-        final mark = dom.Element.tag(_ttsHighlightTag);
-        mark.append(dom.Text(mid));
-        newNodes.add(mark);
-      }
-      if (after.isNotEmpty) newNodes.add(dom.Text(after));
-
-      parent.nodes.removeAt(index);
-      parent.nodes.insertAll(index, newNodes);
-
-      // Break after first match for simplicity
-      break;
-    }
-
-    return root.outerHtml;
   }
 
   String resolveTtsText({required ReaderModeController modeController}) {
@@ -524,11 +375,7 @@ class EpubTtsController extends ChangeNotifier {
 
   /// Find the end of a word starting at [start].
   int _findWordEnd(String text, int start) {
-    var end = start;
-    while (end < text.length && text[end].trim().isNotEmpty) {
-      end++;
-    }
-    return end;
+    return HtmlTtsHighlightHelper.findWordEnd(text, start);
   }
 
   /// Speak from a confirmed location (called after user confirms tap selection).
@@ -536,6 +383,7 @@ class EpubTtsController extends ChangeNotifier {
     required int chapterIndex,
     required int offset,
   }) async {
+    _speakingChapterIndex = chapterIndex;
     if (chapterIndex != chapterController.currentChapterIndex) {
       await chapterController.loadChapter(chapterIndex, userInitiated: false);
     }
@@ -560,6 +408,7 @@ class EpubTtsController extends ChangeNotifier {
   }
 
   Future<void> startPlayback({required ReaderModeController modeController}) async {
+    _speakingChapterIndex = chapterController.currentChapterIndex;
     final text = resolveTtsText(modeController: modeController);
     if (text.trim().isEmpty) return;
 
@@ -577,6 +426,7 @@ class EpubTtsController extends ChangeNotifier {
 
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
     if (startText.trim().isEmpty) return;
+    _speakingChapterIndex ??= chapterController.currentChapterIndex;
 
     // Build normalization map from the text we're going to speak
     final map = buildNormalizedTextMap(startText);
@@ -722,6 +572,14 @@ class EpubTtsController extends ChangeNotifier {
     ));
   }
 
+  void clearHighlight() {
+    _cachedHighlightedHtml = null;
+    _lastHighlightStart = null;
+    _lastHighlightEnd = null;
+    _speakingChapterIndex = null;
+    notifyListeners();
+  }
+
   void closeTtsControls() {
     _ttsAdvanceRequestId++;
     _isStartingSpeech = false;
@@ -729,6 +587,7 @@ class EpubTtsController extends ChangeNotifier {
     _cachedHighlightedHtml = null;
     _lastHighlightStart = null;
     _lastHighlightEnd = null;
+    _speakingChapterIndex = null;
     notifyListeners();
   }
 

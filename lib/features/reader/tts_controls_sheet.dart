@@ -194,7 +194,10 @@ class TtsControlsSheet extends StatelessWidget {
                             max: 2.0,
                             divisions: 15,
                             onChanged: (value) {
-                              ttsService.setRate(value);
+                              ttsService.setRate(value, immediateRestart: false);
+                            },
+                            onChangeEnd: (value) {
+                              ttsService.setRate(value, immediateRestart: true);
                             },
                           ),
                         ),

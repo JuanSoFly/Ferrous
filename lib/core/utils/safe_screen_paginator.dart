@@ -1199,13 +1199,13 @@ class SafeScreenPaginator {
     normalizeBlockTextNodes(node, isPre: isPre);
 
     final rawText = extractMeasurementText(node, isPre: isPre);
+    final totalBlockTextLen = DomTextUtils.extractPlainText(node, preserveSoftHyphens: true).length;
     if (rawText.trim().isEmpty) {
-      final len = DomTextUtils.extractPlainText(node).length;
       return [
         _BlockPart(
           html: node.outerHtml,
           height: measureText(rawText, true, isFirstPart: true, isLastPart: true),
-          charLength: len,
+          charLength: totalBlockTextLen,
         )
       ];
     }
@@ -1254,7 +1254,7 @@ class SafeScreenPaginator {
         parts.add(_BlockPart(
           html: partHtml,
           height: remainingHeight,
-          charLength: rawText.length - currentOffset,
+          charLength: math.max(0, totalBlockTextLen - currentOffset),
         ));
         break;
       }
@@ -1277,7 +1277,7 @@ class SafeScreenPaginator {
         parts.add(_BlockPart(
           html: partHtml,
           height: heightTextOnly,
-          charLength: rawText.length - currentOffset,
+          charLength: math.max(0, totalBlockTextLen - currentOffset),
         ));
         break;
       }
@@ -1491,7 +1491,7 @@ class SafeScreenPaginator {
             _BlockPart(
               html: node.outerHtml,
               height: measureText(rawText, true, isFirstPart: true, isLastPart: true),
-              charLength: DomTextUtils.extractPlainText(node).length,
+              charLength: totalBlockTextLen,
             ),
           ];
   }

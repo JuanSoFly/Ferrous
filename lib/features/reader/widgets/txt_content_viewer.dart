@@ -17,6 +17,7 @@ import 'package:ferrous/features/reader/controllers/txt_tts_controller.dart';
 import 'package:ferrous/core/utils/safe_screen_paginator.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
+import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 import 'package:html/dom.dart' as dom;
 
@@ -240,13 +241,9 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
                           color: isEInk ? const Color(0xFF1A1A18) : Theme.of(context).colorScheme.primary,
                         ),
                         "tts-highlight": Style(
-                          backgroundColor: isEInk
-                              ? const Color(0xFFD5D0C5)
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.3),
-                          color: isEInk ? const Color(0xFF1A1A18) : null,
+                          backgroundColor: Colors.transparent,
+                          margin: Margins.zero,
+                          padding: HtmlPaddings.zero,
                         ),
                         "p": Style(
                           margin: blockMargin,
@@ -409,11 +406,122 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
       ),
     ];
 
-    return _buildHtmlContent(
+    final staticChild = _buildHtmlContent(
       extensions: extensions,
       horizontalMargin: horizontalMargin,
       themeConfig: themeConfig,
       annotations: chapterAnnotations,
+    );
+
+    return ListenableBuilder(
+      listenable: Listenable.merge([widget.ttsController, themeRepo]),
+      child: staticChild,
+      builder: (context, child) {
+        final isSpeakingChapter =
+            widget.ttsController.speakingChapterIndex == widget.chapterIndex;
+        final isTtsActive = widget.ttsController.showTtsControls ||
+            widget.ttsController.ttsService.state != TtsState.stopped;
+        final hasHighlight = widget.ttsController.lastHighlightStart != null;
+
+        if (!isSpeakingChapter || !isTtsActive || !hasHighlight) {
+          return child!;
+        }
+
+        widget.ttsController.highlightKeyAssigned = false;
+        final highlightStart = widget.ttsController.lastHighlightStart!;
+        final highlightEnd = widget.ttsController.lastHighlightEnd ?? highlightStart;
+
+        // Paged mode: single slice TTS highlight
+        if (widget.pageSlice != null) {
+          final slice = widget.pageSlice!;
+          if (highlightStart >= slice.startCharOffset && highlightStart < slice.endCharOffset) {
+            final sliceCharLen = (slice.endCharOffset - slice.startCharOffset).clamp(0, double.maxFinite.toInt());
+            final localStart = (highlightStart - slice.startCharOffset).clamp(0, sliceCharLen);
+            final localEnd = (highlightEnd - slice.startCharOffset).clamp(localStart, sliceCharLen);
+
+            var sliceHtml = widget.ttsController.buildTtsHighlightedHtml(
+              slice.html,
+              overrideStart: localStart,
+              overrideEnd: localEnd,
+              chapterRawStart: highlightStart,
+              chapterRawEnd: highlightEnd,
+            );
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              widget.ttsController.maybeEnsureHighlightVisible();
+            });
+            return _buildHtmlWidget(
+              [sliceHtml],
+              extensions: extensions,
+              horizontalMargin: horizontalMargin,
+              themeConfig: themeConfig,
+            );
+          } else {
+            return child!;
+          }
+        }
+
+        final baseChunks = _getChapterChunks();
+        final chunkOffsets = widget.chapterController.allChapterChunkOffsets.length > widget.chapterIndex
+            ? widget.chapterController.allChapterChunkOffsets[widget.chapterIndex]
+            : const <int>[0];
+
+        int activeChunkIndex = 0;
+        for (var i = 0; i < chunkOffsets.length; i++) {
+          final start = chunkOffsets[i];
+          final nextStart = (i + 1 < chunkOffsets.length) ? chunkOffsets[i + 1] : double.maxFinite.toInt();
+          if (highlightStart >= start && highlightStart < nextStart) {
+            activeChunkIndex = i;
+            break;
+          }
+        }
+
+        final chunkStartOffset = chunkOffsets.length > activeChunkIndex ? chunkOffsets[activeChunkIndex] : 0;
+        final localStart = highlightStart - chunkStartOffset;
+        final localEnd = highlightEnd - chunkStartOffset;
+
+        final ttsChunks = <String>[];
+        for (var i = 0; i < baseChunks.length; i++) {
+          if (i == activeChunkIndex) {
+            var chunk = widget.ttsController.buildTtsHighlightedHtml(
+              baseChunks[i],
+              overrideStart: localStart,
+              overrideEnd: localEnd,
+              chapterRawStart: highlightStart,
+              chapterRawEnd: highlightEnd,
+            );
+            if (chapterAnnotations.isNotEmpty) {
+              chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);
+            }
+            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
+              chunk = HyphenationHelper.processHtmlAndIndent(
+                chunk,
+                applyHyphenation: themeConfig.hyphenation,
+                applyIndent: themeConfig.paragraphIndent,
+              );
+            }
+            ttsChunks.add(chunk);
+          } else {
+            ttsChunks.add(_formatChunk(
+              baseChunks[i],
+              i,
+              hyphenation: themeConfig.hyphenation,
+              paragraphIndent: themeConfig.paragraphIndent,
+              annotations: chapterAnnotations,
+            ));
+          }
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.ttsController.maybeEnsureHighlightVisible();
+        });
+
+        return _buildHtmlWidget(
+          ttsChunks,
+          extensions: extensions,
+          horizontalMargin: horizontalMargin,
+          themeConfig: themeConfig,
+        );
+      },
     );
   }
 }

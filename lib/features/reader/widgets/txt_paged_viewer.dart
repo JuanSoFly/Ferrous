@@ -141,6 +141,8 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
   }
 
   void _onTtsControllerChanged() {
+    if (!mounted || _isSwappingChapter || _isPageAnimating) return;
+    if (widget.ttsController.speakingChapterIndex != _currentChapter) return;
     final ttsHighlightStart = widget.ttsController.lastHighlightStart;
     if (ttsHighlightStart == null || ttsHighlightStart == _lastTtsHandledOffset) return;
     _lastTtsHandledOffset = ttsHighlightStart;

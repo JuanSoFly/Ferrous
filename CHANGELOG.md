@@ -1,3 +1,15 @@
+## [1.4.5-alpha.1] - 2026-11-22
+
+### Added
+- **Centralized HTML TTS Highlighting Engine**: Created `HtmlTtsHighlightHelper` to unify TTS highlight injection across EPUB, MOBI, and TXT readers with resilient multi-stage word alignment (exact, local search window, whole-node distance, and word boundary snapping).
+- **Dynamic TXT Reader TTS Highlighting**: Implemented reactive TTS word highlighting in `TxtContentViewer` for both continuous scrolling and discrete paged reading modes.
+- **Debounced Speech Rate Adjustment & Instant Resume**: Added debounced rate updates during slider drag with seamless in-place chunk audio restarting upon release, avoiding speech cancellation or restarts from beginning.
+
+### Changed
+- **Cross-Chapter TTS Sync Guard**: Introduced `speakingChapterIndex` across EPUB, MOBI, and TXT TTS controllers to prevent false page jumps and phantom highlight rendering across chapter boundaries.
+- **Accurate Paged Slice Offset Clamping**: Updated slice character offset clamping in content viewers to use explicit slice character length rather than raw HTML length.
+- **Paginator Soft-Hyphen Text Length Preservation**: Fixed `SafeScreenPaginator` block part character length measurement to preserve soft hyphens, ensuring 1:1 character index parity between paginated slices and TTS highlighting.
+
 ## [1.4.4] - 2026-11-21
 
 ### Added
