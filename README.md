@@ -75,7 +75,7 @@ Precompiled Android packages (APKs) are available on the [GitHub Releases](https
 > sha256sum -c SHA256SUMS.txt
 >
 > # Or verify build provenance with the GitHub CLI (Sigstore attestation)
-> gh attestation verify ferrous-v1.4.3-arm64-v8a.apk --repo JuanSoFly/Ferrous
+> gh attestation verify ferrous-v1.4.4-arm64-v8a.apk --repo JuanSoFly/Ferrous
 > ```
 > *(F-Droid packaging metadata is also tracked in [`fdroid/com.juansofly.ferrous.yml`](fdroid/com.juansofly.ferrous.yml) for repository inclusion).*
 
@@ -302,9 +302,9 @@ flutter build apk --split-per-abi --release --obfuscate --split-debug-info=build
 ```
 
 Outputs are generated in `build/app/outputs/flutter-apk/`:
-- `ferrous-v1.4.3-arm64-v8a.apk` (modern 64-bit devices)
-- `ferrous-v1.4.3-armeabi-v7a.apk` (legacy 32-bit devices)
-- `ferrous-v1.4.3-x86_64.apk` (emulators & ChromeOS)
+- `ferrous-v1.4.4-arm64-v8a.apk` (modern 64-bit devices)
+- `ferrous-v1.4.4-armeabi-v7a.apk` (legacy 32-bit devices)
+- `ferrous-v1.4.4-x86_64.apk` (emulators & ChromeOS)
 
 ### Android App Bundle (AAB)
 

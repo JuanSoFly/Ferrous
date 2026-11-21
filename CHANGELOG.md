@@ -1,11 +1,15 @@
-## [1.4.4-alpha.2] - 2026-11-21
+## [1.4.4] - 2026-11-21
 
 ### Added
 - **Fast Binary Image Header Probing**: Implemented sub-microsecond binary header probing in `SafeScreenPaginator` for PNG, GIF, JPEG, and WebP images, extracting dimensions without decoding full bitmaps into memory.
 - **Dominant Gesture Recognizer for Page Turns**: Implemented `_DominantHorizontalDragGestureRecognizer` with responsive touch slop (~4.0px) in `RealisticPageTurn`, winning the gesture arena over child `SelectableRegion` gestures on touchscreen devices.
 - **Selection-Aware Swipe Guard**: Added `canSwipe` guard to `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` to yield horizontal gestures when active text selection is present, ensuring text handles can be dragged freely.
+- **MOBI & EPUB Explicit Page Break Normalization**: Added Rust-level regex normalization and Dart DOM sanitization for `<mbp:pagebreak>`, `<pagebreak>`, and `<pb>` tags into `.ferrous-pagebreak` elements, forcing discrete chapter page flushes in `SafeScreenPaginator`.
+- **Pre-Warmed Slot Layering for Realistic Page Turn**: Overhauled `RealisticPageTurn` with deferred offscreen element mounting, eliminating drag tracking frame drops and transparent page bleed-through during 120Hz turns.
 
 ### Changed
+- **Paged Viewer Slicing Architecture**: Replaced `SingleChildScrollView` with `ClipRect` + `OverflowBox` in `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` to eliminate scroll artifacts and guarantee exact vertical slice rendering.
+- **Gesture Disambiguation & Debounced Chrome**: Implemented a 280ms toggle timer and tap margin isolation across EPUB, MOBI, and TXT readers to cleanly separate margin page turns, center chrome toggling, and double-tap actions.
 - **Adaptive Canvas Headroom for Publisher Styles**: Expanded reserve headroom calculation in `SafeScreenPaginator` to double line height when publisher CSS is present, preventing outer margin accumulation overflow.
 - **Publisher Style Font-Size Normalization**: Normalized relative `em`, `rem`, `%`, and `pt` units within embedded `<style>` sheets directly against user base font size in EPUB and MOBI content viewers.
 - **Default Publisher Styles Preference**: Set default `usePublisherStyles` configuration to `false` in `ReaderThemeConfig` to favor clean user typography out-of-the-box.
@@ -13,16 +17,6 @@
 - **Swipe Initiation Sensitivity**: Lowered initial drag detection threshold from 2.0px to 1.5px and incremental delta from 1.0px to 0.5px for immediate curl feedback.
 - **Realistic Page Turn Gesture Responsiveness**: Added explicit mounted state synchronization during drag transitions and optimized offscreen slot visibility to discard inactive animation tickers.
 - **Paged Viewer Slice Null Safety**: Added defensive null slice checks in `EpubPagedViewer` and `MobiPagedViewer` page builders.
-
-## [1.4.4-alpha.1] - 2026-11-21
-
-### Added
-- **MOBI & EPUB Explicit Page Break Normalization**: Added Rust-level regex normalization and Dart DOM sanitization for `<mbp:pagebreak>`, `<pagebreak>`, and `<pb>` tags into `.ferrous-pagebreak` elements, forcing discrete chapter page flushes in `SafeScreenPaginator`.
-- **Pre-Warmed Slot Layering for Realistic Page Turn**: Overhauled `RealisticPageTurn` with deferred offscreen element mounting, eliminating drag tracking frame drops and transparent page bleed-through during 120Hz turns.
-
-### Changed
-- **Paged Viewer Slicing Architecture**: Replaced `SingleChildScrollView` with `ClipRect` + `OverflowBox` in `EpubPagedViewer`, `MobiPagedViewer`, and `TxtPagedViewer` to eliminate scroll artifacts and guarantee exact vertical slice rendering.
-- **Gesture Disambiguation & Debounced Chrome**: Implemented a 280ms toggle timer and tap margin isolation across EPUB, MOBI, and TXT readers to cleanly separate margin page turns, center chrome toggling, and double-tap actions.
 
 ## [1.4.3] - 2026-11-20
 
