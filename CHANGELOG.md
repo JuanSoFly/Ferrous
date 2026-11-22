@@ -1,3 +1,15 @@
+## [1.4.5-alpha.3] - 2026-11-22
+
+### Added
+- **Layout-Metrics Invariant TTS Highlighting (`TtsHighlightExtension`)**: Created a centralized inline `TagExtension` builder for `tts-highlight` tags across EPUB, MOBI, TXT, and DOCX readers that styles words exclusively via `TextStyle` properties (`backgroundColor`, `color`, `decoration`).
+- **Zero-Geometry Auto-Scroll Anchor**: Integrated a zero-dimension anchor `WidgetSpan` (`SizedBox(width: 0, height: 1)`) exclusively during continuous-mode playback to maintain `Scrollable.ensureVisible` auto-scrolling without introducing line-height dilation or paragraph reflow.
+- **Single-Key Frame Attachment Guard**: Added per-frame attachment tracking to prevent duplicate `GlobalKey` assertions when multiple highlight instances occur within a single render pass.
+
+### Changed
+- **Eliminated Layout Jitter & Text Shifting**: Replaced `Container`-based highlight wrappers and font-weight alterations with pure inline text styling, preventing glyph advance inflation and word jitter during TTS speech.
+- **Unified Formatting Pipeline Extraction**: Standardized chunk HTML formatting across `EpubContentViewer`, `MobiContentViewer`, and `TxtContentViewer` with unified `_formatContinuousChunkHtml` and `_formatPageSliceHtml` methods.
+- **Cleaned Redundant Highlight Widgets**: Removed obsolete `_TtsHighlightSpan`, `_EpubTtsHighlightSpan`, `_MobiTtsHighlightSpan`, and `_TxtTtsHighlightSpan` implementations across all content viewers.
+
 ## [1.4.5-alpha.2] - 2026-11-22
 
 ### Added

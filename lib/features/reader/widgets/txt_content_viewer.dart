@@ -16,6 +16,7 @@ import 'package:ferrous/features/reader/controllers/txt_chapter_controller.dart'
 import 'package:ferrous/features/reader/controllers/txt_tts_controller.dart';
 import 'package:ferrous/core/utils/safe_screen_paginator.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/features/reader/tts_highlight_extension.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'package:ferrous/data/services/tts_service.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
@@ -44,6 +45,33 @@ class TxtContentViewer extends StatefulWidget {
 class _TxtContentViewerState extends State<TxtContentViewer> {
   static final Map<String, String> _chunkCache = {};
 
+  String _formatContinuousChunkHtml(
+    String rawChunk, {
+    required bool hyphenation,
+    required bool paragraphIndent,
+    required List<Annotation> annotations,
+  }) {
+    var processed = annotations.isNotEmpty
+        ? AnnotationHighlightHelper.applyHighlights(rawChunk, annotations)
+        : rawChunk;
+
+    if (hyphenation || paragraphIndent) {
+      processed = HyphenationHelper.processHtmlAndIndent(
+        processed,
+        applyHyphenation: hyphenation,
+        applyIndent: paragraphIndent,
+      );
+    } else {
+      processed = HyphenationHelper.processHtmlAndIndent(
+        processed,
+        applyHyphenation: false,
+        applyIndent: false,
+      );
+    }
+
+    return processed;
+  }
+
   String _formatChunk(
     String rawChunk,
     int chunkIndex, {
@@ -64,23 +92,12 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
     final cached = _chunkCache[key];
     if (cached != null) return cached;
 
-    var processed = annotations.isNotEmpty
-        ? AnnotationHighlightHelper.applyHighlights(rawChunk, annotations)
-        : rawChunk;
-
-    if (hyphenation || paragraphIndent) {
-      processed = HyphenationHelper.processHtmlAndIndent(
-        processed,
-        applyHyphenation: hyphenation,
-        applyIndent: paragraphIndent,
-      );
-    } else {
-      processed = HyphenationHelper.processHtmlAndIndent(
-        processed,
-        applyHyphenation: false,
-        applyIndent: false,
-      );
-    }
+    final processed = _formatContinuousChunkHtml(
+      rawChunk,
+      hyphenation: hyphenation,
+      paragraphIndent: paragraphIndent,
+      annotations: annotations,
+    );
 
     if (_chunkCache.length > 500) {
       _chunkCache.remove(_chunkCache.keys.first);
@@ -338,20 +355,19 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
           return TextSpan(children: children, style: effectiveStyle);
         },
       ),
-      TagExtension(
-        tagsToExtend: {'tts-highlight'},
-        builder: (ctx) {
-          final isSpeaking = widget.chapterIndex == widget.ttsController.speakingChapterIndex;
-          final text = ctx.node.text ?? '';
-          final style = ctx.style?.generateTextStyle() ?? const TextStyle();
-
-          return _TxtTtsHighlightSpan(
-            key: isSpeaking ? widget.ttsController.ttsHighlightKey : null,
-            text: text,
-            textStyle: style,
-            highlightStyle: highlightStyle,
-          );
-        },
+      TtsHighlightExtension.build(
+        isSpeaking: () => widget.chapterIndex == widget.ttsController.speakingChapterIndex,
+        isPaged: widget.pageSlice != null,
+        ttsHighlightKey: widget.ttsController.ttsHighlightKey,
+        highlightStyle: highlightStyle,
+        primaryColor: Theme.of(context).colorScheme.primary,
+        isEInk: () {
+          AppTheme? currentTheme;
+          try {
+            currentTheme = context.watch<AppTheme?>();
+          } catch (_) {}
+          return currentTheme == AppTheme.eInk;
+        }(),
       ),
       TagExtension.inline(
         tagsToExtend: {AnnotationHighlightHelper.highlightTag},
@@ -508,16 +524,12 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
               chapterRawStart: highlightStart,
               chapterRawEnd: highlightEnd,
             );
-            if (chapterAnnotations.isNotEmpty) {
-              chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);
-            }
-            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
-              chunk = HyphenationHelper.processHtmlAndIndent(
-                chunk,
-                applyHyphenation: themeConfig.hyphenation,
-                applyIndent: themeConfig.paragraphIndent,
-              );
-            }
+            chunk = _formatContinuousChunkHtml(
+              chunk,
+              hyphenation: themeConfig.hyphenation,
+              paragraphIndent: themeConfig.paragraphIndent,
+              annotations: chapterAnnotations,
+            );
             ttsChunks.add(chunk);
           } else {
             ttsChunks.add(_formatChunk(
@@ -541,101 +553,6 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
           themeConfig: themeConfig,
         );
       },
-    );
-  }
-}
-
-class _TxtTtsHighlightSpan extends StatelessWidget {
-  final String text;
-  final TextStyle textStyle;
-  final TtsHighlightStyle highlightStyle;
-
-  const _TxtTtsHighlightSpan({
-    super.key,
-    required this.text,
-    required this.textStyle,
-    required this.highlightStyle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
-    AppTheme? currentTheme;
-    try {
-      currentTheme = context.watch<AppTheme?>();
-    } catch (_) {}
-    final isEInk = currentTheme == AppTheme.eInk;
-
-    BoxDecoration decoration;
-    TextStyle highlightedTextStyle;
-    EdgeInsets padding;
-
-    if (isEInk) {
-      decoration = BoxDecoration(
-        color: const Color(0xFFD5D0C5),
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
-      );
-      highlightedTextStyle = textStyle.copyWith(
-        color: const Color(0xFF1A1A18),
-        fontWeight: FontWeight.w600,
-      );
-      padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5);
-    } else {
-      switch (highlightStyle) {
-        case TtsHighlightStyle.softPill:
-          decoration = BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(4),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            color: primaryColor,
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-          break;
-
-        case TtsHighlightStyle.underline:
-          decoration = BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: primaryColor,
-                width: 2.5,
-              ),
-            ),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            color: primaryColor,
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
-          break;
-
-        case TtsHighlightStyle.classicClean:
-          decoration = BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: primaryColor.withValues(alpha: 0.4),
-              width: 1.5,
-            ),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            color: primaryColor,
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-          break;
-      }
-    }
-
-    return Container(
-      decoration: decoration,
-      padding: padding,
-      child: Text(text, style: highlightedTextStyle),
     );
   }
 }

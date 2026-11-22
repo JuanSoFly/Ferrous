@@ -20,6 +20,7 @@ import 'package:ferrous/features/reader/controllers/mobi_tts_controller.dart';
 import 'package:ferrous/core/utils/reader_typography_metrics.dart';
 import 'package:ferrous/core/utils/safe_screen_paginator.dart';
 import 'package:ferrous/features/reader/hyphenation_helper.dart';
+import 'package:ferrous/features/reader/tts_highlight_extension.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
 import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
@@ -196,9 +197,28 @@ div, p, blockquote, section, article {
     });
   }
 
-  String _formatChunk(
-    String rawChunk,
-    int chunkIndex, {
+  static String _formatPageSliceHtml(
+    String sliceHtml, {
+    required bool usePublisherStyles,
+    required double paragraphSpacing,
+    String? textAlign,
+    required double fontSize,
+    double? lineHeight,
+    String? fontFamily,
+  }) {
+    return _applyDynamicStyles(
+      sliceHtml,
+      usePublisherStyles: usePublisherStyles,
+      paragraphSpacing: paragraphSpacing,
+      textAlign: textAlign,
+      fontSize: fontSize,
+      lineHeight: lineHeight,
+      fontFamily: fontFamily,
+    );
+  }
+
+  String _formatContinuousChunkHtml(
+    String rawChunk, {
     required bool hyphenation,
     required bool paragraphIndent,
     required bool usePublisherStyles,
@@ -209,30 +229,6 @@ div, p, blockquote, section, article {
     String? fontFamily,
     required List<Annotation> annotations,
   }) {
-    if (widget.pageSlice != null) {
-      return _applyDynamicStyles(
-        widget.pageSlice!.html,
-        usePublisherStyles: usePublisherStyles,
-        paragraphSpacing: paragraphSpacing,
-        textAlign: textAlign,
-        fontSize: fontSize,
-        lineHeight: lineHeight,
-        fontFamily: fontFamily,
-      );
-    }
-
-    final bookId = widget.chapterController.book.id;
-    final annotationSig = annotations.isEmpty
-        ? '0'
-        : annotations.map((a) => '${a.id}:${a.color}').join(',');
-    final alignSig = textAlign ?? 'default';
-    final lhSig = lineHeight != null ? lineHeight.toStringAsFixed(2) : 'default';
-    final fontSig = fontFamily ?? 'default';
-    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$fontSize:$alignSig:$lhSig:$fontSig:$annotationSig';
-
-    final cached = _chunkCache[key];
-    if (cached != null) return cached;
-
     // Strict Pipeline Order:
     // 1. Base chunk HTML with dynamic styles injected
     var processed = _applyDynamicStyles(
@@ -260,6 +256,59 @@ div, p, blockquote, section, article {
       applyHyphenation: hyphenation,
       applyIndent: paragraphIndent,
       cssRules: cssRules,
+    );
+
+    return processed;
+  }
+
+  String _formatChunk(
+    String rawChunk,
+    int chunkIndex, {
+    required bool hyphenation,
+    required bool paragraphIndent,
+    required bool usePublisherStyles,
+    required double paragraphSpacing,
+    String? textAlign,
+    required double fontSize,
+    double? lineHeight,
+    String? fontFamily,
+    required List<Annotation> annotations,
+  }) {
+    if (widget.pageSlice != null) {
+      return _formatPageSliceHtml(
+        widget.pageSlice!.html,
+        usePublisherStyles: usePublisherStyles,
+        paragraphSpacing: paragraphSpacing,
+        textAlign: textAlign,
+        fontSize: fontSize,
+        lineHeight: lineHeight,
+        fontFamily: fontFamily,
+      );
+    }
+
+    final bookId = widget.chapterController.book.id;
+    final annotationSig = annotations.isEmpty
+        ? '0'
+        : annotations.map((a) => '${a.id}:${a.color}').join(',');
+    final alignSig = textAlign ?? 'default';
+    final lhSig = lineHeight != null ? lineHeight.toStringAsFixed(2) : 'default';
+    final fontSig = fontFamily ?? 'default';
+    final key = '$bookId:${widget.chapterIndex}:$chunkIndex:$hyphenation:$paragraphIndent:$usePublisherStyles:${paragraphSpacing.toStringAsFixed(1)}:$fontSize:$alignSig:$lhSig:$fontSig:$annotationSig';
+
+    final cached = _chunkCache[key];
+    if (cached != null) return cached;
+
+    final processed = _formatContinuousChunkHtml(
+      rawChunk,
+      hyphenation: hyphenation,
+      paragraphIndent: paragraphIndent,
+      usePublisherStyles: usePublisherStyles,
+      paragraphSpacing: paragraphSpacing,
+      textAlign: textAlign,
+      fontSize: fontSize,
+      lineHeight: lineHeight,
+      fontFamily: fontFamily,
+      annotations: annotations,
     );
 
     if (_chunkCache.length > 500) {
@@ -761,22 +810,19 @@ div, p, blockquote, section, article {
           return TextSpan(children: children, style: effectiveStyle);
         },
       ),
-      TagExtension(
-        tagsToExtend: {'tts-highlight'},
-        builder: (context) {
-          final isSpeaking = widget.chapterIndex == widget.ttsController.speakingChapterIndex;
-          final text = context.node.text ?? '';
-          final style =
-              context.style?.generateTextStyle() ?? const TextStyle();
-          return _TtsHighlightSpan(
-            key: isSpeaking
-                ? widget.ttsController.ttsHighlightKey
-                : null,
-            text: text,
-            textStyle: style,
-            highlightStyle: highlightStyle,
-          );
-        },
+      TtsHighlightExtension.build(
+        isSpeaking: () => widget.chapterIndex == widget.ttsController.speakingChapterIndex,
+        isPaged: widget.pageSlice != null,
+        ttsHighlightKey: widget.ttsController.ttsHighlightKey,
+        highlightStyle: highlightStyle,
+        primaryColor: Theme.of(context).colorScheme.primary,
+        isEInk: () {
+          AppTheme? currentTheme;
+          try {
+            currentTheme = context.watch<AppTheme?>();
+          } catch (_) {}
+          return currentTheme == AppTheme.eInk;
+        }(),
       ),
       TagExtension.inline(
         tagsToExtend: {AnnotationHighlightHelper.highlightTag},
@@ -888,6 +934,15 @@ div, p, blockquote, section, article {
               chapterRawStart: highlightStart,
               chapterRawEnd: highlightEnd,
             );
+            sliceHtml = _formatPageSliceHtml(
+              sliceHtml,
+              usePublisherStyles: themeConfig.usePublisherStyles,
+              paragraphSpacing: themeConfig.paragraphSpacing,
+              textAlign: themeConfig.textAlign,
+              fontSize: themeConfig.fontSize,
+              lineHeight: themeConfig.lineHeight,
+              fontFamily: themeConfig.fontFamily,
+            );
             WidgetsBinding.instance.addPostFrameCallback((_) {
               widget.ttsController.maybeEnsureHighlightVisible();
             });
@@ -932,20 +987,18 @@ div, p, blockquote, section, article {
               chapterRawStart: highlightStart,
               chapterRawEnd: highlightEnd,
             );
-            if (chapterAnnotations.isNotEmpty) {
-              chunk = AnnotationHighlightHelper.applyHighlights(chunk, chapterAnnotations);
-            }
-            if (themeConfig.hyphenation || themeConfig.paragraphIndent) {
-              final cssRules = themeConfig.usePublisherStyles
-                  ? widget.chapterController.getCssRulesForChapter(widget.chapterIndex)
-                  : const <String, ResolvedCssRule>{};
-              chunk = HyphenationHelper.processHtmlAndIndent(
-                chunk,
-                applyHyphenation: themeConfig.hyphenation,
-                applyIndent: themeConfig.paragraphIndent,
-                cssRules: cssRules,
-              );
-            }
+            chunk = _formatContinuousChunkHtml(
+              chunk,
+              hyphenation: themeConfig.hyphenation,
+              paragraphIndent: themeConfig.paragraphIndent,
+              usePublisherStyles: themeConfig.usePublisherStyles,
+              paragraphSpacing: themeConfig.paragraphSpacing,
+              textAlign: themeConfig.textAlign,
+              fontSize: themeConfig.fontSize,
+              lineHeight: themeConfig.lineHeight,
+              fontFamily: themeConfig.fontFamily,
+              annotations: chapterAnnotations,
+            );
             ttsChunks.add(chunk);
           } else {
             ttsChunks.add(_formatChunk(
@@ -974,103 +1027,6 @@ div, p, blockquote, section, article {
           themeConfig: themeConfig,
         );
       },
-    );
-  }
-}
-
-class _TtsHighlightSpan extends StatelessWidget {
-  final String text;
-  final TextStyle textStyle;
-  final TtsHighlightStyle highlightStyle;
-
-  const _TtsHighlightSpan({
-    super.key,
-    required this.text,
-    required this.textStyle,
-    required this.highlightStyle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
-    AppTheme? currentTheme;
-    try {
-      currentTheme = context.watch<AppTheme?>();
-    } catch (_) {}
-    final isEInk = currentTheme == AppTheme.eInk;
-
-    BoxDecoration decoration;
-    TextStyle highlightedTextStyle;
-    EdgeInsets padding;
-
-    if (isEInk) {
-      decoration = BoxDecoration(
-        color: const Color(0xFFD5D0C5),
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: const Color(0xFF1A1A18), width: 1.0),
-      );
-      highlightedTextStyle = textStyle.copyWith(
-        color: const Color(0xFF1A1A18),
-        fontWeight: FontWeight.w600,
-      );
-      padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5);
-    } else {
-      switch (highlightStyle) {
-        case TtsHighlightStyle.softPill:
-          decoration = BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(4),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            color: primaryColor,
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-          break;
-
-        case TtsHighlightStyle.underline:
-          decoration = BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: primaryColor,
-                width: 2.5,
-              ),
-            ),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            color: primaryColor,
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.only(bottom: 1, left: 1, right: 1);
-          break;
-
-        case TtsHighlightStyle.classicClean:
-          decoration = BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: primaryColor.withValues(alpha: 0.4),
-              width: 1.0,
-            ),
-          );
-          highlightedTextStyle = textStyle.copyWith(
-            fontWeight: FontWeight.w600,
-          );
-          padding = const EdgeInsets.symmetric(horizontal: 4, vertical: 2);
-          break;
-      }
-    }
-
-    return Container(
-      padding: padding,
-      decoration: decoration,
-      child: Text(
-        text,
-        style: highlightedTextStyle,
-      ),
     );
   }
 }
