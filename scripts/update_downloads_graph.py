@@ -5,10 +5,12 @@ Fetches live download counts from GitHub Releases API and updates assets/downloa
 in alignment with the Kindle Carta 1300 E-Ink Mode & Tactile Textures specification.
 """
 
-import os
-import sys
+import gzip
 import json
+import os
 import ssl
+import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -17,36 +19,83 @@ API_URL = f"https://api.github.com/repos/{REPO}/releases"
 
 def fetch_releases():
     token = os.environ.get("GITHUB_TOKEN")
-    headers = {"User-Agent": "Ferrous-Downloads-Updater"}
+    headers = {
+        "User-Agent": "Ferrous-Downloads-Updater",
+        "Accept": "application/vnd.github+json",
+        "Accept-Encoding": "gzip",
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     
-    req = urllib.request.Request(API_URL, headers=headers)
+    # SSL context with fallback for local environments lacking root certificates
     try:
         ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, context=ctx) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except ssl.SSLError:
+    except Exception:
         ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, context=ctx) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+
+    all_releases = []
+    page = 1
+    per_page = 100
+
+    while True:
+        url = f"{API_URL}?per_page={per_page}&page={page}"
+        req = urllib.request.Request(url, headers=headers)
+        
+        try:
+            try:
+                resp = urllib.request.urlopen(req, context=ctx)
+            except (ssl.SSLError, urllib.error.URLError):
+                ctx = ssl._create_unverified_context()
+                resp = urllib.request.urlopen(req, context=ctx)
+            
+            with resp:
+                raw = resp.read()
+                if resp.info().get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
+                data = json.loads(raw.decode("utf-8"))
+        except Exception as e:
+            print(f"Error fetching releases page {page}: {e}", file=sys.stderr)
+            raise
+
+        if not isinstance(data, list) or len(data) == 0:
+            break
+        
+        all_releases.extend(data)
+        if len(data) < per_page:
+            break
+        page += 1
+
+    return all_releases
 
 def compute_milestones(releases):
     def get_dl(r):
         return sum(a.get("download_count", 0) for a in r.get("assets", []))
     
+    # Identify the true latest stable release (not a prerelease or draft)
+    latest_stable_tag = None
+    for r in releases:
+        if not r.get("prerelease") and not r.get("draft"):
+            latest_stable_tag = r.get("tag_name")
+            break
+    
+    if not latest_stable_tag:
+        latest_stable_tag = releases[0].get("tag_name", "v1.4.0").split("-")[0] if releases else "v1.4.0"
+
     # Milestone groups: v1.0.0, v1.1.0, v1.2.x, v1.3.x, and v1.4.x (current stable series)
     milestones = {
         "v1.0.0": 0,
         "v1.1.0": 0,
         "v1.2.x": 0,
         "v1.3.x": 0,
-        "v1.4.0": 0,
+        "v1.4.x": 0,
     }
-    
-    latest_release_tag = "v1.4.0"
-    if releases:
-        latest_release_tag = releases[0].get("tag_name", "v1.4.0").split("-")[0]
+
+    # Determine major.minor prefix of the current active milestone (e.g. "v1.4")
+    active_prefix = "v1.4"
+    if latest_stable_tag.startswith("v"):
+        parts = latest_stable_tag.split(".")
+        if len(parts) >= 2:
+            active_prefix = f"{parts[0]}.{parts[1]}"
 
     for r in releases:
         tag = r.get("tag_name", "")
@@ -59,16 +108,16 @@ def compute_milestones(releases):
             milestones["v1.2.x"] += dl
         elif tag.startswith("v1.3"):
             milestones["v1.3.x"] += dl
-        elif tag.startswith("v1.4") or tag.startswith(latest_release_tag):
-            milestones["v1.4.0"] += dl
+        elif tag.startswith(active_prefix) or tag.startswith("v1.4"):
+            milestones["v1.4.x"] += dl
         else:
-            milestones["v1.4.0"] += dl
+            milestones["v1.4.x"] += dl
 
     d1 = milestones["v1.0.0"]
     d2 = milestones["v1.1.0"]
     d3 = milestones["v1.2.x"]
     d4 = milestones["v1.3.x"]
-    d5 = milestones["v1.4.0"]
+    d5 = milestones["v1.4.x"]
 
     c1 = d1
     c2 = c1 + d2
@@ -79,7 +128,7 @@ def compute_milestones(releases):
 
     return {
         "total": total,
-        "latest_tag": latest_release_tag,
+        "latest_tag": latest_stable_tag,
         "deltas": [d1, d2, d3, d4, d5],
         "cumulatives": [c1, c2, c3, c4, c5]
     }
@@ -123,6 +172,9 @@ def generate_svg(data):
 
     h4_prior = round(285 - y3, 1)
     h4_delta = round(y3 - y4, 1)
+
+    h5_prior = round(285 - y4, 1)
+    h5_delta = round(y4 - y5, 1)
 
     tag_y = round(y5 - 38, 1)
 
@@ -298,10 +350,12 @@ def generate_svg(data):
     <rect x="536" y="{y4}" width="58" height="{h4_delta}" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.4.0 (Active Stable Column: Total={c[4]}, y={y5}, h={h5}) -->
+  <!-- {latest_tag} (Active Stable Column: Total={c[4]}, Prior={c[3]} [h={h5_prior}], Delta=+{d[4]} [h={h5_delta}], y={y5}) -->
   <g>
-    <rect x="676" y="{y5}" width="58" height="{h5}" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1.8" />
-    <rect x="676" y="{y5}" width="58" height="{h5}" fill="url(#halftone-column-active)" />
+    <rect x="676" y="{y5}" width="58" height="{h5}" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.8" />
+    <rect x="676" y="{y4}" width="58" height="{h5_prior}" fill="url(#halftone-base)" />
+    <rect x="676" y="{y5}" width="58" height="{h5_delta}" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="676" y="{y5}" width="58" height="{h5_delta}" fill="url(#halftone-column-active)" />
     <!-- Top solid carbon cap for latest delta (+{d[4]}) -->
     <rect x="676" y="{y5}" width="58" height="3.5" fill="#1A1A18" />
   </g>

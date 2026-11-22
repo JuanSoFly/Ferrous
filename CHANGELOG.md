@@ -1,3 +1,12 @@
+## [1.4.5-alpha.4] - 2026-11-23
+
+### Added
+- **Full Document Envelope & Head Preservation**: Added detection for `<!doctype>`, `<html>`, and `<head>` tags in both `AnnotationHighlightHelper` and `HtmlTtsHighlightHelper`, returning `document.outerHtml` instead of truncating to `root.outerHtml`.
+
+### Changed
+- **Preserved Reader Stylesheet & Metadata**: Ensured injected annotation spans and TTS word highlights retain embedded `<style>`, `<link>`, and `<meta>` elements across HTML reader documents.
+- **Updated Release Download Metrics**: Refreshed the E-Ink halftone trajectory chart to reflect recent milestone downloads.
+
 ## [1.4.5-alpha.3] - 2026-11-22
 
 ### Added

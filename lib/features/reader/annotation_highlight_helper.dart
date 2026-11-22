@@ -40,7 +40,12 @@ class AnnotationHighlightHelper {
         _highlightInDom(textNodes, annotation, targetText);
       }
 
-      final result = root.outerHtml;
+      final hasHeadContent = document.head != null && document.head!.nodes.isNotEmpty;
+      final hasDocEnvelope = html.contains(RegExp(r'<!doctype|<html|<head', caseSensitive: false));
+
+      final result = (hasHeadContent || hasDocEnvelope)
+          ? document.outerHtml
+          : root.outerHtml;
       if (_cache.length > 50) {
         _cache.remove(_cache.keys.first);
       }

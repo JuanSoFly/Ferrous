@@ -399,6 +399,13 @@ class HtmlTtsHighlightHelper {
       'Injected highlight for "${mid.trim()}" at clean [$exactCleanStart..$exactCleanEnd]',
     );
 
+    final hasHeadContent = document.head != null && document.head!.nodes.isNotEmpty;
+    final hasDocEnvelope = html.contains(RegExp(r'<!doctype|<html|<head', caseSensitive: false));
+
+    if (hasHeadContent || hasDocEnvelope) {
+      return document.outerHtml;
+    }
+
     return root.outerHtml;
   }
 }
