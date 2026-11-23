@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="100%" height="100%" role="img" aria-labelledby="chart-title chart-desc">
-  <title id="chart-title">Ferrous Reader — Release Trajectory (731+ Cumulative Downloads)</title>
-  <desc id="chart-desc">Kindle Carta 1300 E-Ink styled halftone chart showing cumulative GitHub release downloads across versions v1.0.0 (52), v1.1.0 (242), v1.2.x (299), v1.3.x (509), and v1.4.4 Stable (731+).</desc>
+  <title id="chart-title">Ferrous Reader — Release Trajectory (749+ Cumulative Downloads)</title>
+  <desc id="chart-desc">Kindle Carta 1300 E-Ink styled halftone chart showing cumulative GitHub release downloads across versions v1.0.0 (52), v1.1.0 (242), v1.2.x (299), v1.3.x (509), and v1.4.4 Stable (749+).</desc>
 
   <defs>
     <!-- Physical Halftone Dot Scrims (Kindle Carta 1300 E-Ink Specification) -->
@@ -83,7 +83,7 @@
     <g transform="translate(500, 6)">
       <rect x="0" y="0" width="132" height="30" rx="1.5" fill="#1A1A18" />
       <rect x="2" y="2" width="128" height="26" rx="1" fill="none" stroke="#EAE6DF" stroke-width="0.8" />
-      <text x="66" y="19" text-anchor="middle" class="ledger-num" fill="#EAE6DF">731 DOWNLOADS</text>
+      <text x="66" y="19" text-anchor="middle" class="ledger-num" fill="#EAE6DF">749 DOWNLOADS</text>
     </g>
 
     <!-- Active Release Carta Stamp -->
@@ -135,7 +135,7 @@
            C 215 273.3, 215 230.6, 285 230.6
            C 355 230.6, 355 217.7, 425 217.7
            C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 120.5, 705 120.5
+           C 635 170.5, 635 116.5, 705 116.5
            L 705 285 Z"
         fill="url(#halftone-dense)" />
 
@@ -170,14 +170,14 @@
     <rect x="536" y="170.5" width="58" height="47.2" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.4.4 (Active Stable Column: Total=731, Prior=509 [h=114.5], Delta=+222 [h=50.0], y=120.5) -->
+  <!-- v1.4.4 (Active Stable Column: Total=749, Prior=509 [h=114.5], Delta=+240 [h=54.0], y=116.5) -->
   <g>
-    <rect x="676" y="120.5" width="58" height="164.5" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.8" />
+    <rect x="676" y="116.5" width="58" height="168.5" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.8" />
     <rect x="676" y="170.5" width="58" height="114.5" fill="url(#halftone-base)" />
-    <rect x="676" y="120.5" width="58" height="50.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="676" y="120.5" width="58" height="50.0" fill="url(#halftone-column-active)" />
-    <!-- Top solid carbon cap for latest delta (+222) -->
-    <rect x="676" y="120.5" width="58" height="3.5" fill="#1A1A18" />
+    <rect x="676" y="116.5" width="58" height="54.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="676" y="116.5" width="58" height="54.0" fill="url(#halftone-column-active)" />
+    <!-- Top solid carbon cap for latest delta (+240) -->
+    <rect x="676" y="116.5" width="58" height="3.5" fill="#1A1A18" />
   </g>
 
   <!-- 0 Baseline (Solid Carbon Rule placed over bar bottoms for crisp alignment) -->
@@ -190,7 +190,7 @@
            C 215 273.3, 215 230.6, 285 230.6
            C 355 230.6, 355 217.7, 425 217.7
            C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 120.5, 705 120.5"
+           C 635 170.5, 635 116.5, 705 116.5"
         fill="none" stroke="#EAE6DF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- Solid Carbon Ink Trajectory Rule (Monotone Cubic Bezier) -->
@@ -198,7 +198,7 @@
            C 215 273.3, 215 230.6, 285 230.6
            C 355 230.6, 355 217.7, 425 217.7
            C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 120.5, 705 120.5"
+           C 635 170.5, 635 116.5, 705 116.5"
         fill="none" stroke="#1A1A18" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- ==================== MILESTONE NODES & LABELS ==================== -->
@@ -231,18 +231,18 @@
   <text x="565" y="329" text-anchor="middle" class="delta-badge">[+210]</text>
 
   <!-- v1.4.0 (Active Stable Highlight Marker) -->
-  <circle cx="705" cy="120.5" r="10.5" fill="#EAE6DF" fill-opacity="0.7" stroke="#1A1A18" stroke-width="1.2" stroke-dasharray="2, 2" />
-  <circle cx="705" cy="120.5" r="5.5" fill="#1A1A18" />
+  <circle cx="705" cy="116.5" r="10.5" fill="#EAE6DF" fill-opacity="0.7" stroke="#1A1A18" stroke-width="1.2" stroke-dasharray="2, 2" />
+  <circle cx="705" cy="116.5" r="5.5" fill="#1A1A18" />
   
   <!-- Inverted Callout Tag for Current Milestone -->
-  <g transform="translate(675, 82.5)">
+  <g transform="translate(675, 78.5)">
     <rect x="0" y="0" width="60" height="20" rx="1.5" fill="#1A1A18" />
     <polygon points="26,20 34,20 30,24" fill="#1A1A18" />
-    <text x="30" y="14" text-anchor="middle" class="ledger-num" fill="#EAE6DF">731+</text>
+    <text x="30" y="14" text-anchor="middle" class="ledger-num" fill="#EAE6DF">749+</text>
   </g>
   <text x="705" y="303" text-anchor="middle" class="version-title">v1.4.4</text>
   <text x="705" y="316" text-anchor="middle" class="milestone-desc">Safe Paging</text>
-  <text x="705" y="329" text-anchor="middle" class="delta-badge">★ [+222] Stable</text>
+  <text x="705" y="329" text-anchor="middle" class="delta-badge">★ [+240] Stable</text>
 
   <!-- ==================== FOOTER COLOPHON ==================== -->
   <line x1="20" y1="346" x2="780" y2="346" stroke="#9E9A90" stroke-width="0.8" />
