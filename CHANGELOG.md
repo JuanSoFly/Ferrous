@@ -1,3 +1,22 @@
+## [1.4.5] - 2026-11-24
+
+### Added
+- **Centralized temporary cache management (`AppCacheService`).** Added an automated cache manager that calculates, budgets, and safely prunes temporary storage (`saf_cache`, `epub_media`, `mobi_media`, and `.tmp_*` files) without touching books, covers, or database records.
+- **In-app storage and cache cleaner in settings.** Added a dedicated "Storage & Cache" section in `SettingsScreen` displaying real-time cache consumption with one-tap safe cleanup.
+- **Reference-counted book and media resolution (`BookFileResolver`).** Added active reference tracking (`_activeRefs`, `retainMedia`, `releaseMedia`) to prevent active books or unpacked media from being pruned while open in a reader.
+- **Unified HTML TTS highlighting engine (`HtmlTtsHighlightHelper`).** Unified TTS word highlighting across EPUB, MOBI, and TXT readers with multi-stage alignment, contextual n-gram disambiguation (`extractPrevWord`, `extractNextWord`), and strict sentence window bounds.
+- **Layout-invariant TTS word styling (`TtsHighlightExtension`).** Replaced container wrappers and font weight changes with inline `TextStyle` decorations, preventing text shifting, glyph advance inflation, and layout jitter during speech playback.
+- **Zero-geometry auto-scroll anchor.** Added a zero-dimension anchor span (`SizedBox(width: 0, height: 1)`) during continuous TTS playback, ensuring smooth automatic scrolling without line height expansion.
+- **Connector-aware word boundary matching.** Added internal punctuation handling for apostrophes and hyphens, maintaining complete highlights across contractions and hyphenated words.
+
+### Changed
+- **Preserved document envelope and metadata in HTML viewers.** Updated `AnnotationHighlightHelper` and `HtmlTtsHighlightHelper` to return full `outerHtml`, preventing loss of embedded `<style>`, `<link>`, and `<head>` metadata during highlight injection.
+- **Debounced reader settings sliders.** Added a 300ms debounce threshold to font size, font weight, line spacing, and paragraph spacing adjustments in `ReaderSettingsSheet` to prevent repeated reflows while dragging sliders.
+- **Pre-warmed Google Fonts cache.** Added background font style pre-warming to prevent UI micro-stutters when opening typography settings.
+- **Debounced theme persistence and compacted Hive boxes.** Added a 300ms write queue to `ReaderThemeRepository` and enabled box compaction on `books`, `annotations`, `settings`, and `dimensions`.
+- **Scoped reader subtree rebuilds.** Isolated reader layout rebuilds with scoped `context.select` queries and `RepaintBoundary` barriers in `EpubReaderScreen`, `MobiReaderScreen`, `TxtReaderScreen`, and `HtmlReaderScreen`.
+- **Tighter SAF storage budget.** Reduced default SAF cache storage in `SafHandler.kt` from 500 MB / 7 days to 50 MB / 24 hours with immediate cleanup of orphaned atomic temp files.
+
 ## [1.4.5-alpha.5] - 2026-11-24
 
 ### Added
