@@ -478,6 +478,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
     widget.selectionController.clearSelection();
     widget.selectionController.pruneChapter(_currentChapter);
     widget.onClearSelection?.call();
+    widget.ttsController.resetDomCursor();
     _activeSlot = newSlot;
 
     final themeRepo = context.read<ReaderThemeRepository>();
@@ -515,18 +516,18 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
+    final themeConfig = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
     final annotationRepo = context.watch<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         _lastMeasuredSize = Size(constraints.maxWidth, constraints.maxHeight);
-        final horizontalMargin = themeRepo.config.pageMargins ? 16.0 : 0.0;
+        final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
         final availWidth = (constraints.maxWidth - 32.0 - (horizontalMargin * 2)).clamp(100.0, double.infinity);
         final availHeight = (constraints.maxHeight - 32.0).clamp(100.0, double.infinity);
 
-        final slices = _getPagedSlices(_currentChapter, availWidth, availHeight, themeRepo.config, annotations);
+        final slices = _getPagedSlices(_currentChapter, availWidth, availHeight, themeConfig, annotations);
         final totalChapters = widget.chapterController.chapters?.length ?? 1;
 
         final hasLeading = _currentChapter > 0;
@@ -547,7 +548,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
         }
 
         final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
-            themeRepo.config.pageFlip;
+            themeConfig.pageFlip;
 
         if (useRealisticCurl) {
           return RealisticPageTurn(
@@ -555,8 +556,8 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
             chapterIndex: _currentChapter,
             pageCount: totalSlots,
             currentPage: _activeSlot,
-            textureId: themeRepo.config.paperTexture,
-            showSpine: themeRepo.config.showBookSpine,
+            textureId: themeConfig.paperTexture,
+            showSpine: themeConfig.showBookSpine,
             onPageChanged: (slot) => _handleSlotChanged(slot, constraints),
             onToggleChrome: widget.onToggleChrome,
             onTapUp: widget.onTapUp,
@@ -565,12 +566,12 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
             canSwipe: () => !widget.selectionController.hasSelection,
             pageBuilder: (context, slot) {
               if (hasLeading && slot == 0) {
-                final prevSlices = _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
+                final prevSlices = _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeConfig, annotations);
                 final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
                 return _buildPageItem(context, _currentChapter - 1, prevSlice, totalSlots);
               }
               if (hasTrailing && slot == trailingSlot) {
-                final nextSlices = _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
+                final nextSlices = _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeConfig, annotations);
                 final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
                 return _buildPageItem(context, _currentChapter + 1, nextSlice, totalSlots);
               }
@@ -615,12 +616,12 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
             itemCount: totalSlots,
             itemBuilder: (context, slot) {
               if (hasLeading && slot == 0) {
-                final prevSlices = _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
+                final prevSlices = _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeConfig, annotations);
                 final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
                 return _buildPageItem(context, _currentChapter - 1, prevSlice, totalSlots);
               }
               if (hasTrailing && slot == trailingSlot) {
-                final nextSlices = _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
+                final nextSlices = _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeConfig, annotations);
                 final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
                 return _buildPageItem(context, _currentChapter + 1, nextSlice, totalSlots);
               }

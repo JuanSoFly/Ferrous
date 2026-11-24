@@ -1,4 +1,5 @@
-﻿import 'package:flutter/foundation.dart';
+﻿import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:ferrous/data/models/reader_theme_config.dart';
 import 'package:ferrous/data/models/tts_highlight_style.dart';
@@ -12,6 +13,7 @@ class ReaderThemeRepository extends ChangeNotifier {
   ReaderThemeConfig _config = const ReaderThemeConfig();
   TtsHighlightStyle _highlightStyle = TtsHighlightStyle.softPill;
   bool _initialized = false;
+  Timer? _debounceSaveTimer;
 
   ReaderThemeConfig get config => _config;
   TtsHighlightStyle get highlightStyle => _highlightStyle;
@@ -19,12 +21,18 @@ class ReaderThemeRepository extends ChangeNotifier {
 
   Future<void> init() async {
     try {
-      _box = await Hive.openBox<ReaderThemeConfig>(_boxName);
+      _box = await Hive.openBox<ReaderThemeConfig>(
+        _boxName,
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
     } catch (e) {
       debugPrint('Error opening ReaderThemeConfig box: $e. Deleting and recreating box.');
       try {
         await Hive.deleteBoxFromDisk(_boxName);
-        _box = await Hive.openBox<ReaderThemeConfig>(_boxName);
+        _box = await Hive.openBox<ReaderThemeConfig>(
+          _boxName,
+          compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+        );
       } catch (e2) {
         debugPrint('Failed to recover box: $e2. Operating without persistence.');
         _initialized = false;
@@ -50,7 +58,10 @@ class ReaderThemeRepository extends ChangeNotifier {
     }
     
     try {
-      final settingsBox = await Hive.openBox('settings');
+      final settingsBox = await Hive.openBox(
+        'settings',
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       final styleString = settingsBox.get(_keyHighlightStyle) as String?;
       if (styleString != null) {
         _highlightStyle = TtsHighlightStyle.values.byName(styleString);
@@ -68,7 +79,10 @@ class ReaderThemeRepository extends ChangeNotifier {
     _highlightStyle = style;
     notifyListeners();
     try {
-      final settingsBox = await Hive.openBox('settings');
+      final settingsBox = await Hive.openBox(
+        'settings',
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       await settingsBox.put(_keyHighlightStyle, style.name);
     } catch (e) {
       debugPrint('Failed to persist tts highlight style: $e');
@@ -83,14 +97,32 @@ class ReaderThemeRepository extends ChangeNotifier {
     _config = sanitized;
     notifyListeners();
     
-    // Only persist if box is available
+    // Debounce disk writes (~300ms) so rapid updates never block the UI thread
+    _debounceSaveTimer?.cancel();
+    _debounceSaveTimer = Timer(const Duration(milliseconds: 300), () {
+      _persistConfig();
+    });
+  }
+
+  void _persistConfig() {
     if (_box != null) {
       try {
-        await _box!.put(_key, sanitized);
+        _box!.put(_key, _config).catchError((e) {
+          debugPrint('Failed to persist config: $e');
+        });
       } catch (e) {
         debugPrint('Failed to persist config: $e');
       }
     }
+  }
+
+  @override
+  void dispose() {
+    if (_debounceSaveTimer?.isActive ?? false) {
+      _debounceSaveTimer?.cancel();
+      _persistConfig();
+    }
+    super.dispose();
   }
 
   Future<void> setFontSize(double size) async {

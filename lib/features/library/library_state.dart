@@ -321,7 +321,10 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   Future<void> _loadSavedViewMode() async {
     try {
-      final box = await Hive.openBox('settings');
+      final box = await Hive.openBox(
+        'settings',
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       final savedModeName = box.get('book_view_mode') as String?;
       if (savedModeName != null) {
         final mode = BookViewMode.values.byName(savedModeName);
@@ -335,7 +338,10 @@ class LibraryController extends StateNotifier<LibraryState> {
   Future<void> setViewMode(BookViewMode mode) async {
     state = state.copyWith(viewMode: mode);
     try {
-      final box = await Hive.openBox('settings');
+      final box = await Hive.openBox(
+        'settings',
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       await box.put('book_view_mode', mode.name);
     } catch (_) {}
   }

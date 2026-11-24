@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:ferrous/data/models/reader_theme_config.dart';
@@ -231,11 +232,12 @@ class ReaderSettingsSheet extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-        ),
-        child: Container(
+      child: RepaintBoundary(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: Container(
           decoration: BoxDecoration(
             color: isEInk ? const Color(0xFFEAE6DF) : theme.colorScheme.surface,
             borderRadius: isEInk
@@ -305,7 +307,7 @@ class ReaderSettingsSheet extends StatelessWidget {
             ),
             Expanded(
               child: TabBarView(
-                children: [
+                children: const [
                   _TextSettingsTab(),
                   _LayoutSettingsTab(),
                   _BookFeelTab(),
@@ -317,6 +319,7 @@ class ReaderSettingsSheet extends StatelessWidget {
       ),
     ),
   ),
+),
 );
   }
 }
@@ -325,30 +328,102 @@ class ReaderSettingsSheet extends StatelessWidget {
 // 1. TEXT SETTINGS TAB
 // ==========================================
 
-class _TextSettingsTab extends StatelessWidget {
+class _TextSettingsTab extends StatefulWidget {
+  const _TextSettingsTab();
+
+  @override
+  State<_TextSettingsTab> createState() => _TextSettingsTabState();
+}
+
+class _TextSettingsTabState extends State<_TextSettingsTab> {
+  static final Map<String, TextStyle> _fontStyleCache = {};
+  bool _fontStylesLoaded = _fontStyleCache.isNotEmpty;
+  double? _draggingFontSize;
+  double? _draggingFontWeight;
+  Timer? _fontSizeDebounceTimer;
+  Timer? _fontWeightDebounceTimer;
+
+  @override
+  void dispose() {
+    _fontSizeDebounceTimer?.cancel();
+    _fontWeightDebounceTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_fontStylesLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _warmFontCache();
+        setState(() {
+          _fontStylesLoaded = true;
+        });
+      });
+    }
+  }
+
+  static void _warmFontCache() {
+    const fonts = [
+      'Roboto',
+      'Roboto Slab',
+      'Merriweather',
+      'Lora',
+      'Open Sans',
+      'Source Sans 3',
+      'Literata',
+    ];
+    for (final font in fonts) {
+      if (!_fontStyleCache.containsKey(font)) {
+        try {
+          _fontStyleCache[font] = GoogleFonts.getFont(font);
+        } catch (_) {}
+      }
+    }
+  }
+
+  TextStyle? _getFontStyle(String font) {
+    if (!_fontStylesLoaded) return null;
+    return _fontStyleCache[font];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<ReaderThemeRepository>();
-    final config = repo.config;
+    final config = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
+    final repo = context.read<ReaderThemeRepository>();
     final theme = Theme.of(context);
     final currentTheme = context.watch<AppTheme?>();
     final isEInk = currentTheme == AppTheme.eInk;
 
+    final displayFontSize = _draggingFontSize ?? config.fontSize;
+    final displayFontWeight = (_draggingFontWeight ?? config.fontWeight.toDouble()).round();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        _buildSectionTitle(theme, 'Font Size', '${config.fontSize.toStringAsFixed(0)} px', isEInk: isEInk),
+        _buildSectionTitle(theme, 'Font Size', '${displayFontSize.toStringAsFixed(0)} px', isEInk: isEInk),
         const SizedBox(height: 8),
         Row(
           children: [
             if (isEInk)
               _KindleStepButton(
                 icon: Icons.remove,
-                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 100.0)),
+                onPressed: () {
+                  _fontSizeDebounceTimer?.cancel();
+                  final next = (displayFontSize - 2).clamp(12.0, 100.0);
+                  repo.setFontSize(next);
+                  setState(() => _draggingFontSize = null);
+                },
               )
             else
               IconButton.filledTonal(
-                onPressed: () => repo.setFontSize((config.fontSize - 2).clamp(12.0, 100.0)),
+                onPressed: () {
+                  _fontSizeDebounceTimer?.cancel();
+                  final next = (displayFontSize - 2).clamp(12.0, 100.0);
+                  repo.setFontSize(next);
+                  setState(() => _draggingFontSize = null);
+                },
                 icon: const Icon(Icons.remove),
               ),
             Expanded(
@@ -356,21 +431,42 @@ class _TextSettingsTab extends StatelessWidget {
                 context: context,
                 theme: theme,
                 isEInk: isEInk,
-                value: config.fontSize.clamp(12.0, 100.0),
+                value: displayFontSize.clamp(12.0, 100.0),
                 min: 12.0,
                 max: 100.0,
                 divisions: ((100 - 12) / 2).round(),
-                onChanged: (val) => repo.setFontSize(val),
+                onChanged: (val) {
+                  _fontSizeDebounceTimer?.cancel();
+                  setState(() => _draggingFontSize = val);
+                  _fontSizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+                    repo.setFontSize(val);
+                  });
+                },
+                onChangeEnd: (val) {
+                  _fontSizeDebounceTimer?.cancel();
+                  repo.setFontSize(val);
+                  setState(() => _draggingFontSize = null);
+                },
               ),
             ),
             if (isEInk)
               _KindleStepButton(
                 icon: Icons.add,
-                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 100.0)),
+                onPressed: () {
+                  _fontSizeDebounceTimer?.cancel();
+                  final next = (displayFontSize + 2).clamp(12.0, 100.0);
+                  repo.setFontSize(next);
+                  setState(() => _draggingFontSize = null);
+                },
               )
             else
               IconButton.filledTonal(
-                onPressed: () => repo.setFontSize((config.fontSize + 2).clamp(12.0, 100.0)),
+                onPressed: () {
+                  _fontSizeDebounceTimer?.cancel();
+                  final next = (displayFontSize + 2).clamp(12.0, 100.0);
+                  repo.setFontSize(next);
+                  setState(() => _draggingFontSize = null);
+                },
                 icon: const Icon(Icons.add),
               ),
           ],
@@ -447,16 +543,27 @@ class _TextSettingsTab extends StatelessWidget {
         ),
 
         const SizedBox(height: 24),
-        _buildSectionTitle(theme, 'Font Weight / Thickness', _fontWeightLabel(config.fontWeight), isEInk: isEInk),
+        _buildSectionTitle(theme, 'Font Weight / Thickness', _fontWeightLabel(displayFontWeight), isEInk: isEInk),
         _buildSlider(
           context: context,
           theme: theme,
           isEInk: isEInk,
-          value: config.fontWeight.toDouble(),
+          value: displayFontWeight.toDouble().clamp(100.0, 900.0),
           min: 100,
           max: 900,
           divisions: 8,
-          onChanged: (val) => repo.setFontWeight(val.round()),
+          onChanged: (val) {
+            _fontWeightDebounceTimer?.cancel();
+            setState(() => _draggingFontWeight = val);
+            _fontWeightDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+              repo.setFontWeight(val.round());
+            });
+          },
+          onChangeEnd: (val) {
+            _fontWeightDebounceTimer?.cancel();
+            repo.setFontWeight(val.round());
+            setState(() => _draggingFontWeight = null);
+          },
         ),
       ],
     );
@@ -476,57 +583,92 @@ class _TextSettingsTab extends StatelessWidget {
       default: return weight.toString();
     }
   }
-
-  TextStyle? _getFontStyle(String font) {
-    try {
-      return GoogleFonts.getFont(font);
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
 // ==========================================
 // 2. LAYOUT SETTINGS TAB
 // ==========================================
 
-class _LayoutSettingsTab extends StatelessWidget {
+class _LayoutSettingsTab extends StatefulWidget {
+  const _LayoutSettingsTab();
+
+  @override
+  State<_LayoutSettingsTab> createState() => _LayoutSettingsTabState();
+}
+
+class _LayoutSettingsTabState extends State<_LayoutSettingsTab> {
+  double? _draggingLineHeight;
+  double? _draggingParagraphSpacing;
+  Timer? _lineHeightDebounceTimer;
+  Timer? _paragraphSpacingDebounceTimer;
+
+  @override
+  void dispose() {
+    _lineHeightDebounceTimer?.cancel();
+    _paragraphSpacingDebounceTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<ReaderThemeRepository>();
-    final config = repo.config;
+    final config = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
+    final repo = context.read<ReaderThemeRepository>();
     final theme = Theme.of(context);
     final currentTheme = context.watch<AppTheme?>();
     final isEInk = currentTheme == AppTheme.eInk;
 
     final safeLineHeight = ReaderThemeConfig.sanitizeLineHeight(config.lineHeight);
+    final displayLineHeight = _draggingLineHeight ?? safeLineHeight;
+    final displayParagraphSpacing = _draggingParagraphSpacing ?? config.paragraphSpacing;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        _buildSectionTitle(theme, 'Line Spacing', '${safeLineHeight.toStringAsFixed(2)}x', isEInk: isEInk),
+        _buildSectionTitle(theme, 'Line Spacing', '${displayLineHeight.toStringAsFixed(2)}x', isEInk: isEInk),
         _buildSlider(
           context: context,
           theme: theme,
           isEInk: isEInk,
-          value: safeLineHeight,
+          value: displayLineHeight.clamp(1.0, 2.2),
           min: 1.0,
           max: 2.2,
           divisions: 24,
-          onChanged: (val) => repo.setLineHeight(val),
+          onChanged: (val) {
+            _lineHeightDebounceTimer?.cancel();
+            setState(() => _draggingLineHeight = val);
+            _lineHeightDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+              repo.setLineHeight(val);
+            });
+          },
+          onChangeEnd: (val) {
+            _lineHeightDebounceTimer?.cancel();
+            repo.setLineHeight(val);
+            setState(() => _draggingLineHeight = null);
+          },
         ),
 
         const SizedBox(height: 12),
-        _buildSectionTitle(theme, 'Paragraph Spacing', '${config.paragraphSpacing.round()} px', isEInk: isEInk),
+        _buildSectionTitle(theme, 'Paragraph Spacing', '${displayParagraphSpacing.round()} px', isEInk: isEInk),
         _buildSlider(
           context: context,
           theme: theme,
           isEInk: isEInk,
-          value: config.paragraphSpacing,
+          value: displayParagraphSpacing.clamp(0.0, 50.0),
           min: 0.0,
           max: 50.0,
           divisions: 20,
-          onChanged: (val) => repo.setParagraphSpacing(val),
+          onChanged: (val) {
+            _paragraphSpacingDebounceTimer?.cancel();
+            setState(() => _draggingParagraphSpacing = val);
+            _paragraphSpacingDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+              repo.setParagraphSpacing(val);
+            });
+          },
+          onChangeEnd: (val) {
+            _paragraphSpacingDebounceTimer?.cancel();
+            repo.setParagraphSpacing(val);
+            setState(() => _draggingParagraphSpacing = null);
+          },
         ),
 
         _buildSwitchTile(
@@ -604,10 +746,11 @@ class _LayoutSettingsTab extends StatelessWidget {
 // ==========================================
 
 class _BookFeelTab extends StatelessWidget {
+  const _BookFeelTab();
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<ReaderThemeRepository>();
-    final config = repo.config;
+    final config = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
+    final repo = context.read<ReaderThemeRepository>();
     final theme = Theme.of(context);
     final currentTheme = context.watch<AppTheme?>();
     final isEInk = currentTheme == AppTheme.eInk;
@@ -737,7 +880,8 @@ class _TextureCard extends StatelessWidget {
           ? const Color(0xFFEAE6DF)
           : texture.baseColor;
 
-      return Card(
+      return RepaintBoundary(
+        child: Card(
         elevation: 0,
         margin: const EdgeInsets.only(bottom: 8),
         shape: RoundedRectangleBorder(
@@ -822,10 +966,12 @@ class _TextureCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       );
     }
 
-    return Card(
+    return RepaintBoundary(
+      child: Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
@@ -857,16 +1003,11 @@ class _TextureCard extends StatelessWidget {
                       : texture.baseColor,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.grey.withValues(alpha: 0.35),
+                    color: isSelected
+                        ? theme.colorScheme.primary.withValues(alpha: 0.6)
+                        : Colors.grey.withValues(alpha: 0.35),
                     width: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 3,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
                 ),
                 child: Center(
                   child: Icon(
@@ -921,6 +1062,7 @@ class _TextureCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -1041,6 +1183,7 @@ Widget _buildSlider({
   required double max,
   required int divisions,
   required ValueChanged<double> onChanged,
+  ValueChanged<double>? onChangeEnd,
 }) {
   if (isEInk) {
     return SliderTheme(
@@ -1058,6 +1201,7 @@ Widget _buildSlider({
         max: max,
         divisions: divisions,
         onChanged: onChanged,
+        onChangeEnd: onChangeEnd,
       ),
     );
   }
@@ -1075,6 +1219,7 @@ Widget _buildSlider({
       max: max,
       divisions: divisions,
       onChanged: onChanged,
+      onChangeEnd: onChangeEnd,
     ),
   );
 }

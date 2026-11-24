@@ -914,8 +914,8 @@ class SafHandler(private val activity: MainActivity) {
      * Cleans up the SAF cache based on age and total size.
      */
     fun cleanupSafCache(
-        maxAgeMs: Long = 7 * 24 * 60 * 60 * 1000L, // 7 days
-        maxSizeMB: Int = 500
+        maxAgeMs: Long = 24 * 60 * 60 * 1000L, // 24 hours
+        maxSizeMB: Int = 50 // 50 MB budget
     ) {
         val cacheDir = File(activity.cacheDir, SAF_CACHE_DIR)
         if (!cacheDir.exists()) return
@@ -923,20 +923,35 @@ class SafHandler(private val activity: MainActivity) {
         val files = cacheDir.listFiles() ?: return
         val now = System.currentTimeMillis()
 
-        // Phase 1: Delete files older than maxAge
-        files.filter { now - it.lastModified() > maxAgeMs }
-             .forEach { it.delete() }
+        // Phase 0: Delete any orphaned atomic temp files (*.tmp_*) immediately
+        files.filter { it.name.contains(".tmp_") }
+             .forEach { it.deleteRecursively() }
 
-        // Phase 2: If still too big, delete oldest first
+        val remainingFiles = cacheDir.listFiles() ?: return
+
+        // Phase 1: Delete files and directories older than maxAge
+        remainingFiles.filter { now - it.lastModified() > maxAgeMs }
+             .forEach { it.deleteRecursively() }
+
+        // Helper to calculate recursive size for files and directories
+        fun getRecursiveSize(f: File): Long {
+            return if (f.isDirectory) {
+                f.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            } else {
+                f.length()
+            }
+        }
+
+        // Phase 2: If still exceeding budget, delete oldest first
         val remaining = cacheDir.listFiles()?.toList() ?: return
         val sorted = remaining.sortedBy { it.lastModified() }
-        var totalSize = sorted.sumOf { it.length() }
+        var totalSize = sorted.sumOf { getRecursiveSize(it) }
         val maxBytes = maxSizeMB * 1024L * 1024L
 
         for (file in sorted) {
             if (totalSize <= maxBytes) break
-            totalSize -= file.length()
-            file.delete()
+            totalSize -= getRecursiveSize(file)
+            file.deleteRecursively()
         }
     }
 

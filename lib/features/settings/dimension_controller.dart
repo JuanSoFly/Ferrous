@@ -50,7 +50,10 @@ class DimensionController extends StateNotifier<DimensionState> {
 
   Future<void> _loadDimension() async {
     try {
-      final box = await Hive.openBox(_boxName);
+      final box = await Hive.openBox(
+        _boxName,
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       final dimensionName = box.get(_keyDimension) as String?;
       final autoSync = box.get(_keyAutoSync, defaultValue: true) as bool;
 
@@ -75,7 +78,10 @@ class DimensionController extends StateNotifier<DimensionState> {
   Future<void> setDimension(AppDimension dimension) async {
     state = state.copyWith(dimension: dimension);
     try {
-      final box = await Hive.openBox(_boxName);
+      final box = await Hive.openBox(
+        _boxName,
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       await box.put(_keyDimension, dimension.name);
     } catch (e) {
       debugPrint('Error persisting dimension: $e');
@@ -85,7 +91,10 @@ class DimensionController extends StateNotifier<DimensionState> {
   Future<void> setAutoSync(bool enabled) async {
     state = state.copyWith(autoSyncWithTheme: enabled);
     try {
-      final box = await Hive.openBox(_boxName);
+      final box = await Hive.openBox(
+        _boxName,
+        compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+      );
       await box.put(_keyAutoSync, enabled);
     } catch (e) {
       debugPrint('Error persisting auto-sync: $e');

@@ -9,7 +9,10 @@ class AnnotationRepository extends ChangeNotifier {
   Box<Annotation>? _box;
 
   Future<void> init() async {
-    _box = await Hive.openBox<Annotation>(_boxName);
+    _box = await Hive.openBox<Annotation>(
+      _boxName,
+      compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+    );
   }
 
   Box<Annotation> get box {

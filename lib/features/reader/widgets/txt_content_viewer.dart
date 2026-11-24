@@ -418,8 +418,8 @@ class _TxtContentViewerState extends State<TxtContentViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
-    final themeConfig = themeRepo.config;
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final themeConfig = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
     final annotationRepo = context.watch<AnnotationRepository>();
 
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;

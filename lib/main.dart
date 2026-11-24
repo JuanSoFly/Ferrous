@@ -22,7 +22,7 @@ import 'package:ferrous/data/repositories/reader_theme_repository.dart';
 import 'package:ferrous/data/models/reader_theme_config.dart';
 import 'package:ferrous/features/settings/app_themes.dart';
 import 'package:ferrous/core/constants/e_ink_tokens.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:ferrous/core/services/app_cache_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,7 +52,7 @@ Future<void> main() async {
     debugPrint('Failed to register ReaderThemeConfigAdapter: $e');
   }
 
-  await _cleanupLinkedCacheFiles();
+  await AppCacheService.enforceStartupBudget();
 
   // Initialize repositories
   final bookRepository = BookRepository();
@@ -114,26 +114,6 @@ Future<void> main() async {
     readerThemeRepository: readerThemeRepository,
     libraryLocationRepository: libraryLocationRepository,
   ));
-}
-
-Future<void> _cleanupLinkedCacheFiles() async {
-  try {
-    final dir = await getTemporaryDirectory();
-    if (!await dir.exists()) return;
-    await for (final entry in dir.list()) {
-      if (entry is! File) continue;
-      final name = entry.path.split(Platform.pathSeparator).last;
-      if (name.startsWith('linked_')) {
-        try {
-          await entry.delete();
-        } catch (_) {
-          // Ignore cleanup failures
-        }
-      }
-    }
-  } catch (_) {
-    // Ignore cleanup failures
-  }
 }
 
 class ReaderApp extends StatelessWidget {

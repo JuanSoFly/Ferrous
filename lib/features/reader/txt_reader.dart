@@ -332,13 +332,16 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
     } catch (_) {}
     final isEInk = currentTheme == AppTheme.eInk;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: isEInk ? Colors.transparent : null,
-      builder: (context) => const ReaderSettingsSheet(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: isEInk ? Colors.transparent : null,
+        builder: (context) => const ReaderSettingsSheet(),
+      );
+    });
   }
 
   void _goToChapter(int index) {
@@ -565,7 +568,8 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
+    final paperTexture = context.select<ReaderThemeRepository, String>((r) => r.config.paperTexture);
+    final showBookSpine = context.select<ReaderThemeRepository, bool>((r) => r.config.showBookSpine);
 
     if (_chapterController.isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -593,29 +597,31 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
         child: Stack(
             children: [
               Positioned.fill(
-                child: RealBookBackground(
-                  textureId: themeRepo.config.paperTexture,
-                  showSpine: themeRepo.config.showBookSpine,
-                  child: _modeController.isPagedMode
-                      ? TxtPagedViewer(
-                          chapterController: _chapterController,
-                          ttsController: _ttsController,
-                          pageController: _pageController,
-                          readingMode: _readingMode,
-                          onToggleChrome: _toggleAllUi,
-                          onTapUp: _handleTapUpForTts,
-                          selectionController: _selectionController,
-                          onAnnotate: _showAnnotationDialog,
-                        )
-                      : TxtContinuousViewer(
-                          chapterController: _chapterController,
-                          ttsController: _ttsController,
-                          modeController: _modeController,
-                          onToggleChrome: _toggleAllUi,
-                          onTapUp: _handleTapUpForTts,
-                          selectionController: _selectionController,
-                          onAnnotate: _showAnnotationDialog,
-                        ),
+                child: RepaintBoundary(
+                  child: RealBookBackground(
+                    textureId: paperTexture,
+                    showSpine: showBookSpine,
+                    child: _modeController.isPagedMode
+                        ? TxtPagedViewer(
+                            chapterController: _chapterController,
+                            ttsController: _ttsController,
+                            pageController: _pageController,
+                            readingMode: _readingMode,
+                            onToggleChrome: _toggleAllUi,
+                            onTapUp: _handleTapUpForTts,
+                            selectionController: _selectionController,
+                            onAnnotate: _showAnnotationDialog,
+                          )
+                        : TxtContinuousViewer(
+                            chapterController: _chapterController,
+                            ttsController: _ttsController,
+                            modeController: _modeController,
+                            onToggleChrome: _toggleAllUi,
+                            onTapUp: _handleTapUpForTts,
+                            selectionController: _selectionController,
+                            onAnnotate: _showAnnotationDialog,
+                          ),
+                  ),
                 ),
               ),
 
@@ -678,22 +684,24 @@ class _TxtReaderScreenState extends State<TxtReaderScreen> with WidgetsBindingOb
                             bottom: 0,
                             left: 0,
                             right: 0,
-                            child: TtsControlsSheet(
-                              ttsService: _ttsController.ttsService,
-                              textToSpeak: '',
-                              resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
-                              onStart: () async {
-                                await _ttsController.startPlayback(modeController: _modeController);
-                              },
-                              isContinuous: _ttsController.ttsContinuous,
-                              isFollowMode: _ttsController.ttsFollowMode,
-                              isTapToStart: _ttsController.tapToStartEnabled,
-                              onContinuousChanged: _ttsController.setTtsContinuous,
-                              onFollowModeChanged: _ttsController.setTtsFollowMode,
-                              onTapToStartChanged: _ttsController.setTapToStartEnabled,
-                              onClose: _ttsController.closeTtsControls,
-                              highlightStyle: themeRepo.highlightStyle,
-                              onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                            child: Consumer<ReaderThemeRepository>(
+                              builder: (context, themeRepo, _) => TtsControlsSheet(
+                                ttsService: _ttsController.ttsService,
+                                textToSpeak: '',
+                                resolveTextToSpeak: () => _ttsController.resolveTtsText(modeController: _modeController),
+                                onStart: () async {
+                                  await _ttsController.startPlayback(modeController: _modeController);
+                                },
+                                isContinuous: _ttsController.ttsContinuous,
+                                isFollowMode: _ttsController.ttsFollowMode,
+                                isTapToStart: _ttsController.tapToStartEnabled,
+                                onContinuousChanged: _ttsController.setTtsContinuous,
+                                onFollowModeChanged: _ttsController.setTtsFollowMode,
+                                onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                                onClose: _ttsController.closeTtsControls,
+                                highlightStyle: themeRepo.highlightStyle,
+                                onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                              ),
                             ),
                           ),
                       ],

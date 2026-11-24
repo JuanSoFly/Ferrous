@@ -1,3 +1,19 @@
+## [1.4.5-alpha.5] - 2026-11-24
+
+### Added
+- **Centralized Temporary Cache Management (`AppCacheService`)**: Created a dedicated service to calculate, prune, and budget temporary cache directories (`saf_cache`, `epub_media`, `mobi_media`, and atomic `.tmp_*` files) with strict safeguards preventing deletion of user books, covers, or databases.
+- **Reference-Counted Temporary File & Media Resolution (`BookFileResolver`)**: Introduced static reference counting (`_activeRefs`, `_activeMediaRefs`, `retainMedia`, `releaseMedia`) ensuring temporary book files and unpacked media are never deleted while in active use by open readers or tasks.
+- **Contextual Neighbor N-Gram TTS Disambiguation**: Enhanced `HtmlTtsHighlightHelper` with preceding and following word context extraction (`extractPrevWord`, `extractNextWord`) and proximity scoring to accurately disambiguate identical words across sentences and paragraphs.
+- **Strict Sentence Boundary Clamping**: Bound TTS highlight matching within explicit sentence windows (`sentenceFloor`, `sentenceCeil`) across EPUB, MOBI, and TXT readers to eliminate runaway offsets and cross-sentence highlight drift.
+- **In-App Cache Cleaner in Settings**: Added a "Storage & Cache" section in `SettingsScreen` showing real-time cache usage with one-tap safe cache clearing.
+
+### Changed
+- **Optimized Reader Settings Interaction & Debounced Reflows**: Debounced font size, font weight, line spacing, and paragraph spacing slider changes in `ReaderSettingsSheet` with 300ms thresholds, preventing expensive full-document re-paginations while dragging.
+- **Pre-Warmed Font Style Cache**: Added background Google Fonts cache pre-warming to eliminate micro-stutters when opening text settings tabs.
+- **Debounced Theme Persistence & Hive Compaction**: Added debounced write queues (300ms) to `ReaderThemeRepository` and enabled compaction strategies (`deletedEntries > 50`) across Hive boxes (`books`, `annotations`, `settings`, `dimensions`).
+- **Selective Reader Subtree Rebuilds**: Replaced full repository watchers with scoped `context.select` and isolated `RepaintBoundary` barriers in `EpubReaderScreen`, `MobiReaderScreen`, `TxtReaderScreen`, and `HtmlReaderScreen`.
+- **Tighter SAF Cache Quotas**: Reduced default SAF cache budget in `SafHandler.kt` from 500 MB / 7 days to 50 MB / 24 hours with immediate cleanup of orphaned atomic temp files.
+
 ## [1.4.5-alpha.4] - 2026-11-23
 
 ### Added

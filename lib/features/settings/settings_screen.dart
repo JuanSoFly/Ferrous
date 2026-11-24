@@ -2,6 +2,7 @@
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:ferrous/core/constants/app_constants.dart';
+import 'package:ferrous/core/services/app_cache_service.dart';
 import 'package:ferrous/core/services/update_service.dart';
 import 'package:ferrous/core/widgets/update_dialog.dart';
 import 'package:ferrous/features/settings/appearance_screen.dart';
@@ -20,11 +21,64 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final Future<PackageInfo> _packageInfoFuture;
   bool _isCheckingForUpdates = false;
+  int _cacheSizeBytes = 0;
+  bool _isClearingCache = false;
 
   @override
   void initState() {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
+    _loadCacheSize();
+  }
+
+  Future<void> _loadCacheSize() async {
+    try {
+      final size = await AppCacheService.calculateCacheSizeBytes();
+      if (mounted) {
+        setState(() {
+          _cacheSizeBytes = size;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleClearCache() async {
+    if (_isClearingCache) return;
+    setState(() {
+      _isClearingCache = true;
+    });
+
+    try {
+      final freedBytes = await AppCacheService.clearAllCaches();
+      await _loadCacheSize();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            freedBytes > 0
+                ? 'Cache cleared (${AppCacheService.formatBytes(freedBytes)} freed). Books and progress are untouched.'
+                : 'Cache is already clean.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to clear cache. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearingCache = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleCheckForUpdates() async {
@@ -125,6 +179,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                   showChevron: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _buildSectionHeader(theme, 'Storage & Cache', isEInk: isEInk),
+            const SizedBox(height: 8),
+            _buildInsetGroup(
+              theme: theme,
+              isEInk: isEInk,
+              children: [
+                _buildSettingsTile(
+                  context: context,
+                  theme: theme,
+                  isEInk: isEInk,
+                  icon: Icons.cleaning_services_outlined,
+                  title: 'Clear Cache',
+                  subtitle: 'Temporary Cache • ${AppCacheService.formatBytes(_cacheSizeBytes)}',
+                  trailing: _isClearingCache
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: isEInk ? const Color(0xFF1A1A18) : theme.colorScheme.primary,
+                          ),
+                        )
+                      : null,
+                  showChevron: !_isClearingCache,
+                  onTap: _isClearingCache ? null : _handleClearCache,
                 ),
               ],
             ),

@@ -229,6 +229,7 @@ class EpubChapterController extends ChangeNotifier {
         try {
           final tempDir = await getTemporaryDirectory();
           cacheDir = '${tempDir.path}/epub_media/${book.id}';
+          BookFileResolver.retainMedia('epub_${book.id}');
         } catch (_) {}
 
         final parsedBook = await _readChaptersWithFallback(bytes, cacheDir);
@@ -1381,10 +1382,20 @@ class EpubChapterController extends ChangeNotifier {
   }
 
   void cleanup() {
-    if (_resolvedFile?.isTemp == true) {
-      try {
-        unawaited(File(_resolvedFile!.path).delete());
-      } catch (_) {}
+    final resolved = _resolvedFile;
+    if (resolved != null) {
+      _resolvedFile = null;
+      unawaited(BookFileResolver().release(resolved));
+      unawaited(() async {
+        try {
+          final tempDir = await getTemporaryDirectory();
+          final mediaDir = Directory('${tempDir.path}/epub_media/${book.id}');
+          await BookFileResolver.releaseMedia(
+            key: 'epub_${book.id}',
+            dir: mediaDir,
+          );
+        } catch (_) {}
+      }());
     }
     if (!_scrollController.hasClients) {
       _scrollController.dispose();

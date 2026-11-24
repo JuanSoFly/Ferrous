@@ -531,6 +531,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     widget.selectionController.clearSelection();
     widget.selectionController.pruneChapter(_currentChapter);
     widget.onClearSelection?.call();
+    widget.ttsController.resetDomCursor();
     _activeSlot = newSlot;
 
     final themeRepo = context.read<ReaderThemeRepository>();
@@ -635,7 +636,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
     final totalChapters = widget.chapterController.chapters?.length ?? 0;
     if (totalChapters == 0) return const SizedBox.shrink();
 
-    final themeRepo = context.watch<ReaderThemeRepository>();
+    final themeConfig = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
     final annotationRepo = context.watch<AnnotationRepository>();
     final annotations = annotationRepo.getAnnotationsForBook(widget.chapterController.book.id);
 
@@ -644,13 +645,13 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
       bottom: true,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeRepo.config);
+          final (availWidth, availHeight) = _computeAvailableDimensions(constraints, themeConfig);
 
           final slices = _getPagedSlices(
             _currentChapter,
             availWidth,
             availHeight,
-            themeRepo.config,
+            themeConfig,
             annotations,
           );
 
@@ -679,15 +680,15 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             if (_currentChapter + 1 < totalChapters) {
-              _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeRepo.config, annotations);
+              _getPagedSlices(_currentChapter + 1, availWidth, availHeight, themeConfig, annotations);
             }
             if (_currentChapter - 1 >= 0) {
-              _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeRepo.config, annotations);
+              _getPagedSlices(_currentChapter - 1, availWidth, availHeight, themeConfig, annotations);
             }
           });
 
           final useRealisticCurl = widget.readingMode != ReadingMode.vertical &&
-              themeRepo.config.pageFlip;
+              themeConfig.pageFlip;
 
           if (useRealisticCurl) {
             return RealisticPageTurn(
@@ -695,8 +696,8 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
               chapterIndex: _currentChapter,
               pageCount: totalSlots,
               currentPage: _activeSlot,
-              textureId: themeRepo.config.paperTexture,
-              showSpine: themeRepo.config.showBookSpine,
+              textureId: themeConfig.paperTexture,
+              showSpine: themeConfig.showBookSpine,
               onPageChanged: (slot) => _handleSlotChanged(slot, constraints),
               onToggleChrome: widget.onToggleChrome,
               onTapUp: widget.onTapUp,
@@ -709,7 +710,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     _currentChapter - 1,
                     availWidth,
                     availHeight,
-                    themeRepo.config,
+                    themeConfig,
                     annotations,
                   );
                   final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
@@ -720,7 +721,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     _currentChapter + 1,
                     availWidth,
                     availHeight,
-                    themeRepo.config,
+                    themeConfig,
                     annotations,
                   );
                   final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;
@@ -771,7 +772,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     _currentChapter - 1,
                     availWidth,
                     availHeight,
-                    themeRepo.config,
+                    themeConfig,
                     annotations,
                   );
                   final prevSlice = prevSlices.isNotEmpty ? prevSlices.last : null;
@@ -782,7 +783,7 @@ class _EpubPagedViewerState extends State<EpubPagedViewer> {
                     _currentChapter + 1,
                     availWidth,
                     availHeight,
-                    themeRepo.config,
+                    themeConfig,
                     annotations,
                   );
                   final nextSlice = nextSlices.isNotEmpty ? nextSlices.first : null;

@@ -53,8 +53,7 @@ class _TxtContinuousViewerState extends State<TxtContinuousViewer> {
   Widget build(BuildContext context) {
     if (widget.chapterController.chapters == null) return const SizedBox.shrink();
 
-    final themeRepo = context.watch<ReaderThemeRepository>();
-    final themeConfig = themeRepo.config;
+    final themeConfig = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
     final screenSize = MediaQuery.sizeOf(context);
 
     if (_lastThemeConfig != null &&
@@ -131,7 +130,7 @@ class _TxtContinuousViewerState extends State<TxtContinuousViewer> {
             key: ValueKey('txt-continuous-${widget.chapterController.scrollEpoch}'),
             controller: widget.chapterController.scrollController,
             scrollCacheExtent: const ScrollCacheExtent.pixels(800.0),
-            addRepaintBoundaries: false,
+            addRepaintBoundaries: true,
             itemCount: totalCount,
             itemBuilder: (context, index) {
               final chapterIndex = index;

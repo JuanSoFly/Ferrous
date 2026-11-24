@@ -17,6 +17,7 @@ import 'package:ferrous/core/utils/xml_html_normalizer.dart';
 import 'package:ferrous/src/rust/api/covers.dart' as covers_api;
 import 'package:ferrous/src/rust/api/mobi.dart' as rust_mobi;
 import 'package:ferrous/core/services/diagnostic_logger.dart';
+import 'package:ferrous/core/services/app_cache_service.dart';
 import 'package:ferrous/core/utils/dom_chunker.dart';
 import 'package:ferrous/core/utils/css_rule_resolver.dart';
 import 'reader_mode_controller.dart';
@@ -206,6 +207,8 @@ class MobiChapterController extends ChangeNotifier {
         final resolver = BookFileResolver();
         final resolved = await resolver.resolve(book);
         _resolvedFile = resolved;
+        final mobiMediaHash = AppCacheService.mobiHash(resolved.path);
+        BookFileResolver.retainMedia('mobi_$mobiMediaHash');
         
         // Fetch chapters from Rust backend
         final rustChapters = await rust_mobi.getMobiChapters(path: resolved.path);
@@ -1249,10 +1252,22 @@ class MobiChapterController extends ChangeNotifier {
   }
 
   void cleanup() {
-    if (_resolvedFile?.isTemp == true) {
-      try {
-        unawaited(File(_resolvedFile!.path).delete());
-      } catch (_) {}
+    final resolved = _resolvedFile;
+    if (resolved != null) {
+      _resolvedFile = null;
+      unawaited(BookFileResolver().release(resolved));
+      unawaited(() async {
+        try {
+          final mobiMediaHash = AppCacheService.mobiHash(resolved.path);
+          final mediaDir = await AppCacheService.getMobiMediaDirForPath(resolved.path);
+          if (mediaDir != null) {
+            await BookFileResolver.releaseMedia(
+              key: 'mobi_$mobiMediaHash',
+              dir: mediaDir,
+            );
+          }
+        } catch (_) {}
+      }());
     }
     if (!_scrollController.hasClients) {
       _scrollController.dispose();

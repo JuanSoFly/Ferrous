@@ -50,11 +50,18 @@ class TxtTtsController extends ChangeNotifier {
   int? _lastEnsuredEnd;
   String? _cachedHighlightedHtml;
   String? _lastHighlightedSourceHtml;
+  int? _lastMatchedDomOffset;
+  int? _lastMatchedSourceHash;
+  int? _lastMatchedChapterIndex;
+  int? _lastMatchedSliceOffset;
+  int? _lastMatchedSentenceStart;
+  int? _lastMatchedChapterRawStart;
+  List<SentenceSpan>? _cachedChapterSentences;
+  int? _cachedChapterSentencesIndex;
 
   late int _lastTtsSentenceStart;
   late int _lastTtsSentenceEnd;
   late int _lastTtsSection;
-
 
   // Getters
   TtsService get ttsService => _ttsService;
@@ -66,6 +73,16 @@ class TxtTtsController extends ChangeNotifier {
   int? get speakingChapterIndex => _speakingChapterIndex;
   int? get lastHighlightStart => _lastHighlightStart;
   int? get lastHighlightEnd => _lastHighlightEnd;
+  int? get lastMatchedDomOffset => _lastMatchedDomOffset;
+
+  void resetDomCursor() {
+    _lastMatchedDomOffset = null;
+    _lastMatchedSourceHash = null;
+    _lastMatchedChapterIndex = null;
+    _lastMatchedSliceOffset = null;
+    _lastMatchedSentenceStart = null;
+    _lastMatchedChapterRawStart = null;
+  }
 
   void setTtsContinuous(bool value) {
     _ttsContinuous = value;
@@ -101,6 +118,7 @@ class TxtTtsController extends ChangeNotifier {
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
       _speakingChapterIndex = null;
+      resetDomCursor();
       unawaited(_ttsService.stop());
       return;
     }
@@ -126,6 +144,7 @@ class TxtTtsController extends ChangeNotifier {
       _lastHighlightStart = null;
       _lastHighlightEnd = null;
       _speakingChapterIndex = null;
+      resetDomCursor();
       notifyListeners();
       return;
     }
@@ -203,11 +222,22 @@ class TxtTtsController extends ChangeNotifier {
       // Set up for TTS with raw text starting from beginning
       _speakingChapterIndex = index;
       _ttsRawBaseOffset = 0;
+      resetDomCursor();
       _ttsNormalizationMap = buildNormalizedTextMap(rawText);
 
       await _ttsService.speak(_ttsNormalizationMap!.normalized);
       return;
     }
+  }
+
+  List<SentenceSpan> _getChapterSentences(int chapterIndex, String chapterText) {
+    if (_cachedChapterSentencesIndex == chapterIndex && _cachedChapterSentences != null) {
+      return _cachedChapterSentences!;
+    }
+    final sentences = splitIntoSentences(chapterText);
+    _cachedChapterSentences = sentences;
+    _cachedChapterSentencesIndex = chapterIndex;
+    return sentences;
   }
 
   String buildTtsHighlightedHtml(
@@ -230,11 +260,71 @@ class TxtTtsController extends ChangeNotifier {
         ? chapterController.allChapterPlainTexts[effectiveChapter]
         : chapterController.currentPlainText;
 
+    final rawWordStart = chapterRawStart ?? _lastHighlightStart ?? highlightStart;
+    final rawWordEnd = chapterRawEnd ?? _lastHighlightEnd ?? highlightEnd;
+
+    final sliceStartOffset = (chapterRawStart != null && overrideStart != null)
+        ? (chapterRawStart - overrideStart)
+        : 0;
+
+    final sentences = _getChapterSentences(effectiveChapter, chapterText);
+    final sentenceSpan = sentenceForOffset(sentences, rawWordStart);
+
+    String? sentenceText;
+    int? sentenceLocalStart;
+    int? sentenceLocalEnd;
+    int? wordOffsetInSentence;
+
+    if (sentenceSpan != null) {
+      final safeStart = sentenceSpan.start.clamp(0, chapterText.length);
+      final safeEnd = sentenceSpan.end.clamp(safeStart, chapterText.length);
+      sentenceText = chapterText.substring(safeStart, safeEnd);
+      sentenceLocalStart = sentenceSpan.start - sliceStartOffset;
+      sentenceLocalEnd = sentenceSpan.end - sliceStartOffset;
+      wordOffsetInSentence = (rawWordStart - sentenceSpan.start).clamp(0, sentenceSpan.end - sentenceSpan.start);
+    }
+
+    final sourceHash = html.hashCode;
+    final chapterChanged = _lastMatchedChapterIndex != effectiveChapter;
+    final sliceChanged = _lastMatchedSliceOffset != sliceStartOffset;
+    final hashChanged = _lastMatchedSourceHash != sourceHash;
+    final backwardSeek = (_lastMatchedChapterRawStart != null && rawWordStart < _lastMatchedChapterRawStart!) ||
+        (_lastMatchedSentenceStart != null && sentenceSpan != null && sentenceSpan.start < _lastMatchedSentenceStart!);
+
+    if (chapterChanged || sliceChanged || hashChanged || backwardSeek) {
+      _lastMatchedDomOffset = null;
+      _lastMatchedSourceHash = sourceHash;
+      _lastMatchedChapterIndex = effectiveChapter;
+      _lastMatchedSliceOffset = sliceStartOffset;
+      _lastMatchedChapterRawStart = rawWordStart;
+      _lastMatchedSentenceStart = sentenceSpan?.start;
+    }
+
+    int? minForwardDomOffset;
+    if (_lastMatchedDomOffset != null) {
+      if (_lastMatchedChapterRawStart != null && rawWordStart > _lastMatchedChapterRawStart!) {
+        minForwardDomOffset = _lastMatchedDomOffset! + 1;
+      } else {
+        minForwardDomOffset = _lastMatchedDomOffset;
+      }
+    }
+
     final targetWord = HtmlTtsHighlightHelper.resolveExpectedWord(
       ttsServiceWord: _ttsService.currentWord,
       chapterPlainText: chapterText,
-      chapterRawStart: chapterRawStart ?? _lastHighlightStart ?? highlightStart,
-      chapterRawEnd: chapterRawEnd ?? _lastHighlightEnd ?? highlightEnd,
+      chapterRawStart: rawWordStart,
+      chapterRawEnd: rawWordEnd,
+    );
+
+    final prevWord = HtmlTtsHighlightHelper.extractPrevWord(
+      chapterText,
+      rawWordStart,
+      sentenceStart: sentenceSpan?.start,
+    );
+    final nextWord = HtmlTtsHighlightHelper.extractNextWord(
+      chapterText,
+      rawWordEnd,
+      sentenceEnd: sentenceSpan?.end,
     );
 
     final highlighted = HtmlTtsHighlightHelper.buildHighlightedHtml(
@@ -242,6 +332,22 @@ class TxtTtsController extends ChangeNotifier {
       rawStart: highlightStart,
       rawEnd: highlightEnd,
       expectedWord: targetWord,
+      prevWord: prevWord,
+      nextWord: nextWord,
+      minForwardDomOffset: minForwardDomOffset,
+      sentenceText: sentenceText,
+      sentenceLocalStart: sentenceLocalStart,
+      sentenceLocalEnd: sentenceLocalEnd,
+      wordOffsetInSentence: wordOffsetInSentence,
+      onMatchedDomOffset: (offset) {
+        if (_lastMatchedDomOffset == null || offset >= _lastMatchedDomOffset!) {
+          _lastMatchedDomOffset = offset;
+          _lastMatchedChapterRawStart = rawWordStart;
+          _lastMatchedChapterIndex = effectiveChapter;
+          _lastMatchedSliceOffset = sliceStartOffset;
+          _lastMatchedSentenceStart = sentenceSpan?.start;
+        }
+      },
     );
 
     _lastHighlightedSourceHtml = html;
@@ -362,6 +468,7 @@ class TxtTtsController extends ChangeNotifier {
     required int offset,
   }) async {
     _speakingChapterIndex = chapterIndex;
+    resetDomCursor();
     await chapterController.ensureChapterParsed(chapterIndex);
     if (chapterIndex != chapterController.currentChapterIndex) {
       await chapterController.loadChapter(chapterIndex, userInitiated: false);
@@ -376,6 +483,7 @@ class TxtTtsController extends ChangeNotifier {
 
   Future<void> startPlayback({required ReaderModeController modeController}) async {
     _speakingChapterIndex = chapterController.currentChapterIndex;
+    resetDomCursor();
     await chapterController.ensureChapterParsed(chapterController.currentChapterIndex);
     final text = resolveTtsText(modeController: modeController);
     if (text.trim().isEmpty) return;
@@ -395,6 +503,7 @@ class TxtTtsController extends ChangeNotifier {
   Future<void> _speakFromHere(String startText, {int? baseOffset}) async {
     if (startText.trim().isEmpty) return;
     _speakingChapterIndex ??= chapterController.currentChapterIndex;
+    resetDomCursor();
 
     final map = buildNormalizedTextMap(startText);
     if (map.normalized.isEmpty) return;
@@ -537,6 +646,7 @@ class TxtTtsController extends ChangeNotifier {
     _lastHighlightStart = null;
     _lastHighlightEnd = null;
     _speakingChapterIndex = null;
+    resetDomCursor();
     notifyListeners();
   }
 
@@ -548,6 +658,7 @@ class TxtTtsController extends ChangeNotifier {
     _lastHighlightStart = null;
     _lastHighlightEnd = null;
     _speakingChapterIndex = null;
+    resetDomCursor();
     notifyListeners();
   }
 

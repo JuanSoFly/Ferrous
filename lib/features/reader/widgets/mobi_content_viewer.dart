@@ -873,9 +873,9 @@ div, p, blockquote, section, article {
 
   @override
   Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
+    final themeRepo = context.read<ReaderThemeRepository>();
+    final themeConfig = context.select<ReaderThemeRepository, ReaderThemeConfig>((r) => r.config);
     final annotationRepo = context.watch<AnnotationRepository>();
-    final themeConfig = themeRepo.config;
     final horizontalMargin = themeConfig.pageMargins ? 16.0 : 0.0;
     final chapterAnnotations = annotationRepo
         .getAnnotationsForBook(widget.chapterController.book.id)
@@ -962,7 +962,7 @@ div, p, blockquote, section, article {
             ? widget.chapterController.allChapterChunkOffsets[widget.chapterIndex]
             : const <int>[0];
 
-        // Guardrail 2: Translate chapter-level TTS offsets to chunk-local offsets
+        // Translate chapter-level TTS offsets to chunk-local offsets
         int activeChunkIndex = 0;
         for (var i = 0; i < chunkOffsets.length; i++) {
           final start = chunkOffsets[i];

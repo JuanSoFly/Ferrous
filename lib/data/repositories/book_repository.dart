@@ -15,7 +15,10 @@ class BookRepository extends ChangeNotifier {
   Box<Book>? _box;
 
   Future<void> init() async {
-    _box = await Hive.openBox<Book>(_boxName);
+    _box = await Hive.openBox<Book>(
+      _boxName,
+      compactionStrategy: (entries, deletedEntries) => deletedEntries > 50,
+    );
   }
 
   Box<Book> get box {
@@ -206,8 +209,9 @@ class BookRepository extends ChangeNotifier {
         }
 
         await _coverSemaphore.acquire();
+        ResolvedBookFile? resolved;
         try {
-          final resolved = await resolver.resolve(book);
+          resolved = await resolver.resolve(book);
           await _extractCover(resolved.path, expectedCoverPath);
 
           final updated = book.copyWith(coverPath: expectedCoverPath);
@@ -217,6 +221,9 @@ class BookRepository extends ChangeNotifier {
           debugPrint('Cover Extraction failed for ${book.title}: $e');
           return false;
         } finally {
+          if (resolved != null) {
+            await resolver.release(resolved);
+          }
           _coverSemaphore.release();
         }
       }());

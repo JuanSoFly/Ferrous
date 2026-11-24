@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ferrous/core/models/book.dart';
 import 'package:ferrous/data/repositories/book_repository.dart';
@@ -99,6 +98,7 @@ class CbzPageController extends ChangeNotifier {
     _saveProgressOnDispose();
     _cacheController?.dispose();
     scrollController.dispose();
+    cleanupTempFile();
     super.dispose();
   }
 
@@ -652,9 +652,10 @@ class CbzPageController extends ChangeNotifier {
   }
 
   void cleanupTempFile() {
-    if (_resolvedFile == null || !_resolvedFile!.isTemp) return;
-    try {
-      unawaited(File(_resolvedFile!.path).delete());
-    } catch (_) {}
+    final resolved = _resolvedFile;
+    if (resolved != null) {
+      _resolvedFile = null;
+      unawaited(BookFileResolver().release(resolved));
+    }
   }
 }

@@ -1099,6 +1099,11 @@ class PdfPageController extends ChangeNotifier {
     _pageRenderCompleters.clear();
     scrollController.dispose();
     cleanup();
+    final resolved = _resolvedFile;
+    if (resolved != null) {
+      _resolvedFile = null;
+      unawaited(BookFileResolver().release(resolved));
+    }
     super.dispose();
   }
 

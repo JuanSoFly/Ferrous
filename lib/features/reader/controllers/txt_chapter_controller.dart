@@ -816,6 +816,11 @@ class TxtChapterController extends ChangeNotifier {
   @override
   void dispose() {
     _scrollController.dispose();
+    final resolved = _resolvedFile;
+    if (resolved != null) {
+      _resolvedFile = null;
+      unawaited(BookFileResolver().release(resolved));
+    }
     super.dispose();
   }
 }

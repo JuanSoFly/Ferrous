@@ -189,6 +189,7 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
       final resolver = BookFileResolver();
       final resolved = await resolver.resolve(widget.book);
       _resolvedFile = resolved;
+      BookFileResolver.retainMedia('docx_${resolved.path}');
       final rawHtml = await loadContent(resolved.path);
       final html = HyphenationHelper.injectIndentTags(rawHtml);
 
@@ -311,9 +312,15 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
   void _cleanupTempFile() {
     final resolved = _resolvedFile;
-    if (resolved == null || !resolved.isTemp) return;
+    if (resolved == null) return;
+    _resolvedFile = null;
     try {
-      unawaited(File(resolved.path).delete());
+      unawaited(BookFileResolver().release(resolved));
+      final mediaDir = Directory('${resolved.path}_media');
+      unawaited(BookFileResolver.releaseMedia(
+        key: 'docx_${resolved.path}',
+        dir: mediaDir,
+      ));
     } catch (_) {
       // Ignore cleanup failures
     }
@@ -395,13 +402,16 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
     } catch (_) {}
     final isEInk = currentTheme == AppTheme.eInk;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: isEInk ? Colors.transparent : null,
-      builder: (context) => const ReaderSettingsSheet(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: isEInk ? Colors.transparent : null,
+        builder: (context) => const ReaderSettingsSheet(),
+      );
+    });
   }
 
   void _restoreScrollPosition() {
@@ -751,7 +761,8 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
 
   @override
   Widget build(BuildContext context) {
-    final themeRepo = context.watch<ReaderThemeRepository>();
+    final paperTexture = context.select<ReaderThemeRepository, String>((r) => r.config.paperTexture);
+    final showBookSpine = context.select<ReaderThemeRepository, bool>((r) => r.config.showBookSpine);
     return ListenableBuilder(
       listenable: Listenable.merge([
         _chromeController,
@@ -777,10 +788,12 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     behavior: HitTestBehavior.translucent,
                     onDoubleTapDown: _handleDoubleTapDown,
                     onDoubleTap: _handleDoubleTap,
-                    child: RealBookBackground(
-                      textureId: themeRepo.config.paperTexture,
-                      showSpine: themeRepo.config.showBookSpine,
-                      child: _buildBody(),
+                    child: RepaintBoundary(
+                      child: RealBookBackground(
+                        textureId: paperTexture,
+                        showSpine: showBookSpine,
+                        child: _buildBody(),
+                      ),
                     ),
                   ),
                 ),
@@ -791,22 +804,24 @@ abstract class HtmlReaderScreenState<T extends HtmlReaderScreen> extends State<T
                     left: 0,
                     right: 0,
                     child: SelectionContainer.disabled(
-                      child: TtsControlsSheet(
-                        ttsService: _ttsController.ttsService,
-                        textToSpeak: '',
-                        resolveTextToSpeak: () => _ttsController.resolveTtsText(),
-                        onStart: () async {
-                          await _ttsController.startPlayback();
-                        },
-                        isContinuous: _ttsController.ttsContinuous,
-                        isFollowMode: _ttsController.ttsFollowMode,
-                        isTapToStart: _ttsController.tapToStartEnabled,
-                        onContinuousChanged: _ttsController.setTtsContinuous,
-                        onFollowModeChanged: _ttsController.setTtsFollowMode,
-                        onTapToStartChanged: _ttsController.setTapToStartEnabled,
-                        onClose: _ttsController.closeTtsControls,
-                        highlightStyle: themeRepo.highlightStyle,
-                        onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                      child: Consumer<ReaderThemeRepository>(
+                        builder: (context, themeRepo, _) => TtsControlsSheet(
+                          ttsService: _ttsController.ttsService,
+                          textToSpeak: '',
+                          resolveTextToSpeak: () => _ttsController.resolveTtsText(),
+                          onStart: () async {
+                            await _ttsController.startPlayback();
+                          },
+                          isContinuous: _ttsController.ttsContinuous,
+                          isFollowMode: _ttsController.ttsFollowMode,
+                          isTapToStart: _ttsController.tapToStartEnabled,
+                          onContinuousChanged: _ttsController.setTtsContinuous,
+                          onFollowModeChanged: _ttsController.setTtsFollowMode,
+                          onTapToStartChanged: _ttsController.setTapToStartEnabled,
+                          onClose: _ttsController.closeTtsControls,
+                          highlightStyle: themeRepo.highlightStyle,
+                          onHighlightStyleChanged: themeRepo.setTtsHighlightStyle,
+                        ),
                       ),
                     ),
                   ),
