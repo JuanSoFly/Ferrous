@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="100%" height="100%" role="img" aria-labelledby="chart-title chart-desc">
-  <title id="chart-title">Ferrous Reader — Release Trajectory (796+ Cumulative Downloads)</title>
-  <desc id="chart-desc">Kindle Carta 1300 E-Ink styled halftone chart showing cumulative GitHub release downloads across versions v1.0.0 (52), v1.1.0 (242), v1.2.x (299), v1.3.x (509), and v1.4.5 Stable (796+).</desc>
+  <title id="chart-title">Ferrous Reader — Release Trajectory (814+ Cumulative Downloads)</title>
+  <desc id="chart-desc">Kindle Carta 1300 E-Ink styled halftone chart showing cumulative GitHub release downloads across versions v1.0.0 (52), v1.1.0 (242), v1.2.x (299), v1.3.x (509), and v1.4.5 Stable (814+).</desc>
 
   <defs>
     <!-- Physical Halftone Dot Scrims (Kindle Carta 1300 E-Ink Specification) -->
@@ -83,7 +83,7 @@
     <g transform="translate(500, 6)">
       <rect x="0" y="0" width="132" height="30" rx="1.5" fill="#1A1A18" />
       <rect x="2" y="2" width="128" height="26" rx="1" fill="none" stroke="#EAE6DF" stroke-width="0.8" />
-      <text x="66" y="19" text-anchor="middle" class="ledger-num" fill="#EAE6DF">796 DOWNLOADS</text>
+      <text x="66" y="19" text-anchor="middle" class="ledger-num" fill="#EAE6DF">814 DOWNLOADS</text>
     </g>
 
     <!-- Active Release Carta Stamp -->
@@ -110,74 +110,74 @@
   </g>
 
   <!-- ==================== GRAPH PLOT AREA ==================== -->
-  <!-- Y-Axis Grid Lines & Numbers (Scale: 0 to 800, Baseline y=285, Top y=105) -->
+  <!-- Y-Axis Grid Lines & Numbers (Scale: 0 to 900, Baseline y=285, Top y=105) -->
   <g>
-    <!-- 800 -->
+    <!-- 900 -->
     <line x1="68" y1="105.0" x2="755" y2="105.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
-    <text x="58" y="109.0" text-anchor="end" class="axis-num">800</text>
+    <text x="58" y="109.0" text-anchor="end" class="axis-num">900</text>
 
-    <!-- 600 -->
+    <!-- 675 -->
     <line x1="68" y1="150.0" x2="755" y2="150.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
-    <text x="58" y="154.0" text-anchor="end" class="axis-num">600</text>
+    <text x="58" y="154.0" text-anchor="end" class="axis-num">675</text>
 
-    <!-- 400 -->
+    <!-- 450 -->
     <line x1="68" y1="195.0" x2="755" y2="195.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
-    <text x="58" y="199.0" text-anchor="end" class="axis-num">400</text>
+    <text x="58" y="199.0" text-anchor="end" class="axis-num">450</text>
 
-    <!-- 200 -->
+    <!-- 225 -->
     <line x1="68" y1="240.0" x2="755" y2="240.0" class="leader-line" stroke-dasharray="2, 3" stroke-width="1" />
-    <text x="58" y="244.0" text-anchor="end" class="axis-num">200</text>
+    <text x="58" y="244.0" text-anchor="end" class="axis-num">225</text>
   </g>
 
   <!-- Shaded Halftone Scrim Under Curve (Rendered behind columns for clean contrast) -->
   <path d="M 145 285
-           L 145 273.3
-           C 215 273.3, 215 230.6, 285 230.6
-           C 355 230.6, 355 217.7, 425 217.7
-           C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 105.9, 705 105.9
+           L 145 274.6
+           C 215 274.6, 215 236.6, 285 236.6
+           C 355 236.6, 355 225.2, 425 225.2
+           C 495 225.2, 495 183.2, 565 183.2
+           C 635 183.2, 635 122.2, 705 122.2
            L 705 285 Z"
         fill="url(#halftone-dense)" />
 
   <!-- ==================== STACKED HALFTONE COLUMNS ==================== -->
-  <!-- v1.0.0 (Total=52, Delta=+52, y=273.3, h=11.7) -->
+  <!-- v1.0.0 (Total=52, Delta=+52, y=274.6, h=10.4) -->
   <g>
-    <rect x="116" y="273.3" width="58" height="11.7" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="116" y="273.3" width="58" height="11.7" fill="url(#halftone-delta)" />
+    <rect x="116" y="274.6" width="58" height="10.4" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="116" y="274.6" width="58" height="10.4" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.1.0 (Total=242, Prior=52 [h=11.7], Delta=+190 [h=42.7], y=230.6) -->
+  <!-- v1.1.0 (Total=242, Prior=52 [h=10.4], Delta=+190 [h=38.0], y=236.6) -->
   <g>
-    <rect x="256" y="230.6" width="58" height="54.4" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
-    <rect x="256" y="273.3" width="58" height="11.7" fill="url(#halftone-base)" />
-    <rect x="256" y="230.6" width="58" height="42.7" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="256" y="230.6" width="58" height="42.7" fill="url(#halftone-delta)" />
+    <rect x="256" y="236.6" width="58" height="48.4" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="256" y="274.6" width="58" height="10.4" fill="url(#halftone-base)" />
+    <rect x="256" y="236.6" width="58" height="38.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="256" y="236.6" width="58" height="38.0" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.2.x (Total=299, Prior=242 [h=54.4], Delta=+57 [h=12.9], y=217.7) -->
+  <!-- v1.2.x (Total=299, Prior=242 [h=48.4], Delta=+57 [h=11.4], y=225.2) -->
   <g>
-    <rect x="396" y="217.7" width="58" height="67.3" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
-    <rect x="396" y="230.6" width="58" height="54.4" fill="url(#halftone-base)" />
-    <rect x="396" y="217.7" width="58" height="12.9" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="396" y="217.7" width="58" height="12.9" fill="url(#halftone-delta)" />
+    <rect x="396" y="225.2" width="58" height="59.8" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="396" y="236.6" width="58" height="48.4" fill="url(#halftone-base)" />
+    <rect x="396" y="225.2" width="58" height="11.4" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="396" y="225.2" width="58" height="11.4" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.3.x (Total=509, Prior=299 [h=67.3], Delta=+210 [h=47.2], y=170.5) -->
+  <!-- v1.3.x (Total=509, Prior=299 [h=59.8], Delta=+210 [h=42.0], y=183.2) -->
   <g>
-    <rect x="536" y="170.5" width="58" height="114.5" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
-    <rect x="536" y="217.7" width="58" height="67.3" fill="url(#halftone-base)" />
-    <rect x="536" y="170.5" width="58" height="47.2" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="536" y="170.5" width="58" height="47.2" fill="url(#halftone-delta)" />
+    <rect x="536" y="183.2" width="58" height="101.8" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1" />
+    <rect x="536" y="225.2" width="58" height="59.8" fill="url(#halftone-base)" />
+    <rect x="536" y="183.2" width="58" height="42.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="536" y="183.2" width="58" height="42.0" fill="url(#halftone-delta)" />
   </g>
 
-  <!-- v1.4.5 (Active Stable Column: Total=796, Prior=509 [h=114.5], Delta=+287 [h=64.6], y=105.9) -->
+  <!-- v1.4.5 (Active Stable Column: Total=814, Prior=509 [h=101.8], Delta=+305 [h=61.0], y=122.2) -->
   <g>
-    <rect x="676" y="105.9" width="58" height="179.1" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.8" />
-    <rect x="676" y="170.5" width="58" height="114.5" fill="url(#halftone-base)" />
-    <rect x="676" y="105.9" width="58" height="64.6" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
-    <rect x="676" y="105.9" width="58" height="64.6" fill="url(#halftone-column-active)" />
-    <!-- Top solid carbon cap for latest delta (+287) -->
-    <rect x="676" y="105.9" width="58" height="3.5" fill="#1A1A18" />
+    <rect x="676" y="122.2" width="58" height="162.8" fill="#E0DCD3" stroke="#1A1A18" stroke-width="1.8" />
+    <rect x="676" y="183.2" width="58" height="101.8" fill="url(#halftone-base)" />
+    <rect x="676" y="122.2" width="58" height="61.0" fill="#D5D0C5" stroke="#1A1A18" stroke-width="1" />
+    <rect x="676" y="122.2" width="58" height="61.0" fill="url(#halftone-column-active)" />
+    <!-- Top solid carbon cap for latest delta (+305) -->
+    <rect x="676" y="122.2" width="58" height="3.5" fill="#1A1A18" />
   </g>
 
   <!-- 0 Baseline (Solid Carbon Rule placed over bar bottoms for crisp alignment) -->
@@ -186,63 +186,63 @@
 
   <!-- ==================== MAIN TRAJECTORY CURVE ==================== -->
   <!-- Paper halo behind curve so line reads clearly across bar edges -->
-  <path d="M 145 273.3
-           C 215 273.3, 215 230.6, 285 230.6
-           C 355 230.6, 355 217.7, 425 217.7
-           C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 105.9, 705 105.9"
+  <path d="M 145 274.6
+           C 215 274.6, 215 236.6, 285 236.6
+           C 355 236.6, 355 225.2, 425 225.2
+           C 495 225.2, 495 183.2, 565 183.2
+           C 635 183.2, 635 122.2, 705 122.2"
         fill="none" stroke="#EAE6DF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- Solid Carbon Ink Trajectory Rule (Monotone Cubic Bezier) -->
-  <path d="M 145 273.3
-           C 215 273.3, 215 230.6, 285 230.6
-           C 355 230.6, 355 217.7, 425 217.7
-           C 495 217.7, 495 170.5, 565 170.5
-           C 635 170.5, 635 105.9, 705 105.9"
+  <path d="M 145 274.6
+           C 215 274.6, 215 236.6, 285 236.6
+           C 355 236.6, 355 225.2, 425 225.2
+           C 495 225.2, 495 183.2, 565 183.2
+           C 635 183.2, 635 122.2, 705 122.2"
         fill="none" stroke="#1A1A18" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- ==================== MILESTONE NODES & LABELS ==================== -->
   <!-- v1.0.0 -->
-  <circle cx="145" cy="273.3" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
-  <text x="145" y="260.3" text-anchor="middle" class="ledger-num" fill="#1A1A18">52</text>
+  <circle cx="145" cy="274.6" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="145" y="261.6" text-anchor="middle" class="ledger-num" fill="#1A1A18">52</text>
   <text x="145" y="303" text-anchor="middle" class="version-title">v1.0.0</text>
   <text x="145" y="316" text-anchor="middle" class="milestone-desc">Launch</text>
   <text x="145" y="329" text-anchor="middle" class="delta-badge">[+52]</text>
 
   <!-- v1.1.0 -->
-  <circle cx="285" cy="230.6" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
-  <text x="285" y="217.6" text-anchor="middle" class="ledger-num" fill="#1A1A18">242</text>
+  <circle cx="285" cy="236.6" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="285" y="223.6" text-anchor="middle" class="ledger-num" fill="#1A1A18">242</text>
   <text x="285" y="303" text-anchor="middle" class="version-title">v1.1.0</text>
   <text x="285" y="316" text-anchor="middle" class="milestone-desc">PDFium &amp; TTS</text>
   <text x="285" y="329" text-anchor="middle" class="delta-badge">[+190]</text>
 
   <!-- v1.2.x -->
-  <circle cx="425" cy="217.7" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
-  <text x="425" y="204.7" text-anchor="middle" class="ledger-num" fill="#1A1A18">299</text>
+  <circle cx="425" cy="225.2" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="425" y="212.2" text-anchor="middle" class="ledger-num" fill="#1A1A18">299</text>
   <text x="425" y="303" text-anchor="middle" class="version-title">v1.2.x</text>
   <text x="425" y="316" text-anchor="middle" class="milestone-desc">Library &amp; E-Ink</text>
   <text x="425" y="329" text-anchor="middle" class="delta-badge">[+57]</text>
 
   <!-- v1.3.x -->
-  <circle cx="565" cy="170.5" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
-  <text x="565" y="157.5" text-anchor="middle" class="ledger-num" fill="#1A1A18">509</text>
+  <circle cx="565" cy="183.2" r="5" fill="#EAE6DF" stroke="#1A1A18" stroke-width="2" />
+  <text x="565" y="170.2" text-anchor="middle" class="ledger-num" fill="#1A1A18">509</text>
   <text x="565" y="303" text-anchor="middle" class="version-title">v1.3.x</text>
   <text x="565" y="316" text-anchor="middle" class="milestone-desc">DOM &amp; CBR</text>
   <text x="565" y="329" text-anchor="middle" class="delta-badge">[+210]</text>
 
   <!-- v1.4.0 (Active Stable Highlight Marker) -->
-  <circle cx="705" cy="105.9" r="10.5" fill="#EAE6DF" fill-opacity="0.7" stroke="#1A1A18" stroke-width="1.2" stroke-dasharray="2, 2" />
-  <circle cx="705" cy="105.9" r="5.5" fill="#1A1A18" />
+  <circle cx="705" cy="122.2" r="10.5" fill="#EAE6DF" fill-opacity="0.7" stroke="#1A1A18" stroke-width="1.2" stroke-dasharray="2, 2" />
+  <circle cx="705" cy="122.2" r="5.5" fill="#1A1A18" />
   
   <!-- Inverted Callout Tag for Current Milestone -->
-  <g transform="translate(675, 67.9)">
+  <g transform="translate(675, 84.2)">
     <rect x="0" y="0" width="60" height="20" rx="1.5" fill="#1A1A18" />
     <polygon points="26,20 34,20 30,24" fill="#1A1A18" />
-    <text x="30" y="14" text-anchor="middle" class="ledger-num" fill="#EAE6DF">796+</text>
+    <text x="30" y="14" text-anchor="middle" class="ledger-num" fill="#EAE6DF">814+</text>
   </g>
   <text x="705" y="303" text-anchor="middle" class="version-title">v1.4.5</text>
   <text x="705" y="316" text-anchor="middle" class="milestone-desc">Safe Paging</text>
-  <text x="705" y="329" text-anchor="middle" class="delta-badge">★ [+287] Stable</text>
+  <text x="705" y="329" text-anchor="middle" class="delta-badge">★ [+305] Stable</text>
 
   <!-- ==================== FOOTER COLOPHON ==================== -->
   <line x1="20" y1="346" x2="780" y2="346" stroke="#9E9A90" stroke-width="0.8" />
